@@ -438,6 +438,10 @@ export default {
 		},
 
 		onCategoryDragOver(category, event) {
+			/* Categories are nested, so this bubbles to every ancestor. The one
+			   actually under the pointer is the innermost, which is where the
+			   drop lands too. */
+			event.stopPropagation()
 			if (isCategoryDrag(event)) {
 				const dragged = getDraggedCategory(event)
 				if (dragged === null || categoryDropTarget(dragged, category) === null) {
@@ -502,6 +506,7 @@ export default {
 		},
 
 		onCategoryDragLeave(category, event) {
+			event.stopPropagation()
 			if (this.dragOverCategory !== category) {
 				return
 			}
@@ -622,7 +627,7 @@ export default {
 	background-color: var(--color-primary-element-hover) !important;
 }
 
-.app-navigation-entry-wrapper.drop-over:deep(.app-navigation-entry) {
+.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry) {
 	background-color: var(--color-primary-element) !important;
 	outline: 2px dashed var(--color-primary-element-text);
 	outline-offset: -2px;
@@ -639,9 +644,9 @@ export default {
 .app-navigation-entry-wrapper.active:deep(.app-navigation-entry-link),
 .app-navigation-entry-wrapper.active:deep(.app-navigation-entry-button),
 .app-navigation-entry-wrapper.active:deep(.material-design-icon),
-.app-navigation-entry-wrapper.drop-over:deep(.app-navigation-entry-link),
-.app-navigation-entry-wrapper.drop-over:deep(.app-navigation-entry-button),
-.app-navigation-entry-wrapper.drop-over:deep(.material-design-icon) {
+.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry .app-navigation-entry-link),
+.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry .app-navigation-entry-button),
+.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry .material-design-icon) {
 	color: var(--color-primary-element-text) !important;
 }
 

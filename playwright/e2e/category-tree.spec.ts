@@ -205,6 +205,29 @@ test.describe('Category tree', () => {
 		await expect(categoryLink(page, 'Apps')).toBeVisible()
 	})
 
+	test('highlights only the category a note is dragged over', async ({ page }) => {
+		const loose = await createNoteViaApi(page, '', 'Loose note')
+		await page.reload()
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		// Drag the note over SAGE, which sits two levels down.
+		await page.evaluate((noteId) => {
+			const row = document.querySelector(`a[href*="/note/${noteId}"]`)?.closest('li') as HTMLElement
+			const target = document.querySelector('[title="SAGE"]')
+				?.closest('.app-navigation-entry') as HTMLElement
+			const transfer = new DataTransfer()
+			transfer.setData('application/x-nextcloud-notes-note-id', String(noteId))
+			row.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }))
+			target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+		}, loose)
+
+		await expect(async () => {
+			const highlighted = await page.evaluate(() => Array.from(document.querySelectorAll('li.drop-over'))
+				.map((li) => (li.querySelector('.app-navigation-entry-link') as HTMLElement)?.title))
+			expect(highlighted).toEqual(['SAGE'])
+		}).toPass({ timeout: 5000 })
+	})
+
 	test('selects a nested category from the tree', async ({ page }) => {
 		await categoryLink(page, 'SAGE').click()
 
