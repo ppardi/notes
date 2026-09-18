@@ -31,7 +31,7 @@
 			<ShareVariantOutlineIcon :size="16" fillColor="#0082c9" />
 		</template>
 		<template #actions>
-			<NcActionButton :icon="actionFavoriteIcon" @click="onToggleFavorite">
+			<NcActionButton :icon="actionFavoriteIcon" :closeAfterClick="true" @click="onToggleFavorite">
 				{{ actionFavoriteText }}
 			</NcActionButton>
 

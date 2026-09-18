@@ -38,6 +38,17 @@ test.describe('Note actions', () => {
 		await expect(page.getByRole('menuitem', { name: 'Add to favorites' })).toBeVisible()
 	})
 
+	test('closes the actions menu after toggling favorite', async ({ page }, testInfo: TestInfo) => {
+		const noteId = await createNote(page, uniqueTitle('menu-close', testInfo))
+
+		const favorited = page.waitForResponse((response) => response.url().includes('/favorite'))
+		await openNoteActions(page, noteId)
+		await page.getByRole('menuitem', { name: 'Add to favorites' }).click()
+		await favorited
+
+		await expect(page.locator('.action-item__popper.v-popper__popper--shown')).toHaveCount(0)
+	})
+
 	test('renames a note from the actions menu', async ({ page }, testInfo: TestInfo) => {
 		const title = uniqueTitle('rename', testInfo)
 		const renamedTitle = `${title} renamed`
