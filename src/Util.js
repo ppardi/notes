@@ -100,6 +100,37 @@ export function keepCategory($route, query = {}) {
 	return { ...query, ...categoryToQuery(categoryFromQuery($route?.query)) }
 }
 
+const CATEGORY_SETTING_PREFIX = 'category:'
+
+/**
+ * The setting value that stores a selected category.
+ *
+ * A plain category name cannot be stored on its own: the uncategorized
+ * category is the empty string, which an unset setting is indistinguishable
+ * from. The prefix keeps the two apart.
+ *
+ * @param {string|null} category the selected category, or null for all notes
+ * @return {string} the value to store
+ */
+export function categoryToSetting(category) {
+	return category === null ? 'all' : CATEGORY_SETTING_PREFIX + category
+}
+
+/**
+ * The category a stored setting value selects.
+ *
+ * Anything unset or unrecognised reads as all notes.
+ *
+ * @param {string} [value] the stored value
+ * @return {string|null} the category, or null for all notes
+ */
+export function categoryFromSetting(value) {
+	if (typeof value !== 'string' || !value.startsWith(CATEGORY_SETTING_PREFIX)) {
+		return null
+	}
+	return value.slice(CATEGORY_SETTING_PREFIX.length)
+}
+
 export function routeIsNewNote($route) {
 	return Object.hasOwn($route.query, 'new')
 }

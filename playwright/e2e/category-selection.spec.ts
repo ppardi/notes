@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import type { Locator, Page } from '@playwright/test'
+import type { Locator, Page, TestInfo } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
@@ -28,32 +28,48 @@ function navigationLink(page: Page, name: string): Locator {
 	return page.getByRole('link', { name, exact: true })
 }
 
-async function openNotesApp(page: Page): Promise<void> {
-	await page.goto('/index.php/apps/notes/')
+function categoryInUrl(category: string): RegExp {
+	return new RegExp(`[?&]category=${category}(&|$)`)
+}
+
+async function openNotesApp(page: Page, query = ''): Promise<void> {
+	await page.goto(`/index.php/apps/notes/${query}`)
 	await expect(newNoteButton(page).first()).toBeVisible()
 }
 
+/* The stored selection is written asynchronously, so wait for it before a test
+   navigates away and relies on it. Each test uses its own category names, so
+   the write is always a change and always happens. */
+function storedSelection(page: Page): Promise<unknown> {
+	return page.waitForResponse((response) => response.url().includes('/apps/notes/settings') && response.request().method() === 'PUT')
+}
+
 test.describe('Category selection', () => {
+	let work: string
+	let personal: string
 	let workNote: number
 	let personalNote: number
 
-	test.beforeEach(async ({ page }) => {
+	test.beforeEach(async ({ page }, testInfo: TestInfo) => {
 		await login(page)
 		await deleteAllNotes(page)
-		workNote = await createNoteViaApi(page, 'Work', 'Work note')
-		personalNote = await createNoteViaApi(page, 'Personal', 'Personal note')
+		// No spaces: the router encodes them as '+', which complicates URL assertions.
+		work = `work-${testInfo.testId}`
+		personal = `personal-${testInfo.testId}`
+		workNote = await createNoteViaApi(page, work, 'Work note')
+		personalNote = await createNoteViaApi(page, personal, 'Personal note')
 	})
 
 	test('puts the selected category in the URL', async ({ page }) => {
 		await openNotesApp(page)
-		await navigationLink(page, 'Work').click()
+		await navigationLink(page, work).click()
 
-		await expect(page).toHaveURL(/[?&]category=Work(&|$)/)
+		await expect(page).toHaveURL(categoryInUrl(work))
 	})
 
 	test('keeps the selected category across a reload', async ({ page }) => {
 		await openNotesApp(page)
-		await navigationLink(page, 'Work').click()
+		await navigationLink(page, work).click()
 		await expect(noteRow(page, workNote)).toBeVisible()
 		await expect(noteRow(page, personalNote)).toBeHidden()
 
@@ -65,10 +81,10 @@ test.describe('Category selection', () => {
 
 	test('moves between selections with the browser history', async ({ page }) => {
 		await openNotesApp(page)
-		await navigationLink(page, 'Work').click()
+		await navigationLink(page, work).click()
 		await expect(noteRow(page, personalNote)).toBeHidden()
 
-		await navigationLink(page, 'Personal').click()
+		await navigationLink(page, personal).click()
 		await expect(noteRow(page, workNote)).toBeHidden()
 
 		await page.goBack()
@@ -77,10 +93,34 @@ test.describe('Category selection', () => {
 		await expect(noteRow(page, personalNote)).toBeHidden()
 	})
 
+	test('returns to the last category when the app is opened without a query', async ({ page }) => {
+		await openNotesApp(page)
+		const stored = storedSelection(page)
+		await navigationLink(page, work).click()
+		await stored
+
+		await openNotesApp(page)
+
+		await expect(noteRow(page, workNote)).toBeVisible()
+		await expect(noteRow(page, personalNote)).toBeHidden()
+	})
+
+	test('lets a category in the URL win over the stored one', async ({ page }) => {
+		await openNotesApp(page)
+		const stored = storedSelection(page)
+		await navigationLink(page, work).click()
+		await stored
+
+		await openNotesApp(page, `?category=${encodeURIComponent(personal)}`)
+
+		await expect(noteRow(page, personalNote)).toBeVisible()
+		await expect(noteRow(page, workNote)).toBeHidden()
+	})
+
 	test('drops the parameter for the all-notes selection', async ({ page }) => {
 		await openNotesApp(page)
-		await navigationLink(page, 'Work').click()
-		await expect(page).toHaveURL(/[?&]category=Work(&|$)/)
+		await navigationLink(page, work).click()
+		await expect(page).toHaveURL(categoryInUrl(work))
 
 		await navigationLink(page, 'All notes').click()
 

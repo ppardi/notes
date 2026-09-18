@@ -6,9 +6,11 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import {
 	categoryFromQuery,
+	categoryFromSetting,
 	categoryLabel,
 	categoryRoute,
 	categoryToQuery,
+	categoryToSetting,
 	copyNote,
 	escapeHtml,
 	getDefaultSampleNote,
@@ -192,6 +194,46 @@ describe('keepCategory', () => {
 
 	it('copes with no target query at all', () => {
 		expect(keepCategory({ query: { category: 'Work' } })).toEqual({ category: 'Work' })
+	})
+})
+
+describe('categoryToSetting', () => {
+	it('stores the all-notes selection', () => {
+		expect(categoryToSetting(null)).toBe('all')
+	})
+
+	it('stores the uncategorized selection distinctly from all notes', () => {
+		expect(categoryToSetting('')).toBe('category:')
+	})
+
+	it('stores a nested category', () => {
+		expect(categoryToSetting('Personal/Work')).toBe('category:Personal/Work')
+	})
+})
+
+describe('categoryFromSetting', () => {
+	it('reads the all-notes selection back', () => {
+		expect(categoryFromSetting('all')).toBe(null)
+	})
+
+	it('reads the uncategorized selection back', () => {
+		expect(categoryFromSetting('category:')).toBe('')
+	})
+
+	it('reads a nested category back', () => {
+		expect(categoryFromSetting('category:Personal/Work')).toBe('Personal/Work')
+	})
+
+	it('treats an unset or unknown value as all notes', () => {
+		expect(categoryFromSetting('')).toBe(null)
+		expect(categoryFromSetting(undefined)).toBe(null)
+		expect(categoryFromSetting('nonsense')).toBe(null)
+	})
+
+	it('round-trips every selection', () => {
+		for (const category of [null, '', 'Work', 'Personal/Work/2026']) {
+			expect(categoryFromSetting(categoryToSetting(category))).toBe(category)
+		}
 	})
 })
 

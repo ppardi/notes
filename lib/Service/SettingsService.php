@@ -81,6 +81,22 @@ class SettingsService {
 					return $value === 'true' || $value === true;
 				},
 			],
+			// The category selected when the app was last used, so that opening
+			// the app from the app menu returns to it. 'all' means all notes; a
+			// 'category:' prefix carries the category, which may be empty for the
+			// uncategorized one.
+			'lastViewedCategory' => [
+				'default' => 'all',
+				'validate' => function (mixed $value) : string {
+					if (!is_string($value)) {
+						return 'all';
+					}
+					if ($value !== 'all' && !str_starts_with($value, 'category:')) {
+						return 'all';
+					}
+					return mb_substr($value, 0, 4096);
+				},
+			],
 		];
 	}
 

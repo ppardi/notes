@@ -92,9 +92,9 @@ import EditorHint from './components/Modal/EditorHint.vue'
 import NoteSidebar from './components/NoteSidebar.vue'
 import { config } from './config.js'
 import logger from './Logger.js'
-import { fetchNotes, noteExists, undoDeleteNote } from './NotesService.js'
+import { fetchNotes, noteExists, setSettings, undoDeleteNote } from './NotesService.js'
 import store from './store.js'
-import { categoryFromQuery, keepCategory } from './Util.js'
+import { categoryFromQuery, categoryFromSetting, categoryRoute, categoryToSetting, keepCategory } from './Util.js'
 
 import '@nextcloud/dialogs/style.css'
 
@@ -144,6 +144,7 @@ export default {
 			refreshTimer: null,
 			editorHint: loadState('notes', 'editorHint', '') === 'yes' && window.OCA.Text?.createEditor,
 			settingsVisible: false,
+			categoryRestored: false,
 		}
 	},
 
@@ -203,6 +204,7 @@ export default {
 				if (store.notes.getSelectedCategory() !== category) {
 					store.notes.setSelectedCategory(category)
 				}
+				this.rememberCategory(category)
 			},
 		},
 	},
@@ -224,13 +226,19 @@ export default {
 	methods: {
 		loadNotes() {
 			fetchNotes()
-				.then((data) => {
+				.then(async (data) => {
 					if (data === null) {
 						// nothing changed
 						return
 					}
 					if (data.notes !== null) {
 						this.error = false
+						if (!this.categoryRestored) {
+							if (store.app.settings?.loadRecentOnStartUp) {
+								await this.restoreCategory()
+							}
+							this.categoryRestored = true
+						}
 						if (store.app.settings?.loadRecentOnStartUp) {
 							this.routeDefault(data.lastViewedNote)
 						} else {
@@ -287,6 +295,36 @@ export default {
 			store.sync.clearSyncCache()
 			this.loading.notes = true
 			this.loadNotes()
+		},
+
+		/* Opening the app from the app menu lands on a URL without a query, so
+		   the stored selection is the only thing left to restore it from. A
+		   category in the URL is a deliberate choice and wins. */
+		async restoreCategory() {
+			if (categoryFromQuery(this.$route.query) !== null) {
+				return
+			}
+			const stored = categoryFromSetting(store.app.settings?.lastViewedCategory)
+			if (stored === null) {
+				return
+			}
+			/* A category that has since been renamed or deleted would filter every
+			   note away and leave the app on an empty list. */
+			if (stored !== '' && !store.notes.getCategories(0, false).includes(stored)) {
+				return
+			}
+			await this.$router.replace(categoryRoute(this.$route, stored)).catch(() => {})
+		},
+
+		rememberCategory(category) {
+			if (!this.categoryRestored) {
+				return
+			}
+			const value = categoryToSetting(category)
+			if (store.app.settings?.lastViewedCategory === value) {
+				return
+			}
+			setSettings({ lastViewedCategory: value })
 		},
 
 		routeDefault(defaultNoteId) {
