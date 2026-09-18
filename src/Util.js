@@ -30,21 +30,19 @@ export function categoryLabel(category) {
 }
 
 /**
- * Whether a note's category falls within the selected one.
+ * Whether a note belongs to the selected category.
  *
- * A null selection matches every note. Otherwise a note matches the selected
- * category itself and any category nested below it.
+ * A null selection matches every note. Otherwise a note belongs to the
+ * category it is filed in and to no other: selecting a category shows what is
+ * in it, not everything beneath it, so that each category in the tree can be
+ * looked at on its own.
  *
  * @param {string} noteCategory the note's category
  * @param {string|null} selectedCategory the selected category, or null for all notes
  * @return {boolean} whether the note belongs to the selection
  */
 export function isInCategory(noteCategory, selectedCategory) {
-	if (selectedCategory === null) {
-		return true
-	}
-	return noteCategory === selectedCategory
-		|| noteCategory.startsWith(selectedCategory + '/')
+	return selectedCategory === null || noteCategory === selectedCategory
 }
 
 /**

@@ -43,25 +43,6 @@ test.describe('Note list captions', () => {
 		await deleteAllNotes(page)
 	})
 
-	test('shows the sub-category caption when the category has a single sub-group', async ({ page }) => {
-		await createNoteViaApi(page, 'Personal/Work', 'Nested note')
-
-		await openNotesApp(page)
-		await navigationLink(page, 'Personal').click()
-
-		await expect(caption(page, 'Work')).toBeVisible()
-	})
-
-	test('shows the sub-category caption when the category has several groups', async ({ page }) => {
-		await createNoteViaApi(page, 'Personal', 'Direct note')
-		await createNoteViaApi(page, 'Personal/Work', 'Nested note')
-
-		await openNotesApp(page)
-		await navigationLink(page, 'Personal').click()
-
-		await expect(caption(page, 'Work')).toBeVisible()
-	})
-
 	test('shows the timeslot caption in All notes when every note shares one timeslot', async ({ page }) => {
 		await createNoteViaApi(page, '', 'Only note')
 

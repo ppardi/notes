@@ -7,9 +7,9 @@ import type { APIRequestContext, Locator, Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { deleteAllNotes, newNoteButton } from '../support/note.ts'
+import { deleteAllNotes, newNoteButton, noteRow } from '../support/note.ts'
 
-async function createNoteViaApi(page: Page, category: string, title: string): Promise<void> {
+async function createNoteViaApi(page: Page, category: string, title: string): Promise<number> {
 	const user = process.env.NC_USER ?? 'admin'
 	const password = process.env.NC_PASS ?? 'admin'
 	const headers = { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
@@ -18,6 +18,9 @@ async function createNoteViaApi(page: Page, category: string, title: string): Pr
 		data: { category, content: `# ${title}` },
 	})
 	expect(response.ok(), `creating note in "${category}"`).toBeTruthy()
+
+	const note = await response.json() as { id: number }
+	return note.id
 }
 
 /* The entry div, not the li: a parent's li also contains its descendants. */
@@ -51,11 +54,14 @@ async function clearStoredCategory(request: APIRequestContext): Promise<void> {
 }
 
 test.describe('Category tree', () => {
+	let deepNote: number
+	let sageNote: number
+
 	test.beforeEach(async ({ page }) => {
 		await login(page)
 		await deleteAllNotes(page)
-		await createNoteViaApi(page, 'PROJECTS/Apps/SAGE/Architecture', 'Deep note')
-		await createNoteViaApi(page, 'PROJECTS/Apps/SAGE', 'SAGE note')
+		deepNote = await createNoteViaApi(page, 'PROJECTS/Apps/SAGE/Architecture', 'Deep note')
+		sageNote = await createNoteViaApi(page, 'PROJECTS/Apps/SAGE', 'SAGE note')
 		await createNoteViaApi(page, 'PROJECTS/Apps/Deskspace', 'Deskspace note')
 
 		await page.goto('/index.php/apps/notes/')
@@ -83,10 +89,17 @@ test.describe('Category tree', () => {
 		expect(architecture).toBeGreaterThan(sage)
 	})
 
-	test('counts a category together with everything below it', async ({ page }) => {
-		await expect(categoryCounter(page, 'PROJECTS')).toContainText('3')
-		await expect(categoryCounter(page, 'SAGE')).toContainText('2')
+	test('counts only the notes filed directly in a category', async ({ page }) => {
+		await expect(categoryCounter(page, 'SAGE')).toContainText('1')
 		await expect(categoryCounter(page, 'Architecture')).toContainText('1')
+		await expect(categoryCounter(page, 'Deskspace')).toContainText('1')
+	})
+
+	test('shows only the notes of the selected category, not those below it', async ({ page }) => {
+		await categoryLink(page, 'SAGE').click()
+
+		await expect(noteRow(page, sageNote)).toBeVisible()
+		await expect(noteRow(page, deepNote)).toBeHidden()
 	})
 
 	test('selects a nested category from the tree', async ({ page }) => {

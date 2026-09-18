@@ -27,10 +27,6 @@
 				</div>
 
 				<template v-for="(group, idx) in groupedNotes" :key="idx">
-					<NotesCaption v-if="group.category && category !== group.category"
-						:key="group.category"
-						:name="categoryToLabel(group.category)"
-					/>
 					<NotesCaption v-if="group.timeslot"
 						:key="group.timeslot"
 						:name="group.timeslot"
@@ -266,10 +262,6 @@ export default {
 
 		categoryTitle(category) {
 			return categoryLabel(category)
-		},
-
-		categoryToLabel(category) {
-			return categoryLabel(category.substring(this.category.length + 1))
 		},
 
 		getTimeslotFromNote(note) {

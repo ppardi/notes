@@ -112,9 +112,7 @@ export const useNotesStore = defineStore('notes', {
 			const appStore = useAppStore()
 			const searchText = appStore.searchText.toLowerCase()
 			const notes = state.notes.filter((note) => {
-				if (state.selectedCategory !== null
-					&& state.selectedCategory !== note.category
-					&& !note.category.startsWith(state.selectedCategory + '/')) {
+				if (state.selectedCategory !== null && state.selectedCategory !== note.category) {
 					return false
 				}
 
@@ -163,7 +161,7 @@ export const useNotesStore = defineStore('notes', {
 			}
 
 			const notes = state.notes.filter((note) => {
-				if (state.selectedCategory === note.category || note.category.startsWith(state.selectedCategory + '/')) {
+				if (state.selectedCategory === note.category) {
 					return false
 				}
 

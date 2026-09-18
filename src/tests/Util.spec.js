@@ -92,8 +92,12 @@ describe('isInCategory', () => {
 		expect(isInCategory('Work', 'Work')).toBe(true)
 	})
 
-	it('matches a note in a descendant of the selected category', () => {
-		expect(isInCategory('Work/Projects/2026', 'Work/Projects')).toBe(true)
+	it('does not match a note in a descendant of the selected category', () => {
+		expect(isInCategory('Work/Projects/2026', 'Work/Projects')).toBe(false)
+	})
+
+	it('does not match a note in a child of the selected category', () => {
+		expect(isInCategory('Work/Projects', 'Work')).toBe(false)
 	})
 
 	it('matches a note whose nested category is selected exactly', () => {

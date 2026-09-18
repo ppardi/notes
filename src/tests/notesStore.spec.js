@@ -42,3 +42,47 @@ describe('notes store updateNote', () => {
 		expect(store.getNote(1).title).toBe('Renamed')
 	})
 })
+
+describe('notes store category filtering', () => {
+	let store
+
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		store = useNotesStore()
+		const notes = [
+			{ id: 1, title: 'Loose', category: '' },
+			{ id: 2, title: 'In Work', category: 'Work' },
+			{ id: 3, title: 'In child', category: 'Work/Projects' },
+			{ id: 4, title: 'In grandchild', category: 'Work/Projects/2026' },
+			{ id: 5, title: 'Elsewhere', category: 'Personal' },
+		]
+		notes.forEach((note) => store.updateNote({ ...note, internalPath: '', readonly: false }))
+	})
+
+	/**
+	 * @return {Array<number>} the ids the note list would show
+	 */
+	function visibleIds() {
+		return store.getFilteredNotes().map((note) => note.id)
+	}
+
+	it('shows every note when nothing is selected', () => {
+		store.setSelectedCategory(null)
+		expect(visibleIds().sort()).toEqual([1, 2, 3, 4, 5])
+	})
+
+	it('shows only the notes filed directly in the selected category', () => {
+		store.setSelectedCategory('Work')
+		expect(visibleIds()).toEqual([2])
+	})
+
+	it('shows only the notes of a selected nested category', () => {
+		store.setSelectedCategory('Work/Projects')
+		expect(visibleIds()).toEqual([3])
+	})
+
+	it('shows only uncategorized notes for the uncategorized selection', () => {
+		store.setSelectedCategory('')
+		expect(visibleIds()).toEqual([1])
+	})
+})

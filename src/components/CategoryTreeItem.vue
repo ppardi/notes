@@ -31,7 +31,7 @@
 			<FolderOutlineIcon v-else :size="20" />
 		</template>
 		<template #counter>
-			<NcCounterBubble :count="node.totalCount" />
+			<NcCounterBubble :count="node.count" />
 		</template>
 		<template v-if="node.name !== ''" #actions>
 			<NcActionButton
