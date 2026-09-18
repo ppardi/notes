@@ -47,6 +47,59 @@ export function isInCategory(noteCategory, selectedCategory) {
 		|| noteCategory.startsWith(selectedCategory + '/')
 }
 
+/**
+ * The route query that selects a category.
+ *
+ * The all-notes selection drops the parameter entirely, which is what tells it
+ * apart from the uncategorized selection: that one is a real category and keeps
+ * an empty parameter.
+ *
+ * @param {string|null} category the selected category, or null for all notes
+ * @return {object} query fields to merge into the route
+ */
+export function categoryToQuery(category) {
+	return { category: category === null ? undefined : category }
+}
+
+/**
+ * The category a route query selects.
+ *
+ * @param {object} [query] the route query
+ * @return {string|null} the selected category, or null for all notes
+ */
+export function categoryFromQuery(query) {
+	const value = query?.category
+	if (value === undefined || value === null) {
+		return null
+	}
+	return Array.isArray(value) ? (value[0] ?? '') : value
+}
+
+/**
+ * The route that selects a category, keeping the rest of the current query.
+ *
+ * @param {object} $route the current route
+ * @param {string|null} category the category to select, or null for all notes
+ * @return {object} a route location to push
+ */
+export function categoryRoute($route, category) {
+	return { query: { ...$route?.query, ...categoryToQuery(category) } }
+}
+
+/**
+ * A route query that keeps the selected category.
+ *
+ * The route owns the selection, so every navigation has to carry it or the
+ * category is dropped on the way.
+ *
+ * @param {object} $route the current route
+ * @param {object} [query] the query the target route wants
+ * @return {object} that query, plus the current category
+ */
+export function keepCategory($route, query = {}) {
+	return { ...query, ...categoryToQuery(categoryFromQuery($route?.query)) }
+}
+
 export function routeIsNewNote($route) {
 	return Object.hasOwn($route.query, 'new')
 }

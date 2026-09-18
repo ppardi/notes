@@ -94,6 +94,7 @@ import { config } from './config.js'
 import logger from './Logger.js'
 import { fetchNotes, noteExists, undoDeleteNote } from './NotesService.js'
 import store from './store.js'
+import { categoryFromQuery, keepCategory } from './Util.js'
 
 import '@nextcloud/dialogs/style.css'
 
@@ -192,6 +193,18 @@ export default {
 				store.app.setZenMode(false)
 			}
 		},
+
+		/* The route owns the selected category, so that it survives a reload and
+		   moves with the browser's history. */
+		'$route.query.category': {
+			immediate: true,
+			handler() {
+				const category = categoryFromQuery(this.$route.query)
+				if (store.notes.getSelectedCategory() !== category) {
+					store.notes.setSelectedCategory(category)
+				}
+			},
+		},
 	},
 
 	created() {
@@ -268,7 +281,7 @@ export default {
 
 		reloadNotes() {
 			if (this.$route.path !== '/') {
-				this.$router.push('/')
+				this.$router.push({ path: '/', query: keepCategory(this.$route) })
 			}
 			store.notes.removeAllNotes()
 			store.sync.clearSyncCache()
@@ -297,7 +310,7 @@ export default {
 
 		routeWelcome() {
 			if (this.$route.name !== 'welcome') {
-				this.$router.push({ name: 'welcome' })
+				this.$router.push({ name: 'welcome', query: keepCategory(this.$route) })
 			}
 		},
 
@@ -307,7 +320,7 @@ export default {
 				this.$router.push({
 					name: 'note',
 					params: { noteId },
-					query,
+					query: keepCategory(this.$route, query),
 				})
 			}
 		},

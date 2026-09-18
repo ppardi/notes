@@ -36,13 +36,13 @@
 </template>
 
 <script>
-
 import NcAppContent from '@nextcloud/vue/components/NcAppContent'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import Plus from 'vue-material-design-icons/Plus.vue'
 import CreateSampleButton from './CreateSampleButton.vue'
 import HelpMobile from './HelpMobile.vue'
 import { createNote } from '../NotesService.js'
+import { keepCategory } from '../Util.js'
 
 export default {
 	name: 'Welcome',
@@ -62,6 +62,7 @@ export default {
 					this.$router.push({
 						name: 'note',
 						params: { noteId: note.id.toString() },
+						query: keepCategory(this.$route),
 					})
 				})
 		},

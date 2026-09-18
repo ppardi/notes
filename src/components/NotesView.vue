@@ -87,7 +87,7 @@ import logger from '../Logger.js'
 import { createNote } from '../NotesService.js'
 import store from '../store.js'
 import { fetchNoteTemplates, fetchTemplateContent } from '../TemplateService.js'
-import { categoryLabel, isInCategory } from '../Util.js'
+import { categoryLabel, categoryRoute, isInCategory, keepCategory } from '../Util.js'
 
 export default {
 	name: 'NotesView',
@@ -299,7 +299,7 @@ export default {
 		},
 
 		onCategorySelected(category) {
-			store.notes.setSelectedCategory(category)
+			this.$router.push(categoryRoute(this.$route, category)).catch(() => {})
 		},
 
 		async onNewNote() {
@@ -338,7 +338,7 @@ export default {
 					this.$router.push({
 						name: 'note',
 						params: { noteId: note.id.toString() },
-						query: { new: null },
+						query: keepCategory(this.$route, { new: null }),
 					})
 				})
 				.catch(() => {

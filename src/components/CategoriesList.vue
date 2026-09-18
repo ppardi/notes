@@ -130,7 +130,7 @@ import HistoryIcon from 'vue-material-design-icons/History.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import { deleteCategory as deleteCategoryRequest, getCategories, renameCategory as renameCategoryRequest, setCategory } from '../NotesService.js'
 import store from '../store.js'
-import { categoryLabel, getDraggedNoteId, isNoteDrag } from '../Util.js'
+import { categoryLabel, categoryRoute, getDraggedNoteId, isNoteDrag, keepCategory } from '../Util.js'
 
 export default {
 	name: 'CategoriesList',
@@ -291,7 +291,7 @@ export default {
 			if (!exists) {
 				store.notes.addLocalCategory(trimmed)
 			}
-			store.notes.setSelectedCategory(trimmed)
+			this.selectCategory(trimmed)
 			if (droppedNoteId !== null) {
 				setCategory(droppedNoteId, trimmed).catch(() => {})
 			}
@@ -321,18 +321,18 @@ export default {
 		updateSelectedCategoryForRename(oldCategory, newCategory) {
 			const selected = this.selectedCategory
 			if (selected === oldCategory) {
-				store.notes.setSelectedCategory(newCategory)
+				this.selectCategory(newCategory)
 				return
 			}
 			if (selected && selected.startsWith(oldCategory + '/')) {
-				store.notes.setSelectedCategory(newCategory + selected.slice(oldCategory.length))
+				this.selectCategory(newCategory + selected.slice(oldCategory.length))
 			}
 		},
 
 		clearSelectedCategoryForDelete(category) {
 			const selected = this.selectedCategory
 			if (selected === category || (selected && selected.startsWith(category + '/'))) {
-				store.notes.setSelectedCategory(null)
+				this.selectCategory(null)
 			}
 		},
 
@@ -487,7 +487,11 @@ export default {
 		},
 
 		onSelectCategory(category) {
-			store.notes.setSelectedCategory(category)
+			this.selectCategory(category)
+		},
+
+		selectCategory(category) {
+			this.$router.push(categoryRoute(this.$route, category)).catch(() => {})
 		},
 
 		async closeOpenNoteBeforeDelete(categoryName) {
@@ -509,9 +513,10 @@ export default {
 					await this.$router.push({
 						name: 'note',
 						params: { noteId: remainingNote.id.toString() },
+						query: keepCategory(this.$route),
 					}).catch(() => {})
 				} else {
-					await this.$router.push({ name: 'welcome' }).catch(() => {})
+					await this.$router.push({ name: 'welcome', query: keepCategory(this.$route) }).catch(() => {})
 				}
 			}
 		},

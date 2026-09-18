@@ -5,7 +5,10 @@
 
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import {
+	categoryFromQuery,
 	categoryLabel,
+	categoryRoute,
+	categoryToQuery,
 	copyNote,
 	escapeHtml,
 	getDefaultSampleNote,
@@ -13,6 +16,7 @@ import {
 	getDraggedNoteId,
 	isInCategory,
 	isNoteDrag,
+	keepCategory,
 	noteAttributes,
 	routeIsNewNote,
 } from '../Util.js'
@@ -106,6 +110,88 @@ describe('isInCategory', () => {
 	it('matches only uncategorized notes for the uncategorized selection', () => {
 		expect(isInCategory('', '')).toBe(true)
 		expect(isInCategory('Work', '')).toBe(false)
+	})
+})
+
+describe('categoryToQuery', () => {
+	it('drops the parameter for the all-notes selection', () => {
+		expect(categoryToQuery(null)).toEqual({ category: undefined })
+	})
+
+	it('keeps an empty parameter for the uncategorized selection', () => {
+		expect(categoryToQuery('')).toEqual({ category: '' })
+	})
+
+	it('carries a nested category as its full path', () => {
+		expect(categoryToQuery('Work/Projects')).toEqual({ category: 'Work/Projects' })
+	})
+})
+
+describe('categoryFromQuery', () => {
+	it('reads a missing parameter as the all-notes selection', () => {
+		expect(categoryFromQuery({})).toBe(null)
+	})
+
+	it('reads an empty parameter as the uncategorized selection', () => {
+		expect(categoryFromQuery({ category: '' })).toBe('')
+	})
+
+	it('reads a nested category back unchanged', () => {
+		expect(categoryFromQuery({ category: 'Work/Projects' })).toBe('Work/Projects')
+	})
+
+	it('takes the first value when the parameter is repeated', () => {
+		expect(categoryFromQuery({ category: ['Work', 'Personal'] })).toBe('Work')
+	})
+
+	it('reads a missing query as the all-notes selection', () => {
+		expect(categoryFromQuery(undefined)).toBe(null)
+	})
+})
+
+describe('categoryRoute', () => {
+	it('selects a category without disturbing the rest of the query', () => {
+		expect(categoryRoute({ query: { new: null } }, 'Work'))
+			.toEqual({ query: { new: null, category: 'Work' } })
+	})
+
+	it('clears the category for the all-notes selection', () => {
+		expect(categoryRoute({ query: { category: 'Work' } }, null))
+			.toEqual({ query: { category: undefined } })
+	})
+
+	it('replaces a category that is already selected', () => {
+		expect(categoryRoute({ query: { category: 'Work' } }, 'Personal/Work'))
+			.toEqual({ query: { category: 'Personal/Work' } })
+	})
+
+	it('copes with a route that carries no query', () => {
+		expect(categoryRoute({}, 'Work')).toEqual({ query: { category: 'Work' } })
+	})
+})
+
+describe('keepCategory', () => {
+	it('carries the selected category into another route', () => {
+		expect(keepCategory({ query: { category: 'Work' } }, { new: null }))
+			.toEqual({ new: null, category: 'Work' })
+	})
+
+	it('carries the uncategorized selection', () => {
+		expect(keepCategory({ query: { category: '' } }, {})).toEqual({ category: '' })
+	})
+
+	it('leaves the all-notes selection unset', () => {
+		expect(keepCategory({ query: {} }, { new: null }))
+			.toEqual({ new: null, category: undefined })
+	})
+
+	it('does not carry unrelated query fields across', () => {
+		expect(keepCategory({ query: { category: 'Work', new: null } }, {}))
+			.toEqual({ category: 'Work' })
+	})
+
+	it('copes with no target query at all', () => {
+		expect(keepCategory({ query: { category: 'Work' } })).toEqual({ category: 'Work' })
 	})
 })
 
