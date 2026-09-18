@@ -629,15 +629,11 @@ export default {
 
 .app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry) {
 	background-color: var(--color-primary-element) !important;
-	outline: 2px dashed var(--color-primary-element-text);
-	outline-offset: -2px;
 	border-radius: var(--border-radius-element, var(--border-radius-large));
 }
 
 .app-navigation-caption.drop-over-caption {
 	background-color: var(--color-primary-element-light) !important;
-	outline: 2px dashed var(--color-primary-element);
-	outline-offset: -2px;
 	border-radius: var(--border-radius-element, var(--border-radius-large));
 }
 
