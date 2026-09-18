@@ -5,7 +5,7 @@
 
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { buildCategoryTree, categoryAncestors } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryNames, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { useNotesStore } from '../stores/notes.js'
 
 /**
@@ -198,5 +198,75 @@ describe('buildCategoryTree over the notes store', () => {
 			level = node.children
 		}
 		expect(level.map((n) => n.name)).toContain('Work/Projects/2026')
+	})
+})
+
+describe('withCategoryCollapsed', () => {
+	it('records a category as collapsed', () => {
+		expect(withCategoryCollapsed([], 'Work', true)).toEqual(['Work'])
+	})
+
+	it('does not record the same category twice', () => {
+		expect(withCategoryCollapsed(['Work'], 'Work', true)).toEqual(['Work'])
+	})
+
+	it('forgets a category that is opened again', () => {
+		expect(withCategoryCollapsed(['Work', 'Personal'], 'Work', false)).toEqual(['Personal'])
+	})
+
+	it('leaves the list alone when opening one that was never collapsed', () => {
+		expect(withCategoryCollapsed(['Work'], 'Personal', false)).toEqual(['Work'])
+	})
+
+	it('does not modify the list it was given', () => {
+		const collapsed = ['Work']
+		withCategoryCollapsed(collapsed, 'Personal', true)
+		expect(collapsed).toEqual(['Work'])
+	})
+})
+
+describe('withCategoriesExpanded', () => {
+	it('opens every category given', () => {
+		expect(withCategoriesExpanded(['Work', 'Work/Projects', 'Personal'], ['Work', 'Work/Projects']))
+			.toEqual(['Personal'])
+	})
+
+	it('leaves the list alone when none of them were collapsed', () => {
+		expect(withCategoriesExpanded(['Personal'], ['Work'])).toEqual(['Personal'])
+	})
+
+	it('copes with nothing to open', () => {
+		expect(withCategoriesExpanded(['Personal'], [])).toEqual(['Personal'])
+	})
+})
+
+describe('categoryNames', () => {
+	it('lists every node of the tree, not just the declared categories', () => {
+		const tree = buildCategoryTree([{ name: 'Work/Projects/2026', count: 1 }])
+
+		// Work and Work/Projects exist only in the tree; no note declares them.
+		expect(categoryNames(tree).sort())
+			.toEqual(['Work', 'Work/Projects', 'Work/Projects/2026'])
+	})
+
+	it('lists nothing for an empty tree', () => {
+		expect(categoryNames([])).toEqual([])
+	})
+})
+
+describe('pruneCollapsed', () => {
+	it('forgets categories that no longer exist', () => {
+		expect(pruneCollapsed(['Work', 'Gone'], ['Work', 'Personal'])).toEqual(['Work'])
+	})
+
+	it('keeps a synthesized parent that only exists in the tree', () => {
+		const tree = buildCategoryTree([{ name: 'PROJECTS/Apps/SAGE', count: 1 }])
+
+		expect(pruneCollapsed(['PROJECTS/Apps'], categoryNames(tree)))
+			.toEqual(['PROJECTS/Apps'])
+	})
+
+	it('empties the list when nothing exists any more', () => {
+		expect(pruneCollapsed(['Work'], [])).toEqual([])
 	})
 })

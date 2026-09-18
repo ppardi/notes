@@ -71,7 +71,7 @@
 		:loading="loading"
 		:selectedCategory="selectedCategory"
 		:dragOverCategory="dragOverCategory"
-		:openCategories="openCategories"
+		:collapsedCategories="collapsedCategories"
 	/>
 </template>
 
@@ -86,8 +86,8 @@ import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import HistoryIcon from 'vue-material-design-icons/History.vue'
 import CategoryTreeItem from './CategoryTreeItem.vue'
-import { buildCategoryTree, categoryAncestors } from '../categoryTree.js'
-import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory } from '../NotesService.js'
+import { buildCategoryTree, categoryAncestors, categoryNames, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import store from '../store.js'
 import { categoryLabel, categoryRoute, getDraggedNoteId, isNoteDrag, keepCategory } from '../Util.js'
 
@@ -136,7 +136,8 @@ export default {
 			newCategoryMonitor: null,
 			newCategoryDropNoteId: null,
 			categoryItems: {},
-			openCategories: {},
+			collapsedCategories: [],
+			collapsedLoaded: false,
 		}
 	},
 
@@ -153,12 +154,28 @@ export default {
 			return buildCategoryTree(this.categories)
 		},
 
+		storedCollapsed() {
+			return store.app.settings?.collapsedCategories
+		},
+
 		selectedCategory() {
 			return store.notes.getSelectedCategory()
 		},
 	},
 
 	watch: {
+		/* The settings arrive after the first render, so the stored list is
+		   adopted when it turns up rather than read once on creation. */
+		storedCollapsed: {
+			immediate: true,
+			handler(stored) {
+				if (!this.collapsedLoaded && Array.isArray(stored)) {
+					this.collapsedCategories = [...stored]
+					this.collapsedLoaded = true
+				}
+			},
+		},
+
 		selectedCategory: {
 			immediate: true,
 			handler(category) {
@@ -178,7 +195,20 @@ export default {
 
 	methods: {
 		setCategoryOpen(category, open) {
-			this.openCategories = { ...this.openCategories, [category]: open }
+			this.applyCollapsed(withCategoryCollapsed(this.collapsedCategories, category, !open))
+		},
+
+		/* Stored so the tree looks the same next time. Entries for categories
+		   that have since gone are dropped rather than kept forever. */
+		applyCollapsed(collapsed) {
+			const pruned = pruneCollapsed(collapsed, categoryNames(this.categoryTree))
+			if (pruned.join('\n') === this.collapsedCategories.join('\n')) {
+				return
+			}
+			this.collapsedCategories = pruned
+			if (this.collapsedLoaded) {
+				setSettings({ collapsedCategories: pruned })
+			}
 		},
 
 		/* A selection is useless if it is hidden inside a collapsed ancestor. */
@@ -187,11 +217,7 @@ export default {
 			if (ancestors.length === 0) {
 				return
 			}
-			const opened = { ...this.openCategories }
-			ancestors.forEach((ancestor) => {
-				opened[ancestor] = true
-			})
-			this.openCategories = opened
+			this.applyCollapsed(withCategoriesExpanded(this.collapsedCategories, ancestors))
 		},
 
 		setCategoryItemRef(category, el) {

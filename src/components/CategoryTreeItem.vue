@@ -60,7 +60,7 @@
 			:loading="loading"
 			:selectedCategory="selectedCategory"
 			:dragOverCategory="dragOverCategory"
-			:openCategories="openCategories"
+			:collapsedCategories="collapsedCategories"
 		/>
 	</NcAppNavigationItem>
 </template>
@@ -108,8 +108,8 @@ export default {
 			default: null,
 		},
 
-		openCategories: {
-			type: Object,
+		collapsedCategories: {
+			type: Array,
 			required: true,
 		},
 	},
@@ -126,7 +126,7 @@ export default {
 		/* Open unless it was collapsed on purpose: a tree that starts closed
 		   hides the hierarchy it exists to show. */
 		isOpen() {
-			return this.openCategories[this.node.name] !== false
+			return !this.collapsedCategories.includes(this.node.name)
 		},
 	},
 }

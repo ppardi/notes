@@ -111,3 +111,62 @@ export function categoryAncestors(category) {
 	}
 	return ancestors
 }
+
+/**
+ * The collapsed categories, with one category collapsed or opened.
+ *
+ * Only the collapsed ones are tracked: categories are open by default, so a
+ * category nobody has closed - including one that has just appeared - needs no
+ * entry.
+ *
+ * @param {string[]} collapsed the categories currently collapsed
+ * @param {string} category the category to change
+ * @param {boolean} isCollapsed whether it should be collapsed
+ * @return {string[]} the new list
+ */
+export function withCategoryCollapsed(collapsed, category, isCollapsed) {
+	if (!isCollapsed) {
+		return collapsed.filter((name) => name !== category)
+	}
+	return collapsed.includes(category) ? [...collapsed] : [...collapsed, category]
+}
+
+/**
+ * The collapsed categories, with several categories opened.
+ *
+ * @param {string[]} collapsed the categories currently collapsed
+ * @param {string[]} categories the categories to open
+ * @return {string[]} the new list
+ */
+export function withCategoriesExpanded(collapsed, categories) {
+	return collapsed.filter((name) => !categories.includes(name))
+}
+
+/**
+ * Every category in a tree, including the ones it had to invent.
+ *
+ * The flat list only holds categories a note is filed in, so the parents
+ * buildCategoryTree() created are not in it - and those are exactly the ones
+ * that get collapsed.
+ *
+ * @param {CategoryNode[]} tree the roots of the tree
+ * @return {string[]} every node's category path
+ */
+export function categoryNames(tree) {
+	return tree.flatMap((node) => [node.name, ...categoryNames(node.children)])
+}
+
+/**
+ * The collapsed categories that still exist.
+ *
+ * Renaming and deleting would otherwise leave entries behind for categories
+ * nobody can see any more.
+ *
+ * @param {string[]} collapsed the categories currently collapsed
+ * @param {string[]} names the categories that exist, from categoryNames()
+ * @return {string[]} the new list
+ */
+export function pruneCollapsed(collapsed, names) {
+	const existing = new Set(names)
+	return collapsed.filter((name) => existing.has(name))
+}

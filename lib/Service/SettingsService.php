@@ -81,6 +81,27 @@ class SettingsService {
 					return $value === 'true' || $value === true;
 				},
 			],
+			// The categories whose children are collapsed in the navigation.
+			// Only the collapsed ones are stored: categories are open by
+			// default, so one nobody has closed needs no entry.
+			'collapsedCategories' => [
+				'default' => [],
+				'validate' => function (mixed $value) : array {
+					if (!is_array($value)) {
+						return [];
+					}
+					$names = [];
+					foreach ($value as $name) {
+						if (is_string($name) && $name !== '') {
+							$names[] = mb_substr($name, 0, 4096);
+						}
+						if (count($names) >= 1000) {
+							break;
+						}
+					}
+					return array_values(array_unique($names));
+				},
+			],
 			// The category selected when the app was last used, so that opening
 			// the app from the app menu returns to it. 'all' means all notes; a
 			// 'category:' prefix carries the category, which may be empty for the

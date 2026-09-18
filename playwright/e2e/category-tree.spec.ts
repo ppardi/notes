@@ -23,6 +23,11 @@ async function createNoteViaApi(page: Page, category: string, title: string): Pr
 	return note.id
 }
 
+function categoryRow(page: Page, name: string): Locator {
+	return page.getByTitle(name, { exact: true })
+		.locator('xpath=ancestor::div[contains(@class,"app-navigation-entry")][1]')
+}
+
 /* The entry div, not the li: a parent's li also contains its descendants. */
 function categoryCounter(page: Page, name: string): Locator {
 	return page.getByTitle(name, { exact: true })
@@ -100,6 +105,22 @@ test.describe('Category tree', () => {
 
 		await expect(noteRow(page, sageNote)).toBeVisible()
 		await expect(noteRow(page, deepNote)).toBeHidden()
+	})
+
+	test('remembers a collapsed category across a reload', async ({ page }) => {
+		await expect(categoryLink(page, 'SAGE')).toBeVisible()
+
+		const stored = page.waitForResponse((response) => response.url().includes('/apps/notes/settings') && response.request().method() === 'PUT')
+		await categoryRow(page, 'Apps').getByRole('button', { name: 'Collapse' }).first().click()
+		await stored
+
+		await expect(categoryLink(page, 'SAGE')).toBeHidden()
+
+		await page.reload()
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		await expect(categoryLink(page, 'Apps')).toBeVisible()
+		await expect(categoryLink(page, 'SAGE')).toBeHidden()
 	})
 
 	test('selects a nested category from the tree', async ({ page }) => {
