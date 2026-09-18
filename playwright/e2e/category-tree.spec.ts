@@ -51,11 +51,16 @@ async function indentOf(page: Page, name: string): Promise<number> {
 async function clearStoredCategory(request: APIRequestContext): Promise<void> {
 	const user = process.env.NC_USER ?? 'admin'
 	const password = process.env.NC_PASS ?? 'admin'
-	const headers = { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
-	await request.put('/index.php/apps/notes/settings', {
+	const headers = {
+		Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+		// Without this the settings route answers 412 and the reset does nothing.
+		'OCS-APIRequest': 'true',
+	}
+	const response = await request.put('/index.php/apps/notes/settings', {
 		headers,
-		data: { lastViewedCategory: 'all' },
+		data: { lastViewedCategory: 'all', collapsedCategories: [] },
 	})
+	expect(response.ok(), 'resetting the stored navigation state').toBeTruthy()
 }
 
 test.describe('Category tree', () => {
@@ -121,6 +126,20 @@ test.describe('Category tree', () => {
 
 		await expect(categoryLink(page, 'Apps')).toBeVisible()
 		await expect(categoryLink(page, 'SAGE')).toBeHidden()
+	})
+
+	test('moves a note into a nested category by dragging it', async ({ page }) => {
+		// A loose note, dragged onto a category three levels down.
+		const loose = await createNoteViaApi(page, '', 'Loose note')
+		await page.reload()
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		await noteRow(page, loose).dragTo(categoryLink(page, 'Architecture'))
+
+		const moved = await page.request.get(`/index.php/apps/notes/api/v1/notes/${loose}`, {
+			headers: { Authorization: `Basic ${Buffer.from('admin:admin').toString('base64')}` },
+		})
+		expect((await moved.json()).category).toBe('PROJECTS/Apps/SAGE/Architecture')
 	})
 
 	test('selects a nested category from the tree', async ({ page }) => {

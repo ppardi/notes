@@ -50,11 +50,16 @@ function storedSelection(page: Page): Promise<unknown> {
 async function clearStoredCategory(request: APIRequestContext): Promise<void> {
 	const user = process.env.NC_USER ?? 'admin'
 	const password = process.env.NC_PASS ?? 'admin'
-	const headers = { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
-	await request.put('/index.php/apps/notes/settings', {
+	const headers = {
+		Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+		// Without this the settings route answers 412 and the reset does nothing.
+		'OCS-APIRequest': 'true',
+	}
+	const response = await request.put('/index.php/apps/notes/settings', {
 		headers,
-		data: { lastViewedCategory: 'all' },
+		data: { lastViewedCategory: 'all', collapsedCategories: [] },
 	})
+	expect(response.ok(), 'resetting the stored navigation state').toBeTruthy()
 }
 
 test.describe('Category selection', () => {
