@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import type { Locator, Page, TestInfo } from '@playwright/test'
+import type { APIRequestContext, Locator, Page, TestInfo } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
@@ -44,6 +44,19 @@ function storedSelection(page: Page): Promise<unknown> {
 	return page.waitForResponse((response) => response.url().includes('/apps/notes/settings') && response.request().method() === 'PUT')
 }
 
+/* The selected category is remembered server-side, so leaving one selected
+   would change where unrelated specs start. The request fixture carries no
+   session cookie, which the settings route needs. */
+async function clearStoredCategory(request: APIRequestContext): Promise<void> {
+	const user = process.env.NC_USER ?? 'admin'
+	const password = process.env.NC_PASS ?? 'admin'
+	const headers = { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
+	await request.put('/index.php/apps/notes/settings', {
+		headers,
+		data: { lastViewedCategory: 'all' },
+	})
+}
+
 test.describe('Category selection', () => {
 	let work: string
 	let personal: string
@@ -58,6 +71,10 @@ test.describe('Category selection', () => {
 		personal = `personal-${testInfo.testId}`
 		workNote = await createNoteViaApi(page, work, 'Work note')
 		personalNote = await createNoteViaApi(page, personal, 'Personal note')
+	})
+
+	test.afterEach(async ({ request }) => {
+		await clearStoredCategory(request)
 	})
 
 	test('puts the selected category in the URL', async ({ page }) => {

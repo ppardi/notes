@@ -65,54 +65,14 @@
 		</template>
 	</NcAppNavigationItem>
 
-	<NcAppNavigationItem v-for="category in categories"
-		v-show="!loading"
-		:key="category.name"
-		:ref="el => setCategoryItemRef(category.name, el)"
-		:name="categoryTitle(category.name)"
-		:active="category.name === selectedCategory"
-		:draggable="false"
-		:editPlaceholder="category.name"
-		:forceMenu="category.name !== ''"
-		:class="{
-			'drop-over': category.name === dragOverCategory,
-			'category-no-actions': category.name === '',
-		}"
-		@click.prevent.stop="onSelectCategory(category.name)"
-		@dragstart="onCategoryDragStart"
-		@dragover="onCategoryDragOver(category.name, $event)"
-		@dragleave="onCategoryDragLeave(category.name, $event)"
-		@drop="onCategoryDrop(category.name, $event)"
-		@update:name="onRenameCategory(category.name, $event)"
-	>
-		<template #icon>
-			<FolderIcon v-if="category.name === selectedCategory" :size="20" />
-			<FolderOutlineIcon v-else :size="20" />
-		</template>
-		<template #counter>
-			<NcCounterBubble :count="category.count" />
-		</template>
-		<template v-if="category.name !== ''" #actions>
-			<NcActionButton
-				:closeAfterClick="true"
-				@click="onStartRenameCategory(category.name)"
-			>
-				<template #icon>
-					<PencilOutlineIcon :size="20" />
-				</template>
-				{{ t('notes', 'Rename category') }}
-			</NcActionButton>
-			<NcActionButton
-				:closeAfterClick="true"
-				@click="onDeleteCategory(category.name)"
-			>
-				<template #icon>
-					<DeleteIcon :size="20" />
-				</template>
-				{{ t('notes', 'Delete category') }}
-			</NcActionButton>
-		</template>
-	</NcAppNavigationItem>
+	<CategoryTreeItem v-for="node in categoryTree"
+		:key="node.name"
+		:node="node"
+		:loading="loading"
+		:selectedCategory="selectedCategory"
+		:dragOverCategory="dragOverCategory"
+		:openCategories="openCategories"
+	/>
 </template>
 
 <script>
@@ -122,13 +82,12 @@ import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
-import DeleteIcon from 'vue-material-design-icons/DeleteOutline.vue'
 import FolderIcon from 'vue-material-design-icons/Folder.vue'
-import FolderOutlineIcon from 'vue-material-design-icons/FolderOutline.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import HistoryIcon from 'vue-material-design-icons/History.vue'
-import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
-import { deleteCategory as deleteCategoryRequest, getCategories, renameCategory as renameCategoryRequest, setCategory } from '../NotesService.js'
+import CategoryTreeItem from './CategoryTreeItem.vue'
+import { buildCategoryTree, categoryAncestors } from '../categoryTree.js'
+import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory } from '../NotesService.js'
 import store from '../store.js'
 import { categoryLabel, categoryRoute, getDraggedNoteId, isNoteDrag, keepCategory } from '../Util.js'
 
@@ -136,16 +95,31 @@ export default {
 	name: 'CategoriesList',
 
 	components: {
-		DeleteIcon,
+		CategoryTreeItem,
 		NcActionButton,
 		NcAppNavigationItem,
 		NcAppNavigationCaption,
 		NcCounterBubble,
 		FolderIcon,
-		FolderOutlineIcon,
 		FolderPlusIcon,
 		HistoryIcon,
-		PencilOutlineIcon,
+	},
+
+	provide() {
+		return {
+			tree: {
+				select: (name) => this.onSelectCategory(name),
+				startRename: (name) => this.onStartRenameCategory(name),
+				rename: (name, newName) => this.onRenameCategory(name, newName),
+				remove: (name) => this.onDeleteCategory(name),
+				dragStart: (event) => this.onCategoryDragStart(event),
+				dragOver: (name, event) => this.onCategoryDragOver(name, event),
+				dragLeave: (name, event) => this.onCategoryDragLeave(name, event),
+				drop: (name, event) => this.onCategoryDrop(name, event),
+				setItemRef: (name, el) => this.setCategoryItemRef(name, el),
+				setOpen: (name, open) => this.setCategoryOpen(name, open),
+			},
+		}
 	},
 
 	props: {
@@ -162,6 +136,7 @@ export default {
 			newCategoryMonitor: null,
 			newCategoryDropNoteId: null,
 			categoryItems: {},
+			openCategories: {},
 		}
 	},
 
@@ -171,11 +146,24 @@ export default {
 		},
 
 		categories() {
-			return getCategories(1, true)
+			return store.notes.getCategories(0, true)
+		},
+
+		categoryTree() {
+			return buildCategoryTree(this.categories)
 		},
 
 		selectedCategory() {
 			return store.notes.getSelectedCategory()
+		},
+	},
+
+	watch: {
+		selectedCategory: {
+			immediate: true,
+			handler(category) {
+				this.revealCategory(category)
+			},
 		},
 	},
 
@@ -189,6 +177,23 @@ export default {
 	},
 
 	methods: {
+		setCategoryOpen(category, open) {
+			this.openCategories = { ...this.openCategories, [category]: open }
+		},
+
+		/* A selection is useless if it is hidden inside a collapsed ancestor. */
+		revealCategory(category) {
+			const ancestors = categoryAncestors(category)
+			if (ancestors.length === 0) {
+				return
+			}
+			const opened = { ...this.openCategories }
+			ancestors.forEach((ancestor) => {
+				opened[ancestor] = true
+			})
+			this.openCategories = opened
+		},
+
 		setCategoryItemRef(category, el) {
 			if (el) {
 				this.categoryItems[category] = el
