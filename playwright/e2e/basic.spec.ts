@@ -39,7 +39,7 @@ test.describe('Basic checks', () => {
 		const editor = new NoteEditor(page)
 		await editor.type('Sharing sidebar smoke test')
 
-		const noteLink = page.locator(`a[href$="/note/${noteId}"]`).first()
+		const noteLink = page.locator(`a[href$="/note/${noteId}"], a[href*="/note/${noteId}?"]`).first()
 		await expect(noteLink).toBeVisible()
 		await noteLink.hover()
 
@@ -82,7 +82,7 @@ test.describe('Basic checks', () => {
 		await editor.type(uniqueWord)
 		await editor.expectText(uniqueWord)
 
-		const noteLink = page.locator(`a[href$="/note/${noteId}"]`).first()
+		const noteLink = page.locator(`a[href$="/note/${noteId}"], a[href*="/note/${noteId}?"]`).first()
 
 		const searchField = page.getByRole('textbox', { name: 'Search for notes', exact: true })
 		await searchField.fill('this text matches no note at all')

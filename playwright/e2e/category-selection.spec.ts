@@ -96,6 +96,18 @@ test.describe('Category selection', () => {
 		await expect(noteRow(page, personalNote)).toBeHidden()
 	})
 
+	test('keeps the category selected when a note is opened', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationLink(page, work).click()
+		await expect(noteRow(page, workNote)).toBeVisible()
+
+		await page.locator(`a[href$="/note/${workNote}"], a[href*="/note/${workNote}?"]`).first().click()
+
+		await expect(page).toHaveURL(categoryInUrl(work))
+		await expect(navigationLink(page, work)).toHaveAttribute('aria-current', 'page')
+		await expect(noteRow(page, personalNote)).toBeHidden()
+	})
+
 	test('moves between selections with the browser history', async ({ page }) => {
 		await openNotesApp(page)
 		await navigationLink(page, work).click()

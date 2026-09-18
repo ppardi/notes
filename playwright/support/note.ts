@@ -82,7 +82,7 @@ export function newNoteButton(page: Page): Locator {
 }
 
 export function noteRow(page: Page, noteId: number): Locator {
-	return page.locator(`a[href$="/note/${noteId}"]`).first()
+	return page.locator(`a[href$="/note/${noteId}"], a[href*="/note/${noteId}?"]`).first()
 		.locator('xpath=ancestor::li[1]')
 }
 

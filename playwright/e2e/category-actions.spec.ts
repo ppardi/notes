@@ -119,7 +119,7 @@ async function openNoteFromList(page: Page, noteId: number): Promise<void> {
 		return
 	}
 
-	const noteLink = page.locator(`a[href$="/note/${noteId}"]`).first()
+	const noteLink = page.locator(`a[href$="/note/${noteId}"], a[href*="/note/${noteId}?"]`).first()
 	await expect(noteLink).toBeVisible()
 	await noteLink.click()
 	await waitForNoteRoute(page, previousNoteId)

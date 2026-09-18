@@ -7,7 +7,7 @@
 	<NcListItem
 		:name="title"
 		:active="isSelected"
-		:to="{ name: 'note', params: { noteId: note.id.toString() } }"
+		:to="noteRoute"
 		:draggable="isDraggable"
 		oneLine
 		@update:menuOpen="onMenuChange"
@@ -130,7 +130,7 @@ import StarIcon from 'vue-material-design-icons/Star.vue'
 import logger from '../Logger.js'
 import { deleteNote, fetchNote, setCategory, setFavorite, setTitle } from '../NotesService.js'
 import store from '../store.js'
-import { categoryLabel, routeIsNewNote } from '../Util.js'
+import { categoryLabel, keepCategory, routeIsNewNote } from '../Util.js'
 
 export default {
 	name: 'NoteItem',
@@ -198,6 +198,16 @@ export default {
 
 		title() {
 			return this.note.title + (this.note.unsaved ? ' *' : '')
+		},
+
+		/* The route carries the selected category, so opening a note has to pass
+		   it on or the selection is lost on the way. */
+		noteRoute() {
+			return {
+				name: 'note',
+				params: { noteId: this.note.id.toString() },
+				query: keepCategory(this.$route),
+			}
 		},
 
 		categoryTitle() {
