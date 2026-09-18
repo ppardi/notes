@@ -63,6 +63,22 @@ async function clearStoredCategory(request: APIRequestContext): Promise<void> {
 	expect(response.ok(), 'resetting the stored navigation state').toBeTruthy()
 }
 
+/* Playwright's dragTo drives the mouse, which does not start an HTML5 drag from
+   a child of the draggable element. Dispatching the drag events with one shared
+   DataTransfer exercises the app's own handlers instead. */
+async function dragCategoryOnto(page: Page, from: string, to: string): Promise<void> {
+	await page.evaluate(([fromName, toName]) => {
+		const source = document.querySelector(`[title="${fromName}"]`)
+			?.closest('.app-navigation-entry') as HTMLElement
+		const target = document.querySelector(`[title="${toName}"]`)
+			?.closest('.app-navigation-entry') as HTMLElement
+		const transfer = new DataTransfer()
+		source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }))
+		target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+		target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+	}, [from, to])
+}
+
 test.describe('Category tree', () => {
 	let deepNote: number
 	let sageNote: number
@@ -140,6 +156,53 @@ test.describe('Category tree', () => {
 			headers: { Authorization: `Basic ${Buffer.from('admin:admin').toString('base64')}` },
 		})
 		expect((await moved.json()).category).toBe('PROJECTS/Apps/SAGE/Architecture')
+	})
+
+	test('offers categories as draggable, but never the uncategorized one', async ({ page }) => {
+		// Uncategorized only appears once a note is filed outside every category.
+		await createNoteViaApi(page, '', 'Loose note')
+		await page.reload()
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		const draggable = async (name: string) => await page.getByTitle(name, { exact: true })
+			.locator('xpath=ancestor::li[1]').first().getAttribute('draggable')
+
+		expect(await draggable('SAGE')).toBe('true')
+		expect(await draggable('Uncategorized')).toBe('false')
+	})
+
+	test('re-parents a category by dragging it onto another', async ({ page }) => {
+		const sage = await indentOf(page, 'SAGE')
+
+		await dragCategoryOnto(page, 'Deskspace', 'SAGE')
+
+		// Deskspace and its note move under SAGE.
+		await expect(categoryLink(page, 'Deskspace')).toBeVisible()
+		await expect(async () => {
+			expect(await indentOf(page, 'Deskspace')).toBeGreaterThan(sage)
+		}).toPass()
+		await expect(categoryCounter(page, 'Deskspace')).toContainText('1')
+	})
+
+	test('moves a category back to the top by dragging it onto All notes', async ({ page }) => {
+		const topLevel = await indentOf(page, 'PROJECTS')
+
+		await dragCategoryOnto(page, 'SAGE', 'All notes')
+
+		await expect(async () => {
+			expect(await indentOf(page, 'SAGE')).toBe(topLevel)
+		}).toPass()
+	})
+
+	test('refuses to drop a category inside itself', async ({ page }) => {
+		const before = await indentOf(page, 'SAGE')
+
+		await dragCategoryOnto(page, 'Apps', 'Architecture')
+
+		// Nothing moved: Apps is still an ancestor of SAGE.
+		await page.waitForTimeout(800)
+		expect(await indentOf(page, 'SAGE')).toBe(before)
+		await expect(categoryLink(page, 'Apps')).toBeVisible()
 	})
 
 	test('selects a nested category from the tree', async ({ page }) => {

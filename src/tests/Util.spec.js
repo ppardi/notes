@@ -15,7 +15,9 @@ import {
 	escapeHtml,
 	getDefaultSampleNote,
 	getDefaultSampleNoteTitle,
+	getDraggedCategory,
 	getDraggedNoteId,
+	isCategoryDrag,
 	isInCategory,
 	isNoteDrag,
 	keepCategory,
@@ -350,5 +352,36 @@ describe('escapeHtml', () => {
 		['plain text', 'plain text'],
 	])('escapes %j', (input, expected) => {
 		expect(escapeHtml(input)).toBe(expected)
+	})
+})
+
+describe('isCategoryDrag', () => {
+	it('recognises a dragged category', () => {
+		expect(isCategoryDrag(dragEvent({ 'application/x-nextcloud-notes-category': 'Work' }))).toBe(true)
+	})
+
+	it('recognises the uncategorized category, which is an empty string', () => {
+		expect(isCategoryDrag(dragEvent({ 'application/x-nextcloud-notes-category': '' }))).toBe(true)
+	})
+
+	it('does not mistake a dragged note for a category', () => {
+		expect(isCategoryDrag(dragEvent({ [NOTE_ID_TYPE]: '7' }))).toBe(false)
+	})
+
+	it('copes with no drag data at all', () => {
+		expect(isCategoryDrag(undefined)).toBe(false)
+		expect(isCategoryDrag({})).toBe(false)
+	})
+})
+
+describe('getDraggedCategory', () => {
+	it('reads the dragged category back', () => {
+		expect(getDraggedCategory(dragEvent({ 'application/x-nextcloud-notes-category': 'Work/Projects' })))
+			.toBe('Work/Projects')
+	})
+
+	it('has nothing for a drag that carries no category', () => {
+		expect(getDraggedCategory(dragEvent({ [NOTE_ID_TYPE]: '7' }))).toBe(null)
+		expect(getDraggedCategory(undefined)).toBe(null)
 	})
 })

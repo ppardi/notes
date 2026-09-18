@@ -170,3 +170,30 @@ export function pruneCollapsed(collapsed, names) {
 	const existing = new Set(names)
 	return collapsed.filter((name) => existing.has(name))
 }
+
+/**
+ * Where a category dropped onto another one should end up.
+ *
+ * A category keeps its own name and takes the target as its new parent, so
+ * dropping "Work/Projects" onto "Personal" makes it "Personal/Projects".
+ * Dropping onto all notes puts it back at the top.
+ *
+ * @param {string} dragged the category being moved
+ * @param {string|null} target the category it was dropped on, or null for all notes
+ * @return {string|null} the category's new path, or null if the drop makes no sense
+ */
+export function categoryDropTarget(dragged, target) {
+	// The uncategorized category is not a folder of its own, so it neither
+	// moves nor takes children.
+	if (dragged === '' || target === '') {
+		return null
+	}
+	if (target === dragged || (target !== null && target.startsWith(dragged + '/'))) {
+		return null
+	}
+
+	const separator = dragged.lastIndexOf('/')
+	const name = separator === -1 ? dragged : dragged.slice(separator + 1)
+	const moved = target === null ? name : `${target}/${name}`
+	return moved === dragged ? null : moved
+}

@@ -5,7 +5,7 @@
 
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { buildCategoryTree, categoryAncestors, categoryNames, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { useNotesStore } from '../stores/notes.js'
 
 /**
@@ -268,5 +268,42 @@ describe('pruneCollapsed', () => {
 
 	it('empties the list when nothing exists any more', () => {
 		expect(pruneCollapsed(['Work'], [])).toEqual([])
+	})
+})
+
+describe('categoryDropTarget', () => {
+	it('files a category under the one it is dropped on', () => {
+		expect(categoryDropTarget('Work', 'Personal')).toBe('Personal/Work')
+	})
+
+	it('keeps only the category\'s own name, not its old path', () => {
+		expect(categoryDropTarget('Work/Projects', 'Personal')).toBe('Personal/Projects')
+	})
+
+	it('moves a nested category to the top when dropped on all notes', () => {
+		expect(categoryDropTarget('Personal/Work', null)).toBe('Work')
+	})
+
+	it('refuses a category dropped on itself', () => {
+		expect(categoryDropTarget('Work', 'Work')).toBe(null)
+	})
+
+	it('refuses a category dropped inside itself', () => {
+		expect(categoryDropTarget('Work', 'Work/Projects')).toBe(null)
+		expect(categoryDropTarget('Work', 'Work/Projects/2026')).toBe(null)
+	})
+
+	it('refuses a move that would change nothing', () => {
+		expect(categoryDropTarget('Personal/Work', 'Personal')).toBe(null)
+		expect(categoryDropTarget('Work', null)).toBe(null)
+	})
+
+	it('refuses to move the uncategorized category', () => {
+		expect(categoryDropTarget('', 'Work')).toBe(null)
+		expect(categoryDropTarget('', null)).toBe(null)
+	})
+
+	it('refuses a drop onto the uncategorized category', () => {
+		expect(categoryDropTarget('Work', '')).toBe(null)
 	})
 })

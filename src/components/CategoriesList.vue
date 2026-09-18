@@ -86,10 +86,10 @@ import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import HistoryIcon from 'vue-material-design-icons/History.vue'
 import CategoryTreeItem from './CategoryTreeItem.vue'
-import { buildCategoryTree, categoryAncestors, categoryNames, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import store from '../store.js'
-import { categoryLabel, categoryRoute, getDraggedNoteId, isNoteDrag, keepCategory } from '../Util.js'
+import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepCategory } from '../Util.js'
 
 export default {
 	name: 'CategoriesList',
@@ -112,7 +112,7 @@ export default {
 				startRename: (name) => this.onStartRenameCategory(name),
 				rename: (name, newName) => this.onRenameCategory(name, newName),
 				remove: (name) => this.onDeleteCategory(name),
-				dragStart: (event) => this.onCategoryDragStart(event),
+				dragStart: (name, event) => this.onCategoryDragStart(name, event),
 				dragOver: (name, event) => this.onCategoryDragOver(name, event),
 				dragLeave: (name, event) => this.onCategoryDragLeave(name, event),
 				drop: (name, event) => this.onCategoryDrop(name, event),
@@ -367,6 +367,19 @@ export default {
 			}
 		},
 
+		/* Moving a category is a rename: the backend carries its notes and its
+		   descendants along, and refuses a move into its own subtree. */
+		async moveCategory(dragged, target) {
+			if (dragged === null) {
+				return
+			}
+			const moved = categoryDropTarget(dragged, target)
+			if (moved === null) {
+				return
+			}
+			await this.onRenameCategory(dragged, moved)
+		},
+
 		async onRenameCategory(category, newCategory) {
 			const trimmed = newCategory?.trim() ?? ''
 			if (!trimmed || trimmed === category) {
@@ -425,6 +438,17 @@ export default {
 		},
 
 		onCategoryDragOver(category, event) {
+			if (isCategoryDrag(event)) {
+				const dragged = getDraggedCategory(event)
+				if (dragged === null || categoryDropTarget(dragged, category) === null) {
+					this.dragOverCategory = null
+					return
+				}
+				event.preventDefault()
+				this.dragOverAllNotes = false
+				this.dragOverCategory = category
+				return
+			}
 			if (!isNoteDrag(event)) {
 				this.dragOverCategory = null
 				this.dragOverAllNotes = false
@@ -439,6 +463,17 @@ export default {
 		},
 
 		onAllNotesDragOver(event) {
+			if (isCategoryDrag(event)) {
+				const dragged = getDraggedCategory(event)
+				if (dragged === null || categoryDropTarget(dragged, null) === null) {
+					this.dragOverAllNotes = false
+					return
+				}
+				event.preventDefault()
+				this.dragOverCategory = null
+				this.dragOverAllNotes = true
+				return
+			}
 			if (!isNoteDrag(event)) {
 				this.dragOverCategory = null
 				this.dragOverAllNotes = false
@@ -485,6 +520,12 @@ export default {
 			event.stopPropagation()
 
 			this.dragOverAllNotes = false
+
+			if (isCategoryDrag(event)) {
+				await this.moveCategory(getDraggedCategory(event), null)
+				return
+			}
+
 			const noteId = getDraggedNoteId(event, (noteId) => store.notes.getNote(noteId))
 			if (noteId === null) {
 				return
@@ -502,9 +543,15 @@ export default {
 			event.preventDefault()
 			event.stopPropagation()
 
-			const noteId = getDraggedNoteId(event, (noteId) => store.notes.getNote(noteId))
 			this.dragOverCategory = null
 			this.dragOverAllNotes = false
+
+			if (isCategoryDrag(event)) {
+				await this.moveCategory(getDraggedCategory(event), category)
+				return
+			}
+
+			const noteId = getDraggedNoteId(event, (noteId) => store.notes.getNote(noteId))
 			if (noteId === null) {
 				return
 			}
@@ -552,9 +599,14 @@ export default {
 			}
 		},
 
-		onCategoryDragStart(event) {
-			event.preventDefault()
+		onCategoryDragStart(category, event) {
+			if (category === '' || !event.dataTransfer) {
+				event.preventDefault()
+				return
+			}
 			event.stopPropagation()
+			event.dataTransfer.effectAllowed = 'move'
+			event.dataTransfer.setData(CATEGORY_DRAG_TYPE, category)
 		},
 	},
 }

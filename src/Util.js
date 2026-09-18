@@ -133,6 +133,39 @@ export function routeIsNewNote($route) {
 	return Object.hasOwn($route.query, 'new')
 }
 
+export const CATEGORY_DRAG_TYPE = 'application/x-nextcloud-notes-category'
+
+/**
+ * Whether a drag is carrying a category.
+ *
+ * @param {object} event the drag event
+ * @return {boolean} whether a category is being dragged
+ */
+export function isCategoryDrag(event) {
+	const types = event?.dataTransfer?.types
+	return types ? Array.from(types).includes(CATEGORY_DRAG_TYPE) : false
+}
+
+/**
+ * The category a drag is carrying.
+ *
+ * The uncategorized category is the empty string, so the presence of the type
+ * is what decides, not the value.
+ *
+ * @param {object} event the drag event
+ * @return {string|null} the dragged category, or null if there is none
+ */
+export function getDraggedCategory(event) {
+	if (!isCategoryDrag(event)) {
+		return null
+	}
+	try {
+		return event.dataTransfer.getData(CATEGORY_DRAG_TYPE)
+	} catch {
+		return null
+	}
+}
+
 export function isNoteDrag(event) {
 	const dt = event?.dataTransfer
 	if (!dt) {
