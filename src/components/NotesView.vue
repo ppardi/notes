@@ -26,13 +26,7 @@
 					/>
 				</div>
 
-				<NotesList v-if="groupedNotes.length === 1"
-					:notes="groupedNotes[0].notes"
-					:showCategoryTitle="category === null"
-					@noteSelected="onNoteSelected"
-					@noteDeleted="onNoteDeleted"
-				/>
-				<template v-for="(group, idx) in groupedNotes" v-else :key="idx">
+				<template v-for="(group, idx) in groupedNotes" :key="idx">
 					<NotesCaption v-if="group.category && category !== group.category"
 						:key="group.category"
 						:name="categoryToLabel(group.category)"
