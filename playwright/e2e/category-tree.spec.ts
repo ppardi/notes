@@ -191,7 +191,7 @@ test.describe('Category tree', () => {
 	})
 
 	test('offers categories as draggable, but never the uncategorized one', async ({ page }) => {
-		// Uncategorized only appears once a note is filed outside every category.
+		// The inbox only appears once a note is filed outside every category.
 		await createNoteViaApi(page, '', 'Loose note')
 		await page.reload()
 		await expect(newNoteButton(page).first()).toBeVisible()
@@ -200,7 +200,7 @@ test.describe('Category tree', () => {
 			.locator('xpath=ancestor::li[1]').first().getAttribute('draggable')
 
 		expect(await draggable('SAGE')).toBe('true')
-		expect(await draggable('Uncategorized')).toBe('false')
+		expect(await draggable('Inbox')).toBe('false')
 	})
 
 	test('re-parents a category by dragging it onto another', async ({ page }) => {

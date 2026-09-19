@@ -268,7 +268,7 @@ test.describe('Note sidebar', () => {
 		await openSidebarFromActions(page, noteId, 'Details')
 
 		await expect(tabButton(page, 'notes-info')).toHaveAttribute('aria-selected', 'true')
-		await expect(detailRow(page, 'Category')).toHaveText('Uncategorized')
+		await expect(detailRow(page, 'Category')).toHaveText('Inbox')
 		await expect(detailRow(page, 'Path')).toContainText('.md')
 	})
 

@@ -25,8 +25,11 @@ export function copyNote(from, to, exclude) {
 	return to
 }
 
+/* The empty category is the notes folder itself, where notes that have not
+   been filed anywhere live. It is named for what it is for rather than for
+   what it lacks, and it only appears while something is sitting in it. */
 export function categoryLabel(category) {
-	return category === '' ? t('notes', 'Uncategorized') : category.replace(/\//g, ' / ')
+	return category === '' ? t('notes', 'Inbox') : category.replace(/\//g, ' / ')
 }
 
 /**

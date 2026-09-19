@@ -77,7 +77,7 @@ describe('copyNote', () => {
 
 describe('categoryLabel', () => {
 	it('names the empty category', () => {
-		expect(categoryLabel('')).toBe('Uncategorized')
+		expect(categoryLabel('')).toBe('Inbox')
 	})
 
 	it('spaces out the separators of a nested category', () => {
