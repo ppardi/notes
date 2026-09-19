@@ -79,6 +79,38 @@ async function dragCategoryOnto(page: Page, from: string, to: string): Promise<v
 	}, [from, to])
 }
 
+/* Drives the pointer rather than dispatching one event, so the highlight is
+   exercised the way a drag reaches a nested row: across its ancestors. The
+   caller releases the button. */
+async function dragNoteOver(page: Page, noteId: number, category: string): Promise<void> {
+	const source = (await noteRow(page, noteId).boundingBox())!
+	const target = (await categoryLink(page, category).boundingBox())!
+	await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2)
+	await page.mouse.down()
+	await page.mouse.move(source.x - 20, source.y + source.height / 2, { steps: 5 })
+	await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 })
+	await page.mouse.move(target.x + target.width / 2 + 2, target.y + target.height / 2, { steps: 2 })
+}
+
+function highlightedCategories(page: Page): Promise<string[]> {
+	return page.evaluate(() => Array.from(document.querySelectorAll('li.drop-over'))
+		.map((li) => (li.querySelector('.app-navigation-entry-link') as HTMLElement)?.title))
+}
+
+/* The class alone says nothing about what is on screen: the rule that paints it
+   has to reach the row as well. */
+async function highlightAlpha(page: Page, category: string): Promise<number> {
+	const colour = await page.evaluate((name) => {
+		const entry = document.querySelector(`[title="${name}"]`)?.closest('.app-navigation-entry') as HTMLElement
+		return entry ? getComputedStyle(entry).backgroundColor : ''
+	}, category)
+	if (colour === '' || colour === 'rgba(0, 0, 0, 0)' || colour === 'transparent') {
+		return 0
+	}
+	const alpha = /(?:,|\/)\s*([\d.]+)\s*\)$/.exec(colour)
+	return alpha ? Number(alpha[1]) : 1
+}
+
 test.describe('Category tree', () => {
 	let deepNote: number
 	let sageNote: number
@@ -226,6 +258,23 @@ test.describe('Category tree', () => {
 				.map((li) => (li.querySelector('.app-navigation-entry-link') as HTMLElement)?.title))
 			expect(highlighted).toEqual(['SAGE'])
 		}).toPass({ timeout: 5000 })
+	})
+
+	test('paints the drop highlight on the nested category itself', async ({ page }) => {
+		const loose = await createNoteViaApi(page, '', 'Loose note')
+		await page.reload()
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		// A real pointer drag, which crosses the top-level ancestors on its way
+		// to SAGE two levels down.
+		await dragNoteOver(page, loose, 'SAGE')
+
+		await expect(async () => {
+			expect(await highlightedCategories(page)).toEqual(['SAGE'])
+			expect(await highlightAlpha(page, 'SAGE')).toBeGreaterThan(0.5)
+		}).toPass({ timeout: 5000 })
+
+		await page.mouse.up()
 	})
 
 	test('selects a nested category from the tree', async ({ page }) => {

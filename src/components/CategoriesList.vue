@@ -618,62 +618,10 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry) {
-	background-color: var(--color-primary-element) !important;
-}
-
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry:hover),
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry:focus-within) {
-	background-color: var(--color-primary-element-hover) !important;
-}
-
-.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry) {
-	background-color: var(--color-primary-element) !important;
-	border-radius: var(--border-radius-element, var(--border-radius-large));
-}
+@use './navigationEntry.scss';
 
 .app-navigation-caption.drop-over-caption {
 	background-color: var(--color-primary-element-light) !important;
 	border-radius: var(--border-radius-element, var(--border-radius-large));
-}
-
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry-link),
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry-button),
-.app-navigation-entry-wrapper.active:deep(.material-design-icon),
-.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry .app-navigation-entry-link),
-.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry .app-navigation-entry-button),
-.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry .material-design-icon) {
-	color: var(--color-primary-element-text) !important;
-}
-
-/* 22px is the counter bubble's diameter, so this centres a single-digit
-   bubble under the caption's icon. */
-.app-navigation-entry-wrapper:deep(.app-navigation-entry__utils) {
-	--counter-inset: calc((var(--default-clickable-area) - 22px) / 2);
-	position: relative;
-}
-
-.app-navigation-entry-wrapper:deep(.app-navigation-entry__utils .app-navigation-entry__counter-wrapper) {
-	margin-inline-end: var(--counter-inset);
-	transition: margin-inline-end var(--animation-quick) ease-in-out;
-}
-
-/* Out of the flow, so revealing it lets the counter animate aside instead of
-   being displaced instantly. */
-.app-navigation-entry-wrapper:deep(.app-navigation-entry__utils .action-item.app-navigation-entry__actions) {
-	position: absolute;
-	inset-inline-end: 0;
-}
-
-.app-navigation-entry-wrapper:not(.category-no-actions):deep(.app-navigation-entry:hover .app-navigation-entry__counter-wrapper),
-.app-navigation-entry-wrapper:not(.category-no-actions):deep(.app-navigation-entry:focus-within .app-navigation-entry__counter-wrapper),
-.app-navigation-entry-wrapper:not(.category-no-actions):deep(.app-navigation-entry.active .app-navigation-entry__counter-wrapper) {
-	margin-inline-end: calc(var(--counter-inset) + var(--default-clickable-area));
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.app-navigation-entry-wrapper:deep(.app-navigation-entry__utils .app-navigation-entry__counter-wrapper) {
-		transition: none;
-	}
 }
 </style>

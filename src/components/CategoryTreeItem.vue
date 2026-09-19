@@ -131,3 +131,7 @@ export default {
 	},
 }
 </script>
+
+<style lang="scss" scoped>
+@use './navigationEntry.scss';
+</style>
