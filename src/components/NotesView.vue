@@ -33,7 +33,7 @@
 					/>
 					<NotesList
 						:notes="group.notes"
-						:showCategoryTitle="category === null"
+						:showCategoryTitle="category === null || searching"
 						@noteSelected="onNoteSelected"
 						@noteDeleted="onNoteDeleted"
 					/>
@@ -44,11 +44,6 @@
 					class="loading-label"
 				>
 					{{ t('notes', 'Loading …') }}
-				</div>
-				<div v-if="getFilteredTotalCount > 0" class="content-list__search-more">
-					<NcButton @click="onCategorySelected(null)">
-						{{ t('notes', 'Find in all categories') }}
-					</NcButton>
 				</div>
 			</NcAppContentList>
 		</template>
@@ -128,8 +123,8 @@ export default {
 	},
 
 	computed: {
-		getFilteredTotalCount() {
-			return store.notes.getFilteredTotalCount()
+		searching() {
+			return store.app.searchText !== ''
 		},
 
 		category() {
@@ -159,6 +154,12 @@ export default {
 
 		// group notes by time ("All notes") or by category (if category chosen)
 		groupedNotes() {
+			/* Search results come from everywhere, so a heading for when a note
+			   was last touched says nothing useful about why it is in the list.
+			   Each row carries its category instead. */
+			if (this.searching) {
+				return [{ notes: this.displayedNotes }]
+			}
 			if (this.category === null) {
 				return this.displayedNotes.reduce((g, note) => {
 					const timeslot = this.getTimeslotFromNote(note)

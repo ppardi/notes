@@ -111,12 +111,16 @@ export const useNotesStore = defineStore('notes', {
 		getFilteredNotes: (state) => () => {
 			const appStore = useAppStore()
 			const searchText = appStore.searchText.toLowerCase()
+			/* A search spans every category. The search box sits above the note
+			   list rather than inside a category, so scoping it to the selected
+			   one hides the matches people are looking for. */
+			const searching = searchText !== ''
 			const notes = state.notes.filter((note) => {
-				if (state.selectedCategory !== null && state.selectedCategory !== note.category) {
+				if (!searching && state.selectedCategory !== null && state.selectedCategory !== note.category) {
 					return false
 				}
 
-				if (searchText !== '' && note.title.toLowerCase().indexOf(searchText) === -1) {
+				if (searching && note.title.toLowerCase().indexOf(searchText) === -1) {
 					return false
 				}
 
@@ -150,28 +154,6 @@ export const useNotesStore = defineStore('notes', {
 			notes.sort(state.selectedCategory === null ? cmpRecent : cmpCategory)
 
 			return notes
-		},
-
-		getFilteredTotalCount: (state) => () => {
-			const appStore = useAppStore()
-			const searchText = appStore.searchText.toLowerCase()
-
-			if (state.selectedCategory === null || searchText === '') {
-				return 0
-			}
-
-			const notes = state.notes.filter((note) => {
-				if (state.selectedCategory === note.category) {
-					return false
-				}
-
-				if (note.title.toLowerCase().indexOf(searchText) === -1) {
-					return false
-				}
-
-				return true
-			})
-			return notes.length
 		},
 
 		getSelectedCategory: (state) => () => {

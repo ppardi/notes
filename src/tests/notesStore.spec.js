@@ -5,6 +5,7 @@
 
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { useAppStore } from '../stores/app.js'
 import { useNotesStore } from '../stores/notes.js'
 
 describe('notes store updateNote', () => {
@@ -84,5 +85,50 @@ describe('notes store category filtering', () => {
 	it('shows only uncategorized notes for the uncategorized selection', () => {
 		store.setSelectedCategory('')
 		expect(visibleIds()).toEqual([1])
+	})
+})
+
+describe('notes store search', () => {
+	let store
+
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		store = useNotesStore()
+		const notes = [
+			{ id: 1, title: 'Loose report', category: '' },
+			{ id: 2, title: 'Work report', category: 'Work' },
+			{ id: 3, title: 'Nested report', category: 'Work/Projects' },
+			{ id: 4, title: 'Unrelated', category: 'Personal' },
+		]
+		notes.forEach((note) => store.updateNote({ ...note, internalPath: '', readonly: false }))
+	})
+
+	/**
+	 * @return {Array<number>} the ids the note list would show
+	 */
+	function visibleIds() {
+		return store.getFilteredNotes().map((note) => note.id).sort()
+	}
+
+	it('searches every category, whichever one is selected', () => {
+		store.setSelectedCategory('Work')
+		useAppStore().updateSearchText('report')
+
+		expect(visibleIds()).toEqual([1, 2, 3])
+	})
+
+	it('searches every category from the uncategorized selection too', () => {
+		store.setSelectedCategory('')
+		useAppStore().updateSearchText('report')
+
+		expect(visibleIds()).toEqual([1, 2, 3])
+	})
+
+	it('returns to the selected category once the search is cleared', () => {
+		store.setSelectedCategory('Work')
+		useAppStore().updateSearchText('report')
+		useAppStore().updateSearchText('')
+
+		expect(visibleIds()).toEqual([2])
 	})
 })
