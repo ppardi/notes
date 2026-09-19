@@ -100,14 +100,14 @@ function highlightedCategories(page: Page): Promise<string[]> {
 /* The class alone says nothing about what is on screen: the rule that paints it
    has to reach the row as well. */
 async function highlightAlpha(page: Page, category: string): Promise<number> {
-	const colour = await page.evaluate((name) => {
+	const color = await page.evaluate((name) => {
 		const entry = document.querySelector(`[title="${name}"]`)?.closest('.app-navigation-entry') as HTMLElement
 		return entry ? getComputedStyle(entry).backgroundColor : ''
 	}, category)
-	if (colour === '' || colour === 'rgba(0, 0, 0, 0)' || colour === 'transparent') {
+	if (color === '' || color === 'rgba(0, 0, 0, 0)' || color === 'transparent') {
 		return 0
 	}
-	const alpha = /(?:,|\/)\s*([\d.]+)\s*\)$/.exec(colour)
+	const alpha = /(?:,|\/)\s*([\d.]+)\s*\)$/.exec(color)
 	return alpha ? Number(alpha[1]) : 1
 }
 

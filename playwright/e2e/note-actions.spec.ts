@@ -38,6 +38,26 @@ test.describe('Note actions', () => {
 		await expect(page.getByRole('menuitem', { name: 'Add to favorites' })).toBeVisible()
 	})
 
+	test('marks a favorite with an outlined star in the row text color', async ({ page }, testInfo: TestInfo) => {
+		const noteId = await createNote(page, uniqueTitle('star', testInfo))
+
+		const favorited = page.waitForResponse((response) => response.url().includes('/favorite'))
+		await openNoteActions(page, noteId)
+		await page.getByRole('menuitem', { name: 'Add to favorites' }).click()
+		await favorited
+
+		const star = noteRow(page, noteId).locator('.material-design-icon').first()
+		await expect(star).toHaveClass(/star-outline-icon/)
+
+		// Not the hardcoded #FC0: the star takes the color of the row it marks,
+		// so it stays legible whichever theme is in use.
+		const { fill, text } = await star.evaluate((icon) => ({
+			fill: getComputedStyle(icon.querySelector('path') as SVGPathElement).fill,
+			text: getComputedStyle(icon.closest('.app-content-list-item') ?? icon).color,
+		}))
+		expect(fill).toBe(text)
+	})
+
 	test('closes the actions menu after toggling favorite', async ({ page }, testInfo: TestInfo) => {
 		const noteId = await createNote(page, uniqueTitle('menu-close', testInfo))
 

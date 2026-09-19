@@ -22,10 +22,7 @@
 				:size="20"
 				fillColor="#E9322D"
 			/>
-			<StarIcon v-else-if="note.favorite"
-				:size="20"
-				fillColor="#FC0"
-			/>
+			<StarOutlineIcon v-else-if="note.favorite" :size="20" />
 		</template>
 		<template v-if="isShared" #indicator>
 			<ShareVariantOutlineIcon :size="16" fillColor="#0082c9" />
@@ -126,7 +123,7 @@ import FolderOutlineIcon from 'vue-material-design-icons/FolderOutline.vue'
 import InformationOutlineIcon from 'vue-material-design-icons/InformationOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import ShareVariantOutlineIcon from 'vue-material-design-icons/ShareVariantOutline.vue'
-import StarIcon from 'vue-material-design-icons/Star.vue'
+import StarOutlineIcon from 'vue-material-design-icons/StarOutline.vue'
 import logger from '../Logger.js'
 import { deleteNote, fetchNote, setCategory, setFavorite, setTitle } from '../NotesService.js'
 import store from '../store.js'
@@ -142,7 +139,7 @@ export default {
 		InformationOutlineIcon,
 		NcActionButton,
 		NcListItem,
-		StarIcon,
+		StarOutlineIcon,
 		NcActionSeparator,
 		NcActionInput,
 		PencilOutlineIcon,
