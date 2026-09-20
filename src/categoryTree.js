@@ -197,3 +197,24 @@ export function categoryDropTarget(dragged, target) {
 	const moved = target === null ? name : `${target}/${name}`
 	return moved === dragged ? null : moved
 }
+
+/**
+ * Where a category dropped beside another one should end up.
+ *
+ * Dropping between rows places a category at that row's level rather than
+ * inside it, so dropping "Writing/Substack" beside a top-level category makes
+ * it top-level. The tree is sorted by name, so where in the level it lands is
+ * not up to the drop.
+ *
+ * @param {string} dragged the category being moved
+ * @param {string} row the category it was dropped beside
+ * @return {string|null} the category's new path, or null if the drop makes no sense
+ */
+export function categorySiblingTarget(dragged, row) {
+	if (row === '') {
+		return null
+	}
+	const separator = row.lastIndexOf('/')
+	const parent = separator === -1 ? null : row.slice(0, separator)
+	return categoryDropTarget(dragged, parent)
+}

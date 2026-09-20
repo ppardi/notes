@@ -72,10 +72,13 @@ async function dragCategoryOnto(page: Page, from: string, to: string): Promise<v
 			?.closest('.app-navigation-entry') as HTMLElement
 		const target = document.querySelector(`[title="${toName}"]`)
 			?.closest('.app-navigation-entry') as HTMLElement
+		const box = target.getBoundingClientRect()
+		// the middle of the row, which is the band that nests
+		const at = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }
 		const transfer = new DataTransfer()
 		source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }))
-		target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }))
-		target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+		target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer, ...at }))
+		target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer, ...at }))
 	}, [from, to])
 }
 
@@ -90,6 +93,31 @@ async function dragNoteOver(page: Page, noteId: number, category: string): Promi
 	await page.mouse.move(source.x - 20, source.y + source.height / 2, { steps: 5 })
 	await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 })
 	await page.mouse.move(target.x + target.width / 2 + 2, target.y + target.height / 2, { steps: 2 })
+}
+
+/* Drops on a row's edge rather than its middle, which places the dragged
+   category at that row's level instead of inside it. The pointer position is
+   what the app reads, so the events carry it: a mouse-driven drag never starts,
+   because draggable sits on the row rather than on the link inside it. */
+async function dragCategoryBeside(page: Page, from: string, to: string, drop = true): Promise<void> {
+	await page.evaluate(([fromName, toName, shouldDrop]) => {
+		const source = document.querySelector(`[title="${fromName}"]`)
+			?.closest('.app-navigation-entry') as HTMLElement
+		const target = document.querySelector(`[title="${toName}"]`)
+			?.closest('.app-navigation-entry') as HTMLElement
+		const box = target.getBoundingClientRect()
+		const edge = {
+			clientX: box.left + box.width / 2,
+			// just inside the top edge, which is the "beside" band
+			clientY: box.top + 1,
+		}
+		const transfer = new DataTransfer()
+		source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }))
+		target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer, ...edge }))
+		if (shouldDrop) {
+			target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer, ...edge }))
+		}
+	}, [from, to, drop] as [string, string, boolean])
 }
 
 function highlightedCategories(page: Page): Promise<string[]> {
@@ -239,6 +267,38 @@ test.describe('Category tree', () => {
 		await expect(async () => {
 			expect(await indentOf(page, 'SAGE')).toBe(topLevel)
 		}).toPass()
+	})
+
+	test('moves a category to the top level when dropped on a top-level row edge', async ({ page }) => {
+		const topLevel = await indentOf(page, 'PROJECTS')
+
+		await dragCategoryBeside(page, 'SAGE', 'PROJECTS')
+
+		await expect(async () => {
+			expect(await indentOf(page, 'SAGE')).toBe(topLevel)
+		}).toPass()
+	})
+
+	test('draws a line on the row a category would land beside', async ({ page }) => {
+		await dragCategoryBeside(page, 'SAGE', 'PROJECTS', false)
+
+		await expect(async () => {
+			const line = await page.evaluate(() => {
+				const row = document.querySelector('li.drop-before, li.drop-after')
+				if (!row) {
+					return null
+				}
+				const style = getComputedStyle(row.firstElementChild as HTMLElement, '::after')
+				return {
+					name: (row.querySelector('.app-navigation-entry-link') as HTMLElement)?.title,
+					height: style.height,
+					background: style.backgroundColor,
+				}
+			})
+			expect(line?.name).toBe('PROJECTS')
+			expect(line?.height).toBe('2px')
+			expect(line?.background).not.toBe('rgba(0, 0, 0, 0)')
+		}).toPass({ timeout: 5000 })
 	})
 
 	test('refuses to drop a category inside itself', async ({ page }) => {

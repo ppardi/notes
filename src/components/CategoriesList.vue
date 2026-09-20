@@ -71,6 +71,8 @@
 		:loading="loading"
 		:selectedCategory="selectedCategory"
 		:dragOverCategory="dragOverCategory"
+		:dropBesideCategory="dropBesideCategory"
+		:dropBesideSide="dropBesideSide"
 		:collapsedCategories="collapsedCategories"
 	/>
 </template>
@@ -86,7 +88,7 @@ import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import HistoryIcon from 'vue-material-design-icons/History.vue'
 import CategoryTreeItem from './CategoryTreeItem.vue'
-import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import store from '../store.js'
 import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepCategory } from '../Util.js'
@@ -130,6 +132,8 @@ export default {
 	data() {
 		return {
 			dragOverCategory: null,
+			dropBesideCategory: null,
+			dropBesideSide: 'before',
 			dragOverNewCategory: false,
 			dragOverAllNotes: false,
 			newCategoryDraft: false,
@@ -375,6 +379,41 @@ export default {
 
 		/* Moving a category is a rename: the backend carries its notes and its
 		   descendants along, and refuses a move into its own subtree. */
+		/* A row's middle nests, its edges place the category at that row's own
+		   level. The tree is sorted by name, so an edge says which level the
+		   category lands in, not where in the level it sits. */
+		categoryDropSide(event) {
+			const entry = event.currentTarget?.querySelector?.(':scope > .app-navigation-entry')
+			const rect = entry?.getBoundingClientRect()
+			if (!rect?.height) {
+				return 'into'
+			}
+			const offset = (event.clientY - rect.top) / rect.height
+			if (offset < 0.25) {
+				return 'before'
+			}
+			if (offset > 0.75) {
+				return 'after'
+			}
+			return 'into'
+		},
+
+		clearCategoryDropMarks() {
+			this.dragOverCategory = null
+			this.dropBesideCategory = null
+		},
+
+		async moveCategoryBeside(dragged, row) {
+			if (dragged === null) {
+				return
+			}
+			const moved = categorySiblingTarget(dragged, row)
+			if (moved === null) {
+				return
+			}
+			await this.onRenameCategory(dragged, moved)
+		},
+
 		async moveCategory(dragged, target) {
 			if (dragged === null) {
 				return
@@ -450,17 +489,23 @@ export default {
 			event.stopPropagation()
 			if (isCategoryDrag(event)) {
 				const dragged = getDraggedCategory(event)
-				if (dragged === null || categoryDropTarget(dragged, category) === null) {
-					this.dragOverCategory = null
+				const side = this.categoryDropSide(event)
+				const valid = side === 'into'
+					? categoryDropTarget(dragged, category) !== null
+					: categorySiblingTarget(dragged, category) !== null
+				if (dragged === null || !valid) {
+					this.clearCategoryDropMarks()
 					return
 				}
 				event.preventDefault()
 				this.dragOverAllNotes = false
-				this.dragOverCategory = category
+				this.dragOverCategory = side === 'into' ? category : null
+				this.dropBesideCategory = side === 'into' ? null : category
+				this.dropBesideSide = side === 'into' ? 'before' : side
 				return
 			}
 			if (!isNoteDrag(event)) {
-				this.dragOverCategory = null
+				this.clearCategoryDropMarks()
 				this.dragOverAllNotes = false
 				return
 			}
@@ -469,6 +514,7 @@ export default {
 				event.dataTransfer.dropEffect = 'move'
 			}
 			this.dragOverAllNotes = false
+			this.dropBesideCategory = null
 			this.dragOverCategory = category
 		},
 
@@ -513,7 +559,7 @@ export default {
 
 		onCategoryDragLeave(category, event) {
 			event.stopPropagation()
-			if (this.dragOverCategory !== category) {
+			if (this.dragOverCategory !== category && this.dropBesideCategory !== category) {
 				return
 			}
 
@@ -523,7 +569,7 @@ export default {
 				return
 			}
 
-			this.dragOverCategory = null
+			this.clearCategoryDropMarks()
 		},
 
 		async onAllNotesDrop(event) {
@@ -554,11 +600,16 @@ export default {
 			event.preventDefault()
 			event.stopPropagation()
 
-			this.dragOverCategory = null
+			this.clearCategoryDropMarks()
 			this.dragOverAllNotes = false
 
 			if (isCategoryDrag(event)) {
-				await this.moveCategory(getDraggedCategory(event), category)
+				const dragged = getDraggedCategory(event)
+				if (this.categoryDropSide(event) === 'into') {
+					await this.moveCategory(dragged, category)
+				} else {
+					await this.moveCategoryBeside(dragged, category)
+				}
 				return
 			}
 

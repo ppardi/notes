@@ -16,6 +16,8 @@
 		:open="isOpen"
 		:class="{
 			'drop-over': node.name === dragOverCategory,
+			'drop-before': node.name === dropBesideCategory && dropBesideSide === 'before',
+			'drop-after': node.name === dropBesideCategory && dropBesideSide === 'after',
 			'category-no-actions': node.name === '',
 		}"
 		@update:open="tree.setOpen(node.name, $event)"
@@ -60,6 +62,8 @@
 			:loading="loading"
 			:selectedCategory="selectedCategory"
 			:dragOverCategory="dragOverCategory"
+			:dropBesideCategory="dropBesideCategory"
+			:dropBesideSide="dropBesideSide"
 			:collapsedCategories="collapsedCategories"
 		/>
 	</NcAppNavigationItem>
@@ -106,6 +110,16 @@ export default {
 		dragOverCategory: {
 			type: String,
 			default: null,
+		},
+
+		dropBesideCategory: {
+			type: String,
+			default: null,
+		},
+
+		dropBesideSide: {
+			type: String,
+			default: 'before',
 		},
 
 		collapsedCategories: {

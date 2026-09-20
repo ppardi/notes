@@ -5,7 +5,7 @@
 
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { useNotesStore } from '../stores/notes.js'
 
 /**
@@ -305,5 +305,27 @@ describe('categoryDropTarget', () => {
 
 	it('refuses a drop onto the uncategorized category', () => {
 		expect(categoryDropTarget('Work', '')).toBe(null)
+	})
+})
+
+describe('categorySiblingTarget', () => {
+	it('puts a nested category beside a top-level one', () => {
+		expect(categorySiblingTarget('Writing/Substack', 'Work')).toBe('Substack')
+	})
+
+	it('puts a category beside a nested one, under the same parent', () => {
+		expect(categorySiblingTarget('Substack', 'Work/SkillUp')).toBe('Work/Substack')
+	})
+
+	it('refuses a row inside the category being dragged', () => {
+		expect(categorySiblingTarget('Work', 'Work/SkillUp')).toBeNull()
+	})
+
+	it('refuses a move that changes nothing', () => {
+		expect(categorySiblingTarget('Work/SkillUp', 'Work/Other')).toBeNull()
+	})
+
+	it('refuses the unfiled row, which is not a folder', () => {
+		expect(categorySiblingTarget('Work', '')).toBeNull()
 	})
 })

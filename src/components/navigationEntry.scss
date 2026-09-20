@@ -23,6 +23,32 @@
 	border-radius: var(--border-radius-element, var(--border-radius-large));
 }
 
+/* Dropping a category on a row's edge places it at that row's level. The line
+   is drawn on the row itself so that it picks up the indentation of the level
+   the category would land in. */
+.app-navigation-entry-wrapper.drop-before:deep(> .app-navigation-entry),
+.app-navigation-entry-wrapper.drop-after:deep(> .app-navigation-entry) {
+	position: relative;
+}
+
+.app-navigation-entry-wrapper.drop-before:deep(> .app-navigation-entry)::after,
+.app-navigation-entry-wrapper.drop-after:deep(> .app-navigation-entry)::after {
+	content: '';
+	position: absolute;
+	inset-inline: 0;
+	height: 2px;
+	border-radius: 2px;
+	background-color: var(--color-primary-element);
+}
+
+.app-navigation-entry-wrapper.drop-before:deep(> .app-navigation-entry)::after {
+	top: 0;
+}
+
+.app-navigation-entry-wrapper.drop-after:deep(> .app-navigation-entry)::after {
+	bottom: 0;
+}
+
 .app-navigation-entry-wrapper.active:deep(.app-navigation-entry-link),
 .app-navigation-entry-wrapper.active:deep(.app-navigation-entry-button),
 .app-navigation-entry-wrapper.active:deep(.material-design-icon),
