@@ -136,6 +136,21 @@ test.describe('Category tree', () => {
 		await expect(categoryLink(page, 'Apps')).toBeVisible()
 	})
 
+	test('offers the unfiled category even when every note is filed', async ({ page }) => {
+		// The fixture files every note, so nothing is unfiled here.
+		await expect(categoryLink(page, 'Unfiled')).toBeVisible()
+		await expect(categoryCounter(page, 'Unfiled')).toContainText('0')
+	})
+
+	test('takes a note dragged onto it out of its category', async ({ page }) => {
+		await noteRow(page, sageNote).dragTo(categoryLink(page, 'Unfiled'))
+
+		const moved = await page.request.get(`/index.php/apps/notes/api/v1/notes/${sageNote}`, {
+			headers: { Authorization: `Basic ${Buffer.from('admin:admin').toString('base64')}` },
+		})
+		expect((await moved.json()).category).toBe('')
+	})
+
 	test('indents each level below its parent', async ({ page }) => {
 		const projects = await indentOf(page, 'PROJECTS')
 		const apps = await indentOf(page, 'Apps')
@@ -190,8 +205,8 @@ test.describe('Category tree', () => {
 		expect((await moved.json()).category).toBe('PROJECTS/Apps/SAGE/Architecture')
 	})
 
-	test('offers categories as draggable, but never the uncategorized one', async ({ page }) => {
-		// The inbox only appears once a note is filed outside every category.
+	test('offers categories as draggable, but never the unfiled one', async ({ page }) => {
+		// The unfiled category only appears once a note is filed outside every category.
 		await createNoteViaApi(page, '', 'Loose note')
 		await page.reload()
 		await expect(newNoteButton(page).first()).toBeVisible()
@@ -200,7 +215,7 @@ test.describe('Category tree', () => {
 			.locator('xpath=ancestor::li[1]').first().getAttribute('draggable')
 
 		expect(await draggable('SAGE')).toBe('true')
-		expect(await draggable('Inbox')).toBe('false')
+		expect(await draggable('Unfiled')).toBe('false')
 	})
 
 	test('re-parents a category by dragging it onto another', async ({ page }) => {

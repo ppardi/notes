@@ -29,7 +29,7 @@ export function copyNote(from, to, exclude) {
    been filed anywhere live. It is named for what it is for rather than for
    what it lacks, and it only appears while something is sitting in it. */
 export function categoryLabel(category) {
-	return category === '' ? t('notes', 'Inbox') : category.replace(/\//g, ' / ')
+	return category === '' ? t('notes', 'Unfiled') : category.replace(/\//g, ' / ')
 }
 
 /**

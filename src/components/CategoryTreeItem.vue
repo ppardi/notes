@@ -116,7 +116,7 @@ export default {
 
 	computed: {
 		displayName() {
-			return this.node.name === '' ? t('notes', 'Inbox') : this.node.label
+			return this.node.name === '' ? t('notes', 'Unfiled') : this.node.label
 		},
 
 		hasChildren() {

@@ -147,7 +147,13 @@ export default {
 		},
 
 		categories() {
-			return store.notes.getCategories(0, true)
+			/* The unfiled category is always offered, even while empty. It is
+			   where a note goes when it is dragged out of a category, so it has
+			   to be there to drop onto. */
+			const categories = store.notes.getCategories(0, true)
+			return categories.some((category) => category.name === '')
+				? categories
+				: [{ name: '', count: 0 }, ...categories]
 		},
 
 		categoryTree() {
