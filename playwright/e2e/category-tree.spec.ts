@@ -171,6 +171,8 @@ test.describe('Category tree', () => {
 	})
 
 	test('takes a note dragged onto it out of its category', async ({ page }) => {
+		await categoryLink(page, 'SAGE').click()
+
 		await noteRow(page, sageNote).dragTo(categoryLink(page, 'Unfiled'))
 
 		const moved = await page.request.get(`/index.php/apps/notes/api/v1/notes/${sageNote}`, {
@@ -222,8 +224,11 @@ test.describe('Category tree', () => {
 	test('moves a note into a nested category by dragging it', async ({ page }) => {
 		// A loose note, dragged onto a category three levels down.
 		const loose = await createNoteViaApi(page, '', 'Loose note')
-		await page.reload()
+		// Not a reload: that would keep the selected category in the URL, and
+		// the new note is unfiled.
+		await page.goto('/index.php/apps/notes/')
 		await expect(newNoteButton(page).first()).toBeVisible()
+		await categoryLink(page, 'Unfiled').click()
 
 		await noteRow(page, loose).dragTo(categoryLink(page, 'Architecture'))
 
@@ -257,16 +262,6 @@ test.describe('Category tree', () => {
 			expect(await indentOf(page, 'Deskspace')).toBeGreaterThan(sage)
 		}).toPass()
 		await expect(categoryCounter(page, 'Deskspace')).toContainText('1')
-	})
-
-	test('moves a category back to the top by dragging it onto All notes', async ({ page }) => {
-		const topLevel = await indentOf(page, 'PROJECTS')
-
-		await dragCategoryOnto(page, 'SAGE', 'All notes')
-
-		await expect(async () => {
-			expect(await indentOf(page, 'SAGE')).toBe(topLevel)
-		}).toPass()
 	})
 
 	test('moves a category to the top level when dropped on a top-level row edge', async ({ page }) => {
@@ -314,8 +309,11 @@ test.describe('Category tree', () => {
 
 	test('highlights only the category a note is dragged over', async ({ page }) => {
 		const loose = await createNoteViaApi(page, '', 'Loose note')
-		await page.reload()
+		// Not a reload: that would keep the selected category in the URL, and
+		// the new note is unfiled.
+		await page.goto('/index.php/apps/notes/')
 		await expect(newNoteButton(page).first()).toBeVisible()
+		await categoryLink(page, 'Unfiled').click()
 
 		// Drag the note over SAGE, which sits two levels down.
 		await page.evaluate((noteId) => {
@@ -337,8 +335,11 @@ test.describe('Category tree', () => {
 
 	test('paints the drop highlight on the nested category itself', async ({ page }) => {
 		const loose = await createNoteViaApi(page, '', 'Loose note')
-		await page.reload()
+		// Not a reload: that would keep the selected category in the URL, and
+		// the new note is unfiled.
+		await page.goto('/index.php/apps/notes/')
 		await expect(newNoteButton(page).first()).toBeVisible()
+		await categoryLink(page, 'Unfiled').click()
 
 		// A real pointer drag, which crosses the top-level ancestors on its way
 		// to SAGE two levels down.

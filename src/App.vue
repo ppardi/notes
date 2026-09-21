@@ -90,6 +90,7 @@ import AppSettings from './components/AppSettings.vue'
 import CategoriesList from './components/CategoriesList.vue'
 import EditorHint from './components/Modal/EditorHint.vue'
 import NoteSidebar from './components/NoteSidebar.vue'
+import { landingCategory } from './categoryTree.js'
 import { config } from './config.js'
 import logger from './Logger.js'
 import { fetchNotes, noteExists, setSettings, undoDeleteNote } from './NotesService.js'
@@ -305,15 +306,18 @@ export default {
 				return
 			}
 			const stored = categoryFromSetting(store.app.settings?.lastViewedCategory)
-			if (stored === null) {
-				return
-			}
 			/* A category that has since been renamed or deleted would filter every
-			   note away and leave the app on an empty list. */
-			if (stored !== '' && !store.notes.getCategories(0, false).includes(stored)) {
+			   note away and leave the app on an empty list. The unfiled category
+			   is always there. */
+			const known = stored !== null
+				&& (stored === '' || store.notes.getCategories(0, false).includes(stored))
+			/* With nothing stored there is no list of everything to fall back on,
+			   so the app picks somewhere real to start. */
+			const category = known ? stored : landingCategory(store.notes.getCategories(0, true))
+			if (category === null) {
 				return
 			}
-			await this.$router.replace(categoryRoute(this.$route, stored)).catch(() => {})
+			await this.$router.replace(categoryRoute(this.$route, category)).catch(() => {})
 		},
 
 		rememberCategory(category) {

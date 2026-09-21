@@ -4,29 +4,6 @@
 -->
 
 <template>
-	<NcAppNavigationItem
-		v-show="!loading"
-		:name="t('notes', 'All notes')"
-		:active="selectedCategory === null"
-		:draggable="false"
-		class="category-no-actions"
-		:class="{
-			'drop-over': dragOverAllNotes,
-		}"
-		@click.prevent.stop="onSelectCategory(null)"
-		@dragstart="onCategoryDragStart"
-		@dragover="onAllNotesDragOver($event)"
-		@dragleave="onAllNotesDragLeave($event)"
-		@drop="onAllNotesDrop($event)"
-	>
-		<template #icon>
-			<HistoryIcon :size="20" />
-		</template>
-		<template #counter>
-			<NcCounterBubble :count="numNotes" />
-		</template>
-	</NcAppNavigationItem>
-
 	<NcAppNavigationCaption v-show="!loading"
 		:name="t('notes', 'Categories')"
 		:inline="1"
@@ -86,9 +63,8 @@ import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
-import HistoryIcon from 'vue-material-design-icons/History.vue'
 import CategoryTreeItem from './CategoryTreeItem.vue'
-import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import store from '../store.js'
 import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepCategory } from '../Util.js'
@@ -104,7 +80,6 @@ export default {
 		NcCounterBubble,
 		FolderIcon,
 		FolderPlusIcon,
-		HistoryIcon,
 	},
 
 	provide() {
@@ -135,7 +110,6 @@ export default {
 			dropBesideCategory: null,
 			dropBesideSide: 'before',
 			dragOverNewCategory: false,
-			dragOverAllNotes: false,
 			newCategoryDraft: false,
 			newCategoryMonitor: null,
 			newCategoryDropNoteId: null,
@@ -146,10 +120,6 @@ export default {
 	},
 
 	computed: {
-		numNotes() {
-			return store.notes.numNotes()
-		},
-
 		categories() {
 			/* The unfiled category is always offered, even while empty. It is
 			   where a note goes when it is dragged out of a category, so it has
@@ -373,7 +343,7 @@ export default {
 		clearSelectedCategoryForDelete(category) {
 			const selected = this.selectedCategory
 			if (selected === category || (selected && selected.startsWith(category + '/'))) {
-				this.selectCategory(null)
+				this.selectCategory(landingCategory(this.categories))
 			}
 		},
 
@@ -498,7 +468,6 @@ export default {
 					return
 				}
 				event.preventDefault()
-				this.dragOverAllNotes = false
 				this.dragOverCategory = side === 'into' ? category : null
 				this.dropBesideCategory = side === 'into' ? null : category
 				this.dropBesideSide = side === 'into' ? 'before' : side
@@ -506,55 +475,14 @@ export default {
 			}
 			if (!isNoteDrag(event)) {
 				this.clearCategoryDropMarks()
-				this.dragOverAllNotes = false
 				return
 			}
 			event.preventDefault()
 			if (event.dataTransfer) {
 				event.dataTransfer.dropEffect = 'move'
 			}
-			this.dragOverAllNotes = false
 			this.dropBesideCategory = null
 			this.dragOverCategory = category
-		},
-
-		onAllNotesDragOver(event) {
-			if (isCategoryDrag(event)) {
-				const dragged = getDraggedCategory(event)
-				if (dragged === null || categoryDropTarget(dragged, null) === null) {
-					this.dragOverAllNotes = false
-					return
-				}
-				event.preventDefault()
-				this.dragOverCategory = null
-				this.dragOverAllNotes = true
-				return
-			}
-			if (!isNoteDrag(event)) {
-				this.dragOverCategory = null
-				this.dragOverAllNotes = false
-				return
-			}
-			event.preventDefault()
-			if (event.dataTransfer) {
-				event.dataTransfer.dropEffect = 'move'
-			}
-			this.dragOverCategory = null
-			this.dragOverAllNotes = true
-		},
-
-		onAllNotesDragLeave(event) {
-			if (!this.dragOverAllNotes) {
-				return
-			}
-
-			const currentTarget = event.currentTarget
-			const relatedTarget = event.relatedTarget
-			if (currentTarget && relatedTarget && currentTarget.contains(relatedTarget)) {
-				return
-			}
-
-			this.dragOverAllNotes = false
 		},
 
 		onCategoryDragLeave(category, event) {
@@ -572,36 +500,11 @@ export default {
 			this.clearCategoryDropMarks()
 		},
 
-		async onAllNotesDrop(event) {
-			event.preventDefault()
-			event.stopPropagation()
-
-			this.dragOverAllNotes = false
-
-			if (isCategoryDrag(event)) {
-				await this.moveCategory(getDraggedCategory(event), null)
-				return
-			}
-
-			const noteId = getDraggedNoteId(event, (noteId) => store.notes.getNote(noteId))
-			if (noteId === null) {
-				return
-			}
-
-			const note = store.notes.getNote(noteId)
-			if (!note || note.category === '') {
-				return
-			}
-
-			await setCategory(noteId, '')
-		},
-
 		async onCategoryDrop(category, event) {
 			event.preventDefault()
 			event.stopPropagation()
 
 			this.clearCategoryDropMarks()
-			this.dragOverAllNotes = false
 
 			if (isCategoryDrag(event)) {
 				const dragged = getDraggedCategory(event)

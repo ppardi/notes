@@ -150,16 +150,4 @@ test.describe('Category selection', () => {
 		await expect(noteRow(page, personalNote)).toBeVisible()
 		await expect(noteRow(page, workNote)).toBeHidden()
 	})
-
-	test('drops the parameter for the all-notes selection', async ({ page }) => {
-		await openNotesApp(page)
-		await navigationLink(page, work).click()
-		await expect(page).toHaveURL(categoryInUrl(work))
-
-		await navigationLink(page, 'All notes').click()
-
-		await expect(page).not.toHaveURL(/[?&]category=/)
-		await expect(noteRow(page, workNote)).toBeVisible()
-		await expect(noteRow(page, personalNote)).toBeVisible()
-	})
 })

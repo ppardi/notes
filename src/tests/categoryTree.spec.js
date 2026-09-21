@@ -5,7 +5,7 @@
 
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { useNotesStore } from '../stores/notes.js'
 
 /**
@@ -327,5 +327,51 @@ describe('categorySiblingTarget', () => {
 
 	it('refuses the unfiled row, which is not a folder', () => {
 		expect(categorySiblingTarget('Work', '')).toBeNull()
+	})
+})
+
+describe('landingCategory', () => {
+	it('starts in the unfiled notes when something is waiting there', () => {
+		expect(landingCategory([
+			{ name: '', count: 2 },
+			{ name: 'Work', count: 5 },
+		])).toBe('')
+	})
+
+	it('starts in the first category when nothing is unfiled', () => {
+		expect(landingCategory([
+			{ name: '', count: 0 },
+			{ name: 'Work', count: 5 },
+			{ name: 'Archive', count: 1 },
+		])).toBe('Archive')
+	})
+
+	it('passes over a parent that holds no notes of its own', () => {
+		// Landing on Work would open an empty list, since its notes are deeper.
+		expect(landingCategory([
+			{ name: '', count: 0 },
+			{ name: 'Work/Projects', count: 3 },
+			{ name: 'Work', count: 0 },
+		])).toBe('Work/Projects')
+	})
+
+	it('prefers a top-level category when several hold notes', () => {
+		expect(landingCategory([
+			{ name: '', count: 0 },
+			{ name: 'Work/Projects', count: 3 },
+			{ name: 'Personal', count: 1 },
+		])).toBe('Personal')
+	})
+
+	it('falls back to the first category when none hold notes', () => {
+		expect(landingCategory([
+			{ name: '', count: 0 },
+			{ name: 'Work', count: 0 },
+			{ name: 'Archive', count: 0 },
+		])).toBe('Archive')
+	})
+
+	it('has nowhere to start when there are no categories at all', () => {
+		expect(landingCategory([{ name: '', count: 0 }])).toBeNull()
 	})
 })

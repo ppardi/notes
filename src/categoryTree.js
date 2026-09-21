@@ -218,3 +218,28 @@ export function categorySiblingTarget(dragged, row) {
 	const parent = separator === -1 ? null : row.slice(0, separator)
 	return categoryDropTarget(dragged, parent)
 }
+
+/**
+ * Which category to open when nothing else says where to go.
+ *
+ * Unfiled notes are what a person most likely wants to deal with, so they win
+ * when there are any. Otherwise the first category by name, preferring a
+ * top-level one, since starting inside somebody's deepest folder is arbitrary.
+ *
+ * @param {Array<{name: string, count: number}>} categories the categories to choose from
+ * @return {string|null} the category to open, or null when there is nowhere to go
+ */
+export function landingCategory(categories) {
+	const unfiled = categories.find((category) => category.name === '')
+	if (unfiled && unfiled.count > 0) {
+		return ''
+	}
+	const named = categories
+		.filter((category) => category.name !== '')
+		.sort((a, b) => a.name.localeCompare(b.name))
+	/* A category holding nothing itself opens an empty list, and parents that
+	   exist only to carry deeper categories hold nothing. */
+	const preferred = (level) => level.find((category) => !category.name.includes('/')) ?? level[0]
+	const withNotes = named.filter((category) => category.count > 0)
+	return (preferred(withNotes) ?? preferred(named))?.name ?? null
+}
