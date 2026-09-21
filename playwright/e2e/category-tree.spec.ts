@@ -379,6 +379,27 @@ test.describe('Category tree', () => {
 		await page.mouse.up()
 	})
 
+	test('keeps the counter in place when a row is hovered or selected', async ({ page }) => {
+		const counter = categoryCounter(page, 'SAGE')
+		const resting = (await counter.boundingBox())!.x
+
+		await categoryRow(page, 'SAGE').hover()
+		await expect(categoryRow(page, 'SAGE').locator('.app-navigation-entry__actions')).toBeVisible()
+		expect((await counter.boundingBox())!.x, 'hovering must not shove the counter aside').toBe(resting)
+
+		await categoryLink(page, 'SAGE').click()
+		await expect(categoryLink(page, 'SAGE')).toHaveAttribute('aria-current', 'page')
+		expect((await counter.boundingBox())!.x, 'selecting must not leave a gap where the menu was').toBe(resting)
+	})
+
+	test('leads a collapsible row with its arrow, before the folder', async ({ page }) => {
+		const row = categoryRow(page, 'Apps')
+		const arrow = (await row.locator('.icon-collapse').boundingBox())!
+		const folder = (await row.locator('.app-navigation-entry-icon').first().boundingBox())!
+
+		expect(arrow.x).toBeLessThan(folder.x)
+	})
+
 	test('selects a nested category from the tree', async ({ page }) => {
 		await categoryLink(page, 'SAGE').click()
 

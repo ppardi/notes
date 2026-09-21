@@ -58,33 +58,22 @@
 	color: var(--color-primary-element-text) !important;
 }
 
-/* 22px is the counter bubble's diameter, so this centres a single-digit
-   bubble under the caption's icon. */
-.app-navigation-entry-wrapper:deep(.app-navigation-entry__utils) {
-	--counter-inset: calc((var(--default-clickable-area) - 22px) / 2);
-	position: relative;
-}
-
+/* The counter keeps the end of the row whatever else is showing, so counters
+   line up down the list rather than sliding aside on hover and leaving a gap
+   behind when the row is selected. The actions button appears before it. */
 .app-navigation-entry-wrapper:deep(.app-navigation-entry__utils .app-navigation-entry__counter-wrapper) {
-	margin-inline-end: var(--counter-inset);
-	transition: margin-inline-end var(--animation-quick) ease-in-out;
+	order: 1;
 }
 
-/* Out of the flow, so revealing it lets the counter animate aside instead of
-   being displaced instantly. */
-.app-navigation-entry-wrapper:deep(.app-navigation-entry__utils .action-item.app-navigation-entry__actions) {
-	position: absolute;
-	inset-inline-end: 0;
+/* The collapse arrow leads the row, the way a disclosure triangle does,
+   instead of trailing along behind the counter. */
+.app-navigation-entry-wrapper:deep(> .app-navigation-entry .icon-collapse) {
+	order: -1;
 }
 
-.app-navigation-entry-wrapper:not(.category-no-actions):deep(.app-navigation-entry:hover .app-navigation-entry__counter-wrapper),
-.app-navigation-entry-wrapper:not(.category-no-actions):deep(.app-navigation-entry:focus-within .app-navigation-entry__counter-wrapper),
-.app-navigation-entry-wrapper:not(.category-no-actions):deep(.app-navigation-entry.active .app-navigation-entry__counter-wrapper) {
-	margin-inline-end: calc(var(--counter-inset) + var(--default-clickable-area));
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.app-navigation-entry-wrapper:deep(.app-navigation-entry__utils .app-navigation-entry__counter-wrapper) {
-		transition: none;
-	}
+/* A row with nothing below it has no arrow, so it holds the space one would
+   take. Without this the names of rows at the same depth would not line up,
+   which is the whole point of indenting them. */
+.app-navigation-entry-wrapper:not(.app-navigation-entry--collapsible):deep(> .app-navigation-entry) {
+	padding-inline-start: var(--default-clickable-area);
 }
