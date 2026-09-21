@@ -131,6 +131,21 @@ test.describe('Search', () => {
 		await expect(page.locator('a[href*="/note/"]')).toHaveCount(1)
 	})
 
+	test('puts the search box in the sidebar, beside the categories', async ({ page }) => {
+		const navigation = page.locator('.app-navigation')
+		await expect(navigation.getByRole('textbox', { name: 'Search for notes' })).toBeVisible()
+
+		// Not in the note list header, where it used to sit.
+		await expect(page.locator('.content-list').getByRole('textbox', { name: 'Search for notes' })).toHaveCount(0)
+	})
+
+	test('says so when a search matches nothing', async ({ page }) => {
+		await searchBox(page).fill('nothing here matches this at all')
+
+		await expect(page.getByText('No results found')).toBeVisible()
+		await expect(page.locator('a[href*="/note/"]')).toHaveCount(0)
+	})
+
 	test('no longer offers a separate way to search all categories', async ({ page }) => {
 		await page.getByTitle('Work', { exact: true }).first().click()
 		await searchBox(page).fill('report')

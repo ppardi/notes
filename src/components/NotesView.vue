@@ -16,14 +16,6 @@
 							{{ t('notes', 'New note') }}
 						</NcButton>
 					</div>
-					<NcTextField
-						v-model="searchText"
-						:label="t('notes', 'Search for notes')"
-						:showTrailingButton="searchText !== ''"
-						trailingButtonIcon="close"
-						:trailingButtonLabel="t('Clear search')"
-						@trailingButtonClick="searchText = ''"
-					/>
 				</div>
 
 				<template v-for="(group, idx) in groupedNotes" :key="idx">
@@ -38,6 +30,15 @@
 						@noteDeleted="onNoteDeleted"
 					/>
 				</template>
+				<NcEmptyContent v-if="searching && displayedNotes.length === 0"
+					:name="t('notes', 'No results found')"
+					:description="t('notes', 'No note matches this search.')"
+				>
+					<template #icon>
+						<MagnifyIcon :size="20" />
+					</template>
+				</NcEmptyContent>
+
 				<div
 					v-show="displayedNotes.length != filteredNotes.length"
 					ref="endOfNotesLabel"
@@ -68,14 +69,15 @@ import NcAppContent from '@nextcloud/vue/components/NcAppContent'
 import NcAppContentDetails from '@nextcloud/vue/components/NcAppContentDetails'
 import NcAppContentList from '@nextcloud/vue/components/NcAppContentList'
 import NcButton from '@nextcloud/vue/components/NcButton'
-import NcTextField from '@nextcloud/vue/components/NcTextField'
+import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
+import MagnifyIcon from 'vue-material-design-icons/Magnify.vue'
 import PlusIcon from 'vue-material-design-icons/Plus.vue'
 import Note from './Note.vue'
 import NotesCaption from './NotesCaption.vue'
 import NotesList from './NotesList.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import logger from '../Logger.js'
-import { createNote, searchNotes } from '../NotesService.js'
+import { createNote } from '../NotesService.js'
 import store from '../store.js'
 import { fetchNoteTemplates, fetchTemplateContent } from '../TemplateService.js'
 import { categoryLabel, categoryRoute, isInCategory, keepCategory } from '../Util.js'
@@ -88,10 +90,11 @@ export default {
 		NcAppContentList,
 		NcAppContentDetails,
 		NcButton,
-		NcTextField,
+		NcEmptyContent,
 		Note,
 		NotesList,
 		NotesCaption,
+		MagnifyIcon,
 		PlusIcon,
 		TemplatePicker,
 	},
@@ -114,7 +117,6 @@ export default {
 			lastYear: new Date(new Date().getFullYear() - 1, 0),
 			showFirstNotesOnly: true,
 			showNote: true,
-			searchText: '',
 			creatingNote: false,
 			templates: [],
 			templatePickerOpen: false,
@@ -200,10 +202,6 @@ export default {
 			this.updateVisibleNoteSelection()
 		},
 
-		searchText(value) {
-			store.app.updateSearchText(value)
-			this.requestSearch(value)
-		},
 	},
 
 	created() {
@@ -217,23 +215,11 @@ export default {
 	},
 
 	beforeUnmount() {
-		clearTimeout(this.searchTimer)
 		this.endOfNotesObserver.disconnect()
 		this.clearVisibleNoteSelection()
 	},
 
 	methods: {
-		/* One request per pause in typing rather than per keystroke: the server
-		   reads every note to answer this. */
-		requestSearch(term) {
-			clearTimeout(this.searchTimer)
-			if (term === '') {
-				store.app.setSearchResults({ term: '', noteIds: [] })
-				return
-			}
-			this.searchTimer = setTimeout(() => searchNotes(term), 250)
-		},
-
 		clearVisibleNoteSelection() {
 			if (store.notes.getSelectedNote() !== null) {
 				store.notes.setSelectedNote(null)

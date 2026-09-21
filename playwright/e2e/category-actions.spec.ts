@@ -24,8 +24,8 @@ function notesSearchField(page: Page): Locator {
 }
 
 function notesViewNewNoteButton(page: Page): Locator {
-	return notesSearchField(page)
-		.locator('xpath=ancestor::div[contains(@class, "content-list__search")][1]')
+	// The search field lives in the sidebar, so it is no longer a way in here.
+	return page.locator('.content-list__actions')
 		.getByRole('button', { name: 'New note', exact: true })
 }
 

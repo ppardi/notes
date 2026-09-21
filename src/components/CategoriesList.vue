@@ -22,6 +22,17 @@
 		</template>
 	</NcAppNavigationCaption>
 
+	<!-- An li because the navigation renders its children into a list. -->
+	<li v-show="!loading" class="category-search">
+		<NcTextField v-model="searchText"
+			:label="t('notes', 'Search for notes')"
+			:showTrailingButton="searchText !== ''"
+			trailingButtonIcon="close"
+			:trailingButtonLabel="t('notes', 'Clear search')"
+			@trailingButtonClick="searchText = ''"
+		/>
+	</li>
+
 	<NcAppNavigationItem
 		v-if="newCategoryDraft"
 		v-show="!loading"
@@ -61,11 +72,12 @@ import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
 import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import CategoryTreeItem from './CategoryTreeItem.vue'
 import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
-import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
+import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, searchNotes, setCategory, setSettings } from '../NotesService.js'
 import store from '../store.js'
 import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepCategory } from '../Util.js'
 
@@ -78,6 +90,7 @@ export default {
 		NcAppNavigationItem,
 		NcAppNavigationCaption,
 		NcCounterBubble,
+		NcTextField,
 		FolderIcon,
 		FolderPlusIcon,
 	},
@@ -120,6 +133,17 @@ export default {
 	},
 
 	computed: {
+		searchText: {
+			get() {
+				return store.app.searchText
+			},
+
+			set(value) {
+				store.app.updateSearchText(value)
+				this.requestSearch(value)
+			},
+		},
+
 		categories() {
 			/* The unfiled category is always offered, even while empty. It is
 			   where a note goes when it is dragged out of a category, so it has
@@ -352,6 +376,17 @@ export default {
 		/* A row's middle nests, its edges place the category at that row's own
 		   level. The tree is sorted by name, so an edge says which level the
 		   category lands in, not where in the level it sits. */
+		/* One request per pause in typing rather than per keystroke: the server
+		   reads every note to answer this. */
+		requestSearch(term) {
+			clearTimeout(this.searchTimer)
+			if (term === '') {
+				store.app.setSearchResults({ term: '', noteIds: [] })
+				return
+			}
+			this.searchTimer = setTimeout(() => searchNotes(term), 250)
+		},
+
 		categoryDropSide(event) {
 			const entry = event.currentTarget?.querySelector?.(':scope > .app-navigation-entry')
 			const rect = entry?.getBoundingClientRect()
@@ -579,6 +614,14 @@ export default {
 
 <style lang="scss" scoped>
 @use './navigationEntry.scss';
+
+.category-search {
+	padding: 0 var(--app-navigation-padding) var(--app-navigation-padding);
+
+	:deep(input) {
+		width: 100%;
+	}
+}
 
 .app-navigation-caption.drop-over-caption {
 	background-color: var(--color-primary-element-light) !important;
