@@ -23,6 +23,7 @@
 		@update:open="tree.setOpen(node.name, $event)"
 		@click.prevent.stop="tree.select(node.name)"
 		@dragstart="tree.dragStart(node.name, $event)"
+		@dragend="tree.dragEnd()"
 		@dragover="tree.dragOver(node.name, $event)"
 		@dragleave="tree.dragLeave(node.name, $event)"
 		@drop="tree.drop(node.name, $event)"

@@ -296,6 +296,32 @@ test.describe('Category tree', () => {
 		}).toPass({ timeout: 5000 })
 	})
 
+	test('accepts a category drop while the browser is hiding the drag data', async ({ page }) => {
+		/* During dragover the drag data store is protected: the types are
+		   readable but getData() answers with an empty string. Only a dragover
+		   the app cancels becomes a drop. */
+		const accepted = await page.evaluate(() => {
+			const source = document.querySelector('[title="Deskspace"]')
+				?.closest('.app-navigation-entry') as HTMLElement
+			const target = document.querySelector('[title="SAGE"]')
+				?.closest('.app-navigation-entry') as HTMLElement
+			const transfer = new DataTransfer()
+			source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }))
+
+			const box = target.getBoundingClientRect()
+			const at = { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }
+			Object.defineProperty(transfer, 'getData', { value: () => '', configurable: true })
+			const dragover = new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer, ...at })
+			// dispatchEvent answers false when the app cancelled the event
+			const cancelled = !target.dispatchEvent(dragover)
+			delete (transfer as unknown as { getData?: unknown }).getData
+			return cancelled
+		})
+
+		expect(accepted, 'the dragover has to be cancelled for a drop to follow').toBe(true)
+		await expect(page.locator('li.drop-over')).toHaveCount(1)
+	})
+
 	test('refuses to drop a category inside itself', async ({ page }) => {
 		const before = await indentOf(page, 'SAGE')
 

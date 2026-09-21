@@ -103,6 +103,7 @@ export default {
 				rename: (name, newName) => this.onRenameCategory(name, newName),
 				remove: (name) => this.onDeleteCategory(name),
 				dragStart: (name, event) => this.onCategoryDragStart(name, event),
+				dragEnd: () => this.onCategoryDragEnd(),
 				dragOver: (name, event) => this.onCategoryDragOver(name, event),
 				dragLeave: (name, event) => this.onCategoryDragLeave(name, event),
 				drop: (name, event) => this.onCategoryDrop(name, event),
@@ -120,6 +121,10 @@ export default {
 	data() {
 		return {
 			dragOverCategory: null,
+			/* The drag data store is protected while a drag is over a target:
+			   the types can be read but the data cannot, so the category being
+			   dragged has to be remembered from the dragstart. */
+			draggedCategory: null,
 			dropBesideCategory: null,
 			dropBesideSide: 'before',
 			dragOverNewCategory: false,
@@ -403,6 +408,11 @@ export default {
 			return 'into'
 		},
 
+		onCategoryDragEnd() {
+			this.draggedCategory = null
+			this.clearCategoryDropMarks()
+		},
+
 		clearCategoryDropMarks() {
 			this.dragOverCategory = null
 			this.dropBesideCategory = null
@@ -493,7 +503,7 @@ export default {
 			   drop lands too. */
 			event.stopPropagation()
 			if (isCategoryDrag(event)) {
-				const dragged = getDraggedCategory(event)
+				const dragged = this.draggedCategory ?? getDraggedCategory(event)
 				const side = this.categoryDropSide(event)
 				const valid = side === 'into'
 					? categoryDropTarget(dragged, category) !== null
@@ -542,7 +552,8 @@ export default {
 			this.clearCategoryDropMarks()
 
 			if (isCategoryDrag(event)) {
-				const dragged = getDraggedCategory(event)
+				// an empty answer means the browser withheld it, not the unfiled category
+				const dragged = getDraggedCategory(event) || this.draggedCategory
 				if (this.categoryDropSide(event) === 'into') {
 					await this.moveCategory(dragged, category)
 				} else {
@@ -607,6 +618,7 @@ export default {
 			event.stopPropagation()
 			event.dataTransfer.effectAllowed = 'move'
 			event.dataTransfer.setData(CATEGORY_DRAG_TYPE, category)
+			this.draggedCategory = category
 		},
 	},
 }
