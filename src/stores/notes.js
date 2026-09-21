@@ -119,7 +119,9 @@ export const useNotesStore = defineStore('notes', {
 			   browser does not hold. Until its answer arrives, and if it never
 			   does, matching titles keeps the list responsive to typing. */
 			const results = appStore.searchResults
-			const matched = searching && results?.term === appStore.searchText
+			/* The server answers with the term it actually searched, which it
+			   trims, so stray whitespace must not look like a stale answer. */
+			const matched = searching && results?.term === appStore.searchText.trim()
 				? new Set(results.noteIds)
 				: null
 			const notes = state.notes.filter((note) => {

@@ -107,6 +107,17 @@ test.describe('Search', () => {
 		await expect(noteRow(page, workReport)).toBeHidden()
 	})
 
+	test('finds a curly apostrophe when a straight one is typed', async ({ page }) => {
+		// What the rich editor writes when you type an apostrophe.
+		const curly = await createNoteViaApi(page, 'Personal', 'Reading', 'I\u2019m deep into source material')
+		await page.goto('/index.php/apps/notes/')
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		await searchBox(page).fill("I'm deep into source material")
+
+		await expect(noteRow(page, curly)).toBeVisible()
+	})
+
 	test('matches notes on every term given', async ({ page }) => {
 		const both = await createNoteViaApi(page, 'Personal', 'Trip', 'lisbon in november')
 		await createNoteViaApi(page, 'Personal', 'Other', 'lisbon in may')

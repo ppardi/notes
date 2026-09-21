@@ -109,9 +109,56 @@ class NotesService {
 		}
 	}
 
+	/**
+	 * Punctuation that editors substitute as you type, mapped back to what is
+	 * on a keyboard. A note written in the rich editor holds a typographic
+	 * apostrophe, so a search for "I'm" would otherwise never find it.
+	 */
+	private const SEARCH_EQUIVALENTS = [
+		"\u{2018}" => "'",
+		"\u{2019}" => "'",
+		"\u{201A}" => "'",
+		"\u{201B}" => "'",
+		"\u{201C}" => '"',
+		"\u{201D}" => '"',
+		"\u{201E}" => '"',
+		"\u{201F}" => '"',
+		"\u{00AB}" => '<<',
+		"\u{00BB}" => '>>',
+		"\u{2012}" => '-',
+		"\u{2013}" => '-',
+		"\u{2014}" => '-',
+		"\u{2015}" => '-',
+		"\u{2212}" => '-',
+		"\u{2026}" => '...',
+		"\u{00A0}" => ' ',
+		"\u{2190}" => '<-',
+		"\u{2192}" => '->',
+		"\u{2194}" => '<->',
+		"\u{21D4}" => '<=>',
+		"\u{27F7}" => '<-->',
+		"\u{00A9}" => '(c)',
+		"\u{00AE}" => '(r)',
+		"\u{2122}" => '(tm)',
+		"\u{00BD}" => '1/2',
+		"\u{00BC}" => '1/4',
+		"\u{00BE}" => '3/4',
+		"\u{00B9}" => '^1',
+		"\u{00B2}" => '^2',
+		"\u{00B3}" => '^3',
+		"\u{00B1}" => '+/-',
+		"\u{2260}" => '!=',
+		"\u{00D7}" => 'x',
+	];
+
+	private function normalizeForSearch(string $text) : string {
+		return strtr($text, self::SEARCH_EQUIVALENTS);
+	}
+
 	private function searchTermInData(array $strings, string $term) : bool {
+		$needle = $this->normalizeForSearch($term);
 		foreach ($strings as $str) {
-			if (stripos($str, $term) !== false) {
+			if (stripos($this->normalizeForSearch($str), $needle) !== false) {
 				return true;
 			}
 		}

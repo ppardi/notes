@@ -186,6 +186,14 @@ describe('notes store content search', () => {
 		expect(visibleIds()).toEqual([4])
 	})
 
+	it('uses the answer even when the box holds stray whitespace', () => {
+		// The server answers with the term it actually searched, trimmed.
+		app.updateSearchText('quarterly ')
+		app.setSearchResults({ term: 'quarterly', noteIds: [2] })
+
+		expect(visibleIds()).toEqual([2])
+	})
+
 	it('shows nothing when the server matched nothing', () => {
 		app.updateSearchText('quarterly')
 		app.setSearchResults({ term: 'quarterly', noteIds: [] })
