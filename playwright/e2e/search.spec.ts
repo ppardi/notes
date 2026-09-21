@@ -9,7 +9,7 @@ import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
 import { deleteAllNotes, newNoteButton, noteRow } from '../support/note.ts'
 
-async function createNoteViaApi(page: Page, category: string, title: string): Promise<number> {
+async function createNoteViaApi(page: Page, category: string, title: string, body = ''): Promise<number> {
 	const user = process.env.NC_USER ?? 'admin'
 	const password = process.env.NC_PASS ?? 'admin'
 	const headers = { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
@@ -17,7 +17,7 @@ async function createNoteViaApi(page: Page, category: string, title: string): Pr
 		headers,
 		// The title has to be explicit: given only content, the API files the
 		// note as "New note", which no search for its text would ever find.
-		data: { category, title, content: `# ${title}` },
+		data: { category, title, content: `# ${title}\n\n${body}` },
 	})
 	expect(response.ok(), `creating note in "${category}"`).toBeTruthy()
 	return (await response.json() as { id: number }).id
@@ -93,6 +93,31 @@ test.describe('Search', () => {
 
 		await expect(noteRow(page, workReport)).toBeVisible()
 		await expect(noteRow(page, looseReport)).toBeHidden()
+	})
+
+	test('finds a word that appears only inside a note', async ({ page }) => {
+		const buried = await createNoteViaApi(page, 'Personal', 'Groceries', 'remember the zarquon')
+		await page.goto('/index.php/apps/notes/')
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		await searchBox(page).fill('zarquon')
+
+		// Nothing in the title says "zarquon", so only the server can match it.
+		await expect(noteRow(page, buried)).toBeVisible()
+		await expect(noteRow(page, workReport)).toBeHidden()
+	})
+
+	test('matches notes on every term given', async ({ page }) => {
+		const both = await createNoteViaApi(page, 'Personal', 'Trip', 'lisbon in november')
+		await createNoteViaApi(page, 'Personal', 'Other', 'lisbon in may')
+		await page.goto('/index.php/apps/notes/')
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		await searchBox(page).fill('lisbon november')
+
+		await expect(noteRow(page, both)).toBeVisible()
+		// The other note carries only one of the two terms.
+		await expect(page.locator('a[href*="/note/"]')).toHaveCount(1)
 	})
 
 	test('no longer offers a separate way to search all categories', async ({ page }) => {

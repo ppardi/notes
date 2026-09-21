@@ -75,7 +75,7 @@ import NotesCaption from './NotesCaption.vue'
 import NotesList from './NotesList.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import logger from '../Logger.js'
-import { createNote } from '../NotesService.js'
+import { createNote, searchNotes } from '../NotesService.js'
 import store from '../store.js'
 import { fetchNoteTemplates, fetchTemplateContent } from '../TemplateService.js'
 import { categoryLabel, categoryRoute, isInCategory, keepCategory } from '../Util.js'
@@ -200,7 +200,10 @@ export default {
 			this.updateVisibleNoteSelection()
 		},
 
-		searchText(value) { store.app.updateSearchText(value) },
+		searchText(value) {
+			store.app.updateSearchText(value)
+			this.requestSearch(value)
+		},
 	},
 
 	created() {
@@ -214,11 +217,23 @@ export default {
 	},
 
 	beforeUnmount() {
+		clearTimeout(this.searchTimer)
 		this.endOfNotesObserver.disconnect()
 		this.clearVisibleNoteSelection()
 	},
 
 	methods: {
+		/* One request per pause in typing rather than per keystroke: the server
+		   reads every note to answer this. */
+		requestSearch(term) {
+			clearTimeout(this.searchTimer)
+			if (term === '') {
+				store.app.setSearchResults({ term: '', noteIds: [] })
+				return
+			}
+			this.searchTimer = setTimeout(() => searchNotes(term), 250)
+		},
+
 		clearVisibleNoteSelection() {
 			if (store.notes.getSelectedNote() !== null) {
 				store.notes.setSelectedNote(null)

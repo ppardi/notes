@@ -328,6 +328,31 @@ export async function deleteNote(noteId, onNoteDeleted) {
 	store.notes.removeNote(noteId)
 }
 
+/**
+ * Ask the server which notes match a search.
+ *
+ * It searches titles, categories and what is written inside a note. The note
+ * list in the browser holds no content, so this is the only way to match on it.
+ *
+ * @param {string} term what to search for
+ * @return {Promise<void>} resolves once the answer is stored
+ */
+export function searchNotes(term) {
+	return axios
+		.get(url('/notes/search'), { params: { term } })
+		.then((response) => {
+			store.app.setSearchResults({
+				term: response.data.term,
+				noteIds: response.data.noteIds,
+			})
+		})
+		.catch((err) => {
+			/* The list falls back to matching titles, so a failed search is
+			   narrower rather than broken, and not worth a toast on a keystroke. */
+			logger.error('Searching notes has failed', { err })
+		})
+}
+
 export function setFavorite(noteId, favorite) {
 	return axios
 		.put(url('/notes/' + noteId + '/favorite'), { favorite })

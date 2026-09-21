@@ -115,13 +115,24 @@ export const useNotesStore = defineStore('notes', {
 			   list rather than inside a category, so scoping it to the selected
 			   one hides the matches people are looking for. */
 			const searching = searchText !== ''
+			/* The server searches what is written inside a note, which the
+			   browser does not hold. Until its answer arrives, and if it never
+			   does, matching titles keeps the list responsive to typing. */
+			const results = appStore.searchResults
+			const matched = searching && results?.term === appStore.searchText
+				? new Set(results.noteIds)
+				: null
 			const notes = state.notes.filter((note) => {
 				if (!searching && state.selectedCategory !== null && state.selectedCategory !== note.category) {
 					return false
 				}
 
-				if (searching && note.title.toLowerCase().indexOf(searchText) === -1) {
-					return false
+				if (searching) {
+					const titleMatches = note.title.toLowerCase().indexOf(searchText) !== -1
+					/* Titles still count alongside the server's answer: a note
+					   being written has not reached the disk the server reads,
+					   and it should not vanish from a search for its own title. */
+					return matched === null ? titleMatches : titleMatches || matched.has(note.id)
 				}
 
 				return true

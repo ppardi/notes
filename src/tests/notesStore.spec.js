@@ -132,3 +132,64 @@ describe('notes store search', () => {
 		expect(visibleIds()).toEqual([2])
 	})
 })
+
+describe('notes store content search', () => {
+	let store
+	let app
+
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		store = useNotesStore()
+		app = useAppStore()
+		const notes = [
+			{ id: 1, title: 'Shopping', category: '' },
+			{ id: 2, title: 'Minutes', category: 'Work' },
+			{ id: 3, title: 'Report', category: 'Work' },
+		]
+		notes.forEach((note) => store.updateNote({ ...note, internalPath: '', readonly: false }))
+	})
+
+	/**
+	 * @return {Array<number>} the ids the note list would show
+	 */
+	function visibleIds() {
+		return store.getFilteredNotes().map((note) => note.id).sort()
+	}
+
+	it('shows what the server matched, including notes whose title does not', () => {
+		app.updateSearchText('quarterly')
+		app.setSearchResults({ term: 'quarterly', noteIds: [2] })
+
+		// The word is in the body of note 2, which no title filter would find.
+		expect(visibleIds()).toEqual([2])
+	})
+
+	it('falls back to titles until the server answers', () => {
+		app.updateSearchText('report')
+
+		expect(visibleIds()).toEqual([3])
+	})
+
+	it('ignores results belonging to an earlier search', () => {
+		app.setSearchResults({ term: 'repo', noteIds: [1, 2, 3] })
+		app.updateSearchText('report')
+
+		expect(visibleIds()).toEqual([3])
+	})
+
+	it('still matches a title the server has not seen yet', () => {
+		// A note being written is not on the disk the server searches.
+		store.updateNote({ id: 4, title: 'Draft report', category: '', internalPath: '', readonly: false })
+		app.updateSearchText('draft')
+		app.setSearchResults({ term: 'draft', noteIds: [] })
+
+		expect(visibleIds()).toEqual([4])
+	})
+
+	it('shows nothing when the server matched nothing', () => {
+		app.updateSearchText('quarterly')
+		app.setSearchResults({ term: 'quarterly', noteIds: [] })
+
+		expect(visibleIds()).toEqual([])
+	})
+})

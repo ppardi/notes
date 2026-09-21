@@ -49,6 +49,11 @@ return ['routes' => [
 		'verb' => 'GET',
 	],
 	[
+		'name' => 'notes#search',
+		'url' => '/notes/search',
+		'verb' => 'GET',
+	],
+	[
 		'name' => 'notes#get',
 		'url' => '/notes/{id}',
 		'verb' => 'GET',

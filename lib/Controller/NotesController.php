@@ -123,6 +123,28 @@ class NotesController extends Controller {
 	}
 
 	/**
+	 * Which notes match a search, by id.
+	 *
+	 * The note list in the browser holds titles but not content, which is left
+	 * out of the sync payload on purpose, so a search of what is written inside
+	 * a note has to be answered here.
+	 */
+	#[NoAdminRequired]
+	public function search(string $term = '') : JSONResponse {
+		return $this->helper->handleErrorResponse(function () use ($term) {
+			$trimmed = trim($term);
+			if ($trimmed === '') {
+				return [ 'term' => '', 'noteIds' => [] ];
+			}
+			$notes = $this->notesService->search($this->helper->getUID(), $trimmed);
+			return [
+				'term' => $trimmed,
+				'noteIds' => array_map(fn (Note $note) => $note->getId(), $notes),
+			];
+		});
+	}
+
+	/**
 	 *
 	 */
 	#[NoAdminRequired]

@@ -13,6 +13,11 @@ export const useAppStore = defineStore('app', {
 		documentTitle: null,
 		searchText: '',
 		/**
+		 * Which notes the server matched, and the search it was answering. The
+		 * term is kept so that an answer to an earlier search can be ignored.
+		 */
+		searchResults: null,
+		/**
 		 * Zen mode hides the app's category sidebar and the note list, leaving just the note.
 		 */
 		zenMode: false,
@@ -41,6 +46,10 @@ export const useAppStore = defineStore('app', {
 
 		updateSearchText(searchText) {
 			this.searchText = searchText
+		},
+
+		setSearchResults({ term, noteIds }) {
+			this.searchResults = { term, noteIds }
 		},
 
 		setZenMode(zenMode) {
