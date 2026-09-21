@@ -58,6 +58,16 @@ test.describe('Note actions', () => {
 		expect(fill).toBe(text)
 	})
 
+	test('closes the actions menu after opening the sidebar', async ({ page }, testInfo: TestInfo) => {
+		const noteId = await createNote(page, uniqueTitle('sidebar-close', testInfo))
+
+		await openNoteActions(page, noteId)
+		await page.getByRole('menuitem', { name: 'Details', exact: true }).click()
+
+		// Left open, it covers the rows underneath it.
+		await expect(page.locator('.action-item__popper.v-popper__popper--shown')).toHaveCount(0)
+	})
+
 	test('closes the actions menu after toggling favorite', async ({ page }, testInfo: TestInfo) => {
 		const noteId = await createNote(page, uniqueTitle('menu-close', testInfo))
 

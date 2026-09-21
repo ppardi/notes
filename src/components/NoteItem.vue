@@ -32,21 +32,21 @@
 				{{ actionFavoriteText }}
 			</NcActionButton>
 
-			<NcActionButton @click="openSidebar('sharing')">
+			<NcActionButton :closeAfterClick="true" @click="openSidebar('sharing')">
 				<template #icon>
 					<ShareVariantOutlineIcon :size="20" />
 				</template>
 				{{ t('notes', 'Share') }}
 			</NcActionButton>
 
-			<NcActionButton v-if="hasVersionsTab()" @click="openSidebar('files_versions')">
+			<NcActionButton v-if="hasVersionsTab()" :closeAfterClick="true" @click="openSidebar('files_versions')">
 				<template #icon>
 					<BackupRestoreIcon :size="20" />
 				</template>
 				{{ t('notes', 'Versions') }}
 			</NcActionButton>
 
-			<NcActionButton @click="openSidebar('notes-info')">
+			<NcActionButton :closeAfterClick="true" @click="openSidebar('notes-info')">
 				<template #icon>
 					<InformationOutlineIcon :size="20" />
 				</template>
