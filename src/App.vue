@@ -11,6 +11,10 @@
 		:contentClass="{loading: loading.notes}"
 	>
 		<NcAppNavigation :class="{loading: loading.notes, 'icon-error': error}">
+			<template #search>
+				<NotesSearch v-show="!loading.notes" />
+			</template>
+
 			<template #list>
 				<CategoriesList :loading="loading.notes" :hideNewCategoryAction="!!error" />
 			</template>
@@ -90,6 +94,7 @@ import AppSettings from './components/AppSettings.vue'
 import CategoriesList from './components/CategoriesList.vue'
 import EditorHint from './components/Modal/EditorHint.vue'
 import NoteSidebar from './components/NoteSidebar.vue'
+import NotesSearch from './components/NotesSearch.vue'
 import { landingCategory } from './categoryTree.js'
 import { config } from './config.js'
 import logger from './Logger.js'
@@ -119,6 +124,7 @@ export default {
 		NcContent,
 		FocusIcon,
 		NoteSidebar,
+		NotesSearch,
 		ShareVariantOutlineIcon,
 	},
 

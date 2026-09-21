@@ -131,9 +131,14 @@ test.describe('Search', () => {
 		await expect(page.locator('a[href*="/note/"]')).toHaveCount(1)
 	})
 
-	test('puts the search box in the sidebar, beside the categories', async ({ page }) => {
-		const navigation = page.locator('.app-navigation')
-		await expect(navigation.getByRole('textbox', { name: 'Search for notes' })).toBeVisible()
+	test('puts the search box above the category list', async ({ page }) => {
+		const field = page.locator('.app-navigation__search').getByRole('textbox', { name: 'Search for notes' })
+		await expect(field).toBeVisible()
+
+		// Above the heading, rather than splitting it from the tree below it.
+		const box = (await field.boundingBox())!
+		const heading = (await page.getByText('Categories', { exact: true }).first().boundingBox())!
+		expect(box.y).toBeLessThan(heading.y)
 
 		// Not in the note list header, where it used to sit.
 		await expect(page.locator('.content-list').getByRole('textbox', { name: 'Search for notes' })).toHaveCount(0)
