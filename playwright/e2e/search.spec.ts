@@ -144,6 +144,14 @@ test.describe('Search', () => {
 		await expect(page.locator('.content-list').getByRole('textbox', { name: 'Search for notes' })).toHaveCount(0)
 	})
 
+	test('lines the search box up with the category rows', async ({ page }) => {
+		const field = (await page.locator('.app-navigation__search input').boundingBox())!
+		const row = (await page.locator('.app-navigation-entry').first().boundingBox())!
+
+		expect(Math.round(field.x), 'the box starts where the rows do').toBe(Math.round(row.x))
+		expect(Math.round(field.x + field.width), 'and ends where they do').toBe(Math.round(row.x + row.width))
+	})
+
 	test('says so when a search matches nothing', async ({ page }) => {
 		await searchBox(page).fill('nothing here matches this at all')
 

@@ -4,13 +4,15 @@
 -->
 
 <template>
-	<NcTextField v-model="searchText"
-		:label="t('notes', 'Search for notes')"
-		:showTrailingButton="searchText !== ''"
-		trailingButtonIcon="close"
-		:trailingButtonLabel="t('notes', 'Clear search')"
-		@trailingButtonClick="searchText = ''"
-	/>
+	<div class="notes-search">
+		<NcTextField v-model="searchText"
+			:label="t('notes', 'Search for notes')"
+			:showTrailingButton="searchText !== ''"
+			trailingButtonIcon="close"
+			:trailingButtonLabel="t('notes', 'Clear search')"
+			@trailingButtonClick="searchText = ''"
+		/>
+	</div>
 </template>
 
 <script>
@@ -57,3 +59,14 @@ export default {
 	},
 }
 </script>
+
+<style lang="scss" scoped>
+/* The navigation's search slot carries no padding of its own, so the field
+   would run the full width of the pane while every row below it is inset, and
+   sit hard against the top edge. The rows are inset 8px and the field holds
+   2px of that inside its own box. */
+.notes-search {
+	padding-block: 2px var(--default-grid-baseline, 4px);
+	padding-inline: 6px;
+}
+</style>
