@@ -65,15 +65,22 @@
 	order: 1;
 }
 
+/* The arrow's button is a whole clickable area wide, which next to a 10px
+   indent per level leaves a gutter out of all proportion to the depth it is
+   marking. Its trailing edge is pulled in to close the gap, which narrows the
+   gutter without shrinking what can be clicked. */
+$collapse-gutter: 24px;
+
 /* The collapse arrow leads the row, the way a disclosure triangle does,
    instead of trailing along behind the counter. */
 .app-navigation-entry-wrapper:deep(> .app-navigation-entry .icon-collapse) {
 	order: -1;
+	margin-inline-end: calc($collapse-gutter - var(--default-clickable-area));
 }
 
 /* A row with nothing below it has no arrow, so it holds the space one would
    take. Without this the names of rows at the same depth would not line up,
    which is the whole point of indenting them. */
 .app-navigation-entry-wrapper:not(.app-navigation-entry--collapsible):deep(> .app-navigation-entry) {
-	padding-inline-start: var(--default-clickable-area);
+	padding-inline-start: $collapse-gutter;
 }
