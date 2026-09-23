@@ -16,7 +16,7 @@ import { useIsMobile } from '@nextcloud/vue/composables/useIsMobile'
 import { markRaw } from 'vue'
 import { queueCommand, refreshNote } from '../NotesService.js'
 import store from '../store.js'
-import { routeIsNewNote } from '../Util.js'
+import { routeIsNewNote, tagsMayHaveChanged } from '../Util.js'
 
 export default {
 	name: 'NoteRich',
@@ -142,7 +142,28 @@ export default {
 				if (this.shouldAutotitle) {
 					queueCommand(fileid, 'autotitle')
 				}
+				this.refreshTags()
 			}
+		},
+
+		/**
+		 * Ask the server what it parsed out of the note that was just written.
+		 *
+		 * Text saves the file itself rather than through the Notes API, so
+		 * nothing comes back from the save to say which tags the note now
+		 * carries. Without this the navigation would not show a tag until the
+		 * page was reloaded. The plain editor needs none of this: it saves
+		 * through the API, whose response carries the note's tags already.
+		 */
+		refreshTags() {
+			const note = this.note
+			if (!note) {
+				return
+			}
+			if (!tagsMayHaveChanged(note)) {
+				return
+			}
+			refreshNote(note.id, note.etag).catch(() => {})
 		},
 
 		getTitle(content) {

@@ -25,6 +25,7 @@ import {
 	routeIsNewNote,
 	tagModeFromQuery,
 	tagsFromQuery,
+	tagsMayHaveChanged,
 	tagsRoute,
 	tagsToQuery,
 } from '../Util.js'
@@ -436,5 +437,24 @@ describe('tag route queries', () => {
 		expect(tagsRoute(route, ['philosophy'], 'any')).toEqual({
 			query: { other: 'kept', category: undefined, tags: 'philosophy', mode: undefined },
 		})
+	})
+})
+
+describe('tagsMayHaveChanged', () => {
+	it('is true when the note already carries tags, since they may have gone', () => {
+		expect(tagsMayHaveChanged({ tags: ['philosophy'], content: 'no hash left' })).toBe(true)
+	})
+
+	it('is true when the text holds a hash, since one may have appeared', () => {
+		expect(tagsMayHaveChanged({ tags: [], content: 'now with #philosophy' })).toBe(true)
+	})
+
+	it('is false for a note with neither, which cannot have changed', () => {
+		expect(tagsMayHaveChanged({ tags: [], content: 'plain prose' })).toBe(false)
+	})
+
+	it('copes with a note that has no tags or content yet', () => {
+		expect(tagsMayHaveChanged({})).toBe(false)
+		expect(tagsMayHaveChanged(null)).toBe(false)
 	})
 })

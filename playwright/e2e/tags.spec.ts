@@ -8,6 +8,7 @@ import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
 import { createNoteViaApi, deleteAllNotes, newNoteButton, noteRow } from '../support/note.ts'
+import { NoteEditor } from '../support/sections/NoteEditor.ts'
 
 function tagRow(page: Page, name: string): Locator {
 	return page.getByRole('link', { name, exact: true })
@@ -42,6 +43,24 @@ test.describe('Tags', () => {
 		const zetaCount = tagRow(page, 'zeta').locator('xpath=ancestor::li[1]')
 			.locator('.app-navigation-entry__counter-wrapper')
 		await expect(zetaCount).toContainText('2')
+	})
+
+	test('shows a tag as soon as it is typed, without a reload', async ({ page }) => {
+		await createNoteViaApi(page, 'Personal', 'Untagged so far', 'nothing here yet')
+		await openNotesApp(page)
+		await expect(tagsCaption(page)).toHaveCount(0)
+
+		await page.getByRole('link', { name: 'Untagged so far', exact: true }).click()
+		const editor = new NoteEditor(page)
+		await editor.type('now tagged #fresh')
+		await editor.expectText('now tagged #fresh')
+
+		/* No reload: the save has to bring the parsed tags back on its own.
+		   Which editor this exercises depends on the instance. Without the Text
+		   app it is the plain one, which learns the tags from its own save
+		   response; with Text installed it is the rich editor, which has to ask
+		   for them because Text writes the file itself. */
+		await expect(tagRow(page, 'fresh')).toBeVisible({ timeout: 15000 })
 	})
 
 	test('shows only the notes carrying the tag, and says so in the URL', async ({ page }) => {

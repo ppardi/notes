@@ -78,6 +78,25 @@ export function categoryFromQuery(query) {
 }
 
 /**
+ * Whether asking the server for a note's tags could tell us anything new.
+ *
+ * The tags are parsed on the server, so the only way to learn them is to ask.
+ * This runs on every save, so it is worth skipping the request when the answer
+ * cannot have changed: a note that carries no tags and whose text holds no hash
+ * at all has none to gain. A note that does carry tags always warrants the
+ * question, because the last one may have just been deleted.
+ *
+ * @param {object|null} note the note as the browser holds it
+ * @return {boolean} whether to refresh it
+ */
+export function tagsMayHaveChanged(note) {
+	if (!note) {
+		return false
+	}
+	return (note.tags?.length ?? 0) > 0 || (note.content ?? '').includes('#')
+}
+
+/**
  * The tags a route query selects.
  *
  * @param {object} [query] the route query
