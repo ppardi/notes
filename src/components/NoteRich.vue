@@ -215,6 +215,23 @@ export default {
 	background-color: var(--color-main-background);
 }
 
+/* Nextcloud core renders emphasis as lighter text rather than italics
+   (`em { font-style: normal; color: var(--color-text-maxcontrast) }` in
+   core/css/apps.scss). Text puts the italics back but not the color, so
+   emphasis inside the editor comes out grey. The preview editor already
+   corrects this the same way. */
+.text-editor:deep(.ProseMirror em) {
+	color: inherit;
+}
+
+/* The browser's own `mark` styling forces near-black text. Against the dark
+   theme's --color-mark (#4d3800) that lands at 1.88:1, which is why a highlight
+   there is unreadable. The ground itself is themed by core and left alone; only
+   the text has to follow the body, which takes the dark theme to 9.36:1. */
+.text-editor:deep(.ProseMirror mark) {
+	color: inherit;
+}
+
 .is-mobile:deep(.text-menubar) {
 	// Avoid overlapping the navigation toggle
 	margin-inline-start: var(--default-clickable-area);
