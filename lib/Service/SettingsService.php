@@ -193,17 +193,22 @@ class SettingsService {
 		}
 		// remove illegal, empty and default settings
 		foreach ($settings as $name => $value) {
-			if ($value !== null && array_key_exists($name, $this->attrs)) {
+			/* Anything that is not one of ours is dropped before it is asked
+			   for a default it does not have. The request's own parameters
+			   arrive in this array — "_route" among them — and once one was
+			   stored it came back on every later write. */
+			if (!array_key_exists($name, $this->attrs)) {
+				unset($settings[$name]);
+				continue;
+			}
+			if ($value !== null) {
 				$settings[$name] = $value = $this->attrs[$name]['validate']($value);
 			}
 			if ($name === 'notesPath' && $value !== null) {
 				continue;
 			}
 			$default = is_callable($this->attrs[$name]['default']) ? $this->attrs[$name]['default']($uid) : $this->attrs[$name]['default'];
-			if (!$writeDefaults && (!array_key_exists($name, $this->attrs)
-				|| $value === null
-				|| $value === $default
-			)) {
+			if (!$writeDefaults && ($value === null || $value === $default)) {
 				unset($settings[$name]);
 			}
 		}
