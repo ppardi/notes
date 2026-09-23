@@ -339,6 +339,15 @@ export default {
 			if (tagsFromQuery(this.$route.query).length > 0) {
 				return
 			}
+			/* A link to one note — from the server-wide search, a share, the
+			   dashboard — says nothing about the list, but the note still has to
+			   open. Any other category would file it out of the list and hide
+			   it, so the list follows the note instead of the other way round. */
+			const linked = this.linkedNoteCategory()
+			if (linked !== null) {
+				await this.$router.replace(categoryRoute(this.$route, linked)).catch(() => {})
+				return
+			}
 			const stored = categoryFromSetting(store.app.settings?.lastViewedCategory)
 			/* A category that has since been renamed or deleted would filter every
 			   note away and leave the app on an empty list. The unfiled category
@@ -352,6 +361,19 @@ export default {
 				return
 			}
 			await this.$router.replace(categoryRoute(this.$route, category)).catch(() => {})
+		},
+
+		/* The category of the note the route points at, or null when the route
+		   points at no note, or at one this user does not have. */
+		linkedNoteCategory() {
+			if (this.$route.name !== 'note') {
+				return null
+			}
+			const noteId = Number.parseInt(this.$route.params.noteId, 10)
+			if (!Number.isFinite(noteId)) {
+				return null
+			}
+			return store.notes.getNote(noteId)?.category ?? null
 		},
 
 		rememberCategory(category) {

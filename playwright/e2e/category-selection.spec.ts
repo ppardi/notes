@@ -8,6 +8,7 @@ import type { APIRequestContext, Locator, Page, TestInfo } from '@playwright/tes
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
 import { deleteAllNotes, newNoteButton, noteRow } from '../support/note.ts'
+import { NoteEditor } from '../support/sections/NoteEditor.ts'
 
 async function createNoteViaApi(page: Page, category: string, title: string): Promise<number> {
 	const user = process.env.NC_USER ?? 'admin'
@@ -137,6 +138,26 @@ test.describe('Category selection', () => {
 
 		await expect(noteRow(page, workNote)).toBeVisible()
 		await expect(noteRow(page, personalNote)).toBeHidden()
+	})
+
+	test('opens the note a link points at, whatever category was stored', async ({ page }) => {
+		await openNotesApp(page)
+		const stored = storedSelection(page)
+		await navigationLink(page, work).click()
+		await stored
+
+		/* What the server-wide search, a share or the dashboard links to: the
+		   note alone, with nothing in the query to say what the list should
+		   show. Restoring the stored category over it used to file the note out
+		   of the list, which hid the note and left the link looking broken. */
+		await page.goto(`/index.php/apps/notes/note/${personalNote}`)
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		await new NoteEditor(page).expectText('Personal note')
+		await expect(page).toHaveURL(new RegExp(`/note/${personalNote}(\\?|$)`))
+		// The list follows the note, rather than the note following the list.
+		await expect(noteRow(page, personalNote)).toBeVisible()
+		await expect(noteRow(page, workNote)).toBeHidden()
 	})
 
 	test('lets a category in the URL win over the stored one', async ({ page }) => {
