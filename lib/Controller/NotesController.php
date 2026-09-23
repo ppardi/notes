@@ -145,6 +145,18 @@ class NotesController extends Controller {
 	}
 
 	/**
+	 * Rewrite one tag as another across every note that carries it.
+	 *
+	 * Merging is the same request with a name that is already in use.
+	 */
+	#[NoAdminRequired]
+	public function renameTag(string $from = '', string $to = '') : JSONResponse {
+		return $this->helper->handleErrorResponse(function () use ($from, $to) {
+			return $this->notesService->renameTag($this->helper->getUID(), $from, $to);
+		});
+	}
+
+	/**
 	 *
 	 */
 	#[NoAdminRequired]

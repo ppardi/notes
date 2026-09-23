@@ -95,6 +95,71 @@ class NotesService {
 		));
 	}
 
+	/**
+	 * Rewrite one tag as another across every note that carries it.
+	 *
+	 * Merging is the same operation onto a name already in use.
+	 *
+	 * The notes to touch are known from the cached tag sets, so nothing is read
+	 * that does not need rewriting. Each note is written through the app's own
+	 * write path, which enforces permissions and storage limits and raises the
+	 * file events that keep the cache in step. There is no etag check, because
+	 * there is no client etag in play: a note being edited in the rich editor at
+	 * that moment sees the rewrite as any other external change to the file.
+	 *
+	 * Nothing is rolled back if part of it fails. A half-renamed tag leaves both
+	 * names in the list, which is visible and can simply be renamed again —
+	 * where undoing the writes that did succeed would be another round of edits
+	 * against notes the user can see.
+	 *
+	 * @param string $userId whose notes to rewrite
+	 * @param string $from the tag to rewrite
+	 * @param string $to the tag to rewrite it as
+	 * @return array{renamed: list<int>, skipped: list<array{id: int, reason: string}>}
+	 */
+	public function renameTag(string $userId, string $from, string $to) : array {
+		/* Read strictly: a value that merely contains a tag is refused rather
+		   than coerced, or "two words" would quietly rename every note to
+		   "#two". */
+		$from = $this->hashtagParser->parseExactTag($from);
+		$to = $this->hashtagParser->parseExactTag($to);
+		if ($from === null || $to === null || $from === $to) {
+			return [ 'renamed' => [], 'skipped' => [] ];
+		}
+
+		$notes = $this->getAll($userId)['notes'];
+		$metaNotes = $this->metaService->getAll($userId, $notes);
+
+		$renamed = [];
+		$skipped = [];
+		foreach ($metaNotes as $id => $metaNote) {
+			if (!in_array($from, $metaNote->meta->getTags() ?? [], true)) {
+				continue;
+			}
+			$note = $metaNote->note;
+			if ($note->getReadOnly()) {
+				$skipped[] = [ 'id' => $id, 'reason' => 'readonly' ];
+				continue;
+			}
+			try {
+				$content = $note->getContent();
+				$updated = $this->hashtagParser->rename($content, $from, $to);
+				if ($updated !== $content) {
+					$note->setContent($updated);
+				}
+				$renamed[] = $id;
+			} catch (\Throwable $e) {
+				$this->noteUtil->util->logger->error(
+					'Could not rename tag in note ' . $id,
+					[ 'exception' => $e ]
+				);
+				$skipped[] = [ 'id' => $id, 'reason' => 'error' ];
+			}
+		}
+
+		return [ 'renamed' => $renamed, 'skipped' => $skipped ];
+	}
+
 	private function searchTermsInNote(Note $note, array $terms) : bool {
 		try {
 			$d = $note->getData();

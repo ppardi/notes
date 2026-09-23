@@ -53,6 +53,12 @@ return ['routes' => [
 		'url' => '/notes/search',
 		'verb' => 'GET',
 	],
+	/* Before /notes/{id}, so that the literal path is not read as a note id. */
+	[
+		'name' => 'notes#renameTag',
+		'url' => '/notes/tags/rename',
+		'verb' => 'POST',
+	],
 	[
 		'name' => 'notes#get',
 		'url' => '/notes/{id}',
