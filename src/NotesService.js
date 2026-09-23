@@ -369,7 +369,10 @@ export function renameTag(from, to) {
 		.then((response) => response.data)
 		.catch((err) => {
 			logger.error('Renaming a tag has failed', { from, to, err })
-			showError(t('notes', 'Renaming the tag has failed.'))
+			/* Says which failure it was: a rename touches every note carrying
+			   the tag, so "it failed" leaves no way to tell a refused request
+			   from a server that never answered. */
+			handleSyncError(t('notes', 'Renaming the tag has failed.'), err)
 			throw err
 		})
 }
