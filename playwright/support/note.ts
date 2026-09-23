@@ -132,3 +132,26 @@ export async function createNote(page: Page, title: string): Promise<number> {
 
 	return noteId
 }
+
+/**
+ * Create a note straight through the API, skipping the editor.
+ *
+ * The title has to be explicit: given only content, the API files the note as
+ * "New note", which no search for its text would ever find.
+ *
+ * @param page The page whose request context (and session) to use
+ * @param category The category to file it in
+ * @param title The note's title
+ * @param body Text to put under the title
+ */
+export async function createNoteViaApi(page: Page, category: string, title: string, body = ''): Promise<number> {
+	const user = process.env.NC_USER ?? 'admin'
+	const password = process.env.NC_PASS ?? 'admin'
+	const headers = { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
+	const response = await page.request.post('/index.php/apps/notes/api/v1/notes', {
+		headers,
+		data: { category, title, content: `# ${title}\n\n${body}` },
+	})
+	expect(response.ok(), `creating note in "${category}"`).toBeTruthy()
+	return (await response.json() as { id: number }).id
+}

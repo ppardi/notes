@@ -7,21 +7,7 @@ import type { APIRequestContext, Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { deleteAllNotes, newNoteButton, noteRow } from '../support/note.ts'
-
-async function createNoteViaApi(page: Page, category: string, title: string, body = ''): Promise<number> {
-	const user = process.env.NC_USER ?? 'admin'
-	const password = process.env.NC_PASS ?? 'admin'
-	const headers = { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
-	const response = await page.request.post('/index.php/apps/notes/api/v1/notes', {
-		headers,
-		// The title has to be explicit: given only content, the API files the
-		// note as "New note", which no search for its text would ever find.
-		data: { category, title, content: `# ${title}\n\n${body}` },
-	})
-	expect(response.ok(), `creating note in "${category}"`).toBeTruthy()
-	return (await response.json() as { id: number }).id
-}
+import { createNoteViaApi, deleteAllNotes, newNoteButton, noteRow } from '../support/note.ts'
 
 /* Selecting a category is remembered server-side, so leaving one selected would
    change where unrelated specs start. */
