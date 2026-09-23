@@ -45,6 +45,30 @@ export class NoteEditor {
 		await this.page.keyboard.insertText(keys)
 	}
 
+	/**
+	 * Replace everything in the note with the given text.
+	 *
+	 * type() inserts where the cursor happens to be, which in the rich editor
+	 * is the start of the first line — so typed text merges into the title and
+	 * a test cannot say what the note will contain. This says it exactly, in
+	 * both editors.
+	 *
+	 * @param keys the text the note should end up holding
+	 */
+	public async replaceAll(keys: string): Promise<void> {
+		await expect(this.el).toBeVisible()
+
+		if (await this.codeMirror.count() > 0) {
+			await this.type(keys)
+			return
+		}
+
+		await expect(this.surface).toBeVisible()
+		await this.surface.click()
+		await this.surface.press('ControlOrMeta+a')
+		await this.page.keyboard.insertText(keys)
+	}
+
 	public async expectText(keys: string): Promise<void> {
 		if (await this.codeMirror.count() > 0) {
 			await expect.poll(async () => {

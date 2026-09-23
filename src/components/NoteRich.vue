@@ -18,6 +18,14 @@ import { queueCommand, refreshNote } from '../NotesService.js'
 import store from '../store.js'
 import { routeIsNewNote, tagsMayHaveChanged } from '../Util.js'
 
+/* Anything shaped like a tag. Deliberately looser than the server's parser:
+   this only has to notice that the hashes in the text changed, and a false
+   positive costs one save. */
+const HASH_WORD = /#[\p{L}\p{N}][\p{L}\p{N}_-]*/gu
+
+/* Long enough that typing a tag is one save rather than one per letter. */
+const TAG_SAVE_DELAY = 1500
+
 export default {
 	name: 'NoteRich',
 
@@ -39,6 +47,8 @@ export default {
 			loading: false,
 			editor: null,
 			shouldAutotitle: true,
+			hashWords: null,
+			tagSaveTimer: null,
 		}
 	},
 
@@ -70,6 +80,7 @@ export default {
 	},
 
 	unmounted() {
+		this.clearTagSaveTimer()
 		this?.editor?.destroy()
 		unsubscribe('files:node:updated', this.fileUpdated)
 		unsubscribe('files_versions:restore:requested', this.onFileRestoreRequested)
@@ -97,6 +108,8 @@ export default {
 			this?.editor?.destroy()
 			this.loading = true
 			this.shouldAutotitle = undefined
+			this.clearTagSaveTimer()
+			this.hashWords = this.readHashWords(this.note?.content ?? '')
 			this.editor = markRaw(await window.OCA.Text.createEditor({
 				el: this.$refs.editor,
 				fileId: parseInt(this.noteId),
@@ -113,6 +126,7 @@ export default {
 							this.shouldAutotitle = this.isNewNote || (title !== '' && title === this.note.title)
 						}
 						this.onEdit({ content: markdown, unsaved })
+						this.saveIfTagsChanged(markdown)
 					}
 				},
 			}))
@@ -144,6 +158,53 @@ export default {
 				}
 				this.refreshTags()
 			}
+		},
+
+		/**
+		 * The hashes in the text, as one comparable string.
+		 *
+		 * @param {string} markdown the note as it now stands
+		 * @return {string} every hash word in it, lower-cased
+		 */
+		readHashWords(markdown) {
+			return (markdown.match(HASH_WORD) ?? []).join(' ').toLowerCase()
+		},
+
+		clearTagSaveTimer() {
+			if (this.tagSaveTimer !== null) {
+				clearTimeout(this.tagSaveTimer)
+				this.tagSaveTimer = null
+			}
+		},
+
+		/**
+		 * Write the note out when its tags change, rather than waiting.
+		 *
+		 * The tags are parsed from the file, and Text's own autosave is only
+		 * accepted by the server every ten seconds, so a tag typed just after a
+		 * save would sit invisible until then — long enough to read as nothing
+		 * having happened. A save Text is asked for skips that throttle, and the
+		 * write brings the parsed tags back through the refresh below.
+		 *
+		 * Only the hashes are compared, so ordinary typing writes no more often
+		 * than it did before.
+		 *
+		 * @param {string} markdown the note as it now stands
+		 */
+		saveIfTagsChanged(markdown) {
+			const hashWords = this.readHashWords(markdown)
+			if (this.hashWords === null || hashWords === this.hashWords) {
+				this.hashWords = hashWords
+				return
+			}
+			this.hashWords = hashWords
+			this.clearTagSaveTimer()
+			this.tagSaveTimer = setTimeout(() => {
+				this.tagSaveTimer = null
+				/* Text reports its own save failures, and a note whose tags are
+				   a moment late is not worth a second complaint. */
+				Promise.resolve(this.editor?.save?.()).catch(() => {})
+			}, TAG_SAVE_DELAY)
 		},
 
 		/**

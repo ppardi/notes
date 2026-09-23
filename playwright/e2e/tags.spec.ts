@@ -52,7 +52,7 @@ test.describe('Tags', () => {
 
 		await page.getByRole('link', { name: 'Untagged so far', exact: true }).click()
 		const editor = new NoteEditor(page)
-		await editor.type('now tagged #fresh')
+		await editor.replaceAll('now tagged #fresh')
 		await editor.expectText('now tagged #fresh')
 
 		/* No reload: the save has to bring the parsed tags back on its own.
