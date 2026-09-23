@@ -23,6 +23,22 @@ async function openNotesApp(page: Page): Promise<void> {
 	await expect(newNoteButton(page).first()).toBeVisible()
 }
 
+/**
+ * Open a note that no rename in the test will touch.
+ *
+ * The app opens a note of its own accord when it starts, and the Text app
+ * locks whatever is open — enough on its own to make a rename skip that note.
+ * Choosing which note holds the lock keeps that out of the way of specs about
+ * renaming; being refused by a lock has a spec of its own.
+ *
+ * @param page the page under test
+ * @param title the note to leave open
+ */
+async function parkTheEditorOn(page: Page, title: string): Promise<void> {
+	await page.getByRole('link', { name: title, exact: true }).click()
+	await expect(page.locator('.text-editor, .note-editor').first()).toBeVisible()
+}
+
 test.describe('Tags', () => {
 	test.beforeEach(async ({ page }) => {
 		await login(page)
@@ -68,6 +84,7 @@ test.describe('Tags', () => {
 		const two = await createNoteViaApi(page, 'Personal', 'Second', 'also #oldname')
 		const untouched = await createNoteViaApi(page, 'Personal', 'Third', 'a different #keeper')
 		await openNotesApp(page)
+		await parkTheEditorOn(page, 'Third')
 
 		const row = tagRow(page, 'oldname').locator('xpath=ancestor::li[1]').first()
 		await row.hover()
@@ -90,9 +107,41 @@ test.describe('Tags', () => {
 		await expect(noteRow(page, untouched)).toBeHidden()
 	})
 
+	test('says which notes a rename could not touch', async ({ page }) => {
+		const stuck = await createNoteViaApi(page, 'Personal', 'Open elsewhere', 'tagged #stuck')
+		await openNotesApp(page)
+
+		/* What a note open in an editor does to a rename: the Files Lock app
+		   holds the file, the write is refused, and the server reports the note
+		   as skipped. Stubbed rather than locked for real, so the spec does not
+		   need that app installed. */
+		await page.route('**/apps/notes/notes/tags/rename', (route) => route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({ renamed: [], skipped: [{ id: stuck, reason: 'locked' }] }),
+		}))
+
+		const row = tagRow(page, 'stuck').locator('xpath=ancestor::li[1]').first()
+		await row.hover()
+		await row.getByRole('button', { name: 'Actions', exact: true }).click()
+		await page.getByRole('menuitem', { name: 'Rename tag', exact: true }).click()
+		const input = page.getByPlaceholder('stuck', { exact: true })
+		await input.fill('unstuck')
+		await input.press('Enter')
+
+		/* A rename that changed nothing used to look exactly like one that
+		   worked. It has to name the notes, so there is something to go and
+		   close. */
+		const toast = page.locator('.toastify')
+		await expect(toast).toBeVisible()
+		await expect(toast).toContainText('Open elsewhere')
+	})
+
 	test('follows the selection when the tag being viewed is renamed', async ({ page }) => {
 		const note = await createNoteViaApi(page, 'Personal', 'Followed', 'tagged #before')
+		await createNoteViaApi(page, 'Personal', 'Parked', 'nothing to rename here')
 		await openNotesApp(page)
+		await parkTheEditorOn(page, 'Parked')
 
 		await tagRow(page, 'before').click()
 		await expect(page).toHaveURL(/[?&]tags=before(&|$)/)
@@ -114,7 +163,9 @@ test.describe('Tags', () => {
 	test('merges two tags when one is renamed to the other', async ({ page }) => {
 		const a = await createNoteViaApi(page, 'Personal', 'MergeA', 'tagged #mergefrom')
 		const b = await createNoteViaApi(page, 'Personal', 'MergeB', 'tagged #mergeinto')
+		await createNoteViaApi(page, 'Personal', 'Parked', 'nothing to rename here')
 		await openNotesApp(page)
+		await parkTheEditorOn(page, 'Parked')
 
 		const row = tagRow(page, 'mergefrom').locator('xpath=ancestor::li[1]').first()
 		await row.hover()

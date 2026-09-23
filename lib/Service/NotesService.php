@@ -115,7 +115,7 @@ class NotesService {
 	 * @param string $userId whose notes to rewrite
 	 * @param string $from the tag to rewrite
 	 * @param string $to the tag to rewrite it as
-	 * @return array{renamed: list<int>, skipped: list<array{id: int, reason: string}>}
+	 * @return array{renamed: list<int>, skipped: list<array{id: int, reason: 'locked'|'error'}>}
 	 */
 	public function renameTag(string $userId, string $from, string $to) : array {
 		/* Read strictly: a value that merely contains a tag is refused rather
@@ -148,6 +148,18 @@ class NotesService {
 					$note->setContent($updated);
 				}
 				$renamed[] = $id;
+			} catch (\OCP\Lock\LockedException $e) {
+				/* Told apart from any other failure because it is the common
+				   one and the only one the user can clear: the Files Lock app
+				   holds a lock for as long as a note is open in the editor, and
+				   the note whose tag is being renamed is the one most likely to
+				   be open. Retrying would not help — a manual lock outlives the
+				   request by hours. */
+				$this->noteUtil->util->logger->info(
+					'Could not rename tag in note ' . $id . ': the file is locked',
+					[ 'exception' => $e ]
+				);
+				$skipped[] = [ 'id' => $id, 'reason' => 'locked' ];
 			} catch (\Throwable $e) {
 				$this->noteUtil->util->logger->error(
 					'Could not rename tag in note ' . $id,
