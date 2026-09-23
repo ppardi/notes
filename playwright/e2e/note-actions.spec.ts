@@ -7,7 +7,7 @@ import type { TestInfo } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { createNote, newNoteButton, noteRow, openNoteActions, uniqueTitle } from '../support/note.ts'
+import { createNote, expectTitled, newNoteButton, noteRow, openNoteActions, uniqueTitle } from '../support/note.ts'
 
 test.describe('Note actions', () => {
 	test.beforeEach(async ({ page }) => {
@@ -97,9 +97,9 @@ test.describe('Note actions', () => {
 
 	test('deletes a note and undoes the deletion', async ({ page }, testInfo: TestInfo) => {
 		const title = uniqueTitle('delete', testInfo)
-		const autotitleSettled = page.waitForResponse((response) => response.url().includes('/autotitle')).catch(() => null)
 		const noteId = await createNote(page, title)
-		await autotitleSettled
+		// the undone note is looked for by title, which follows the saved file
+		await expectTitled(page, noteId, title)
 
 		await openNoteActions(page, noteId)
 		await page.getByRole('menuitem', { name: 'Delete note' }).click()

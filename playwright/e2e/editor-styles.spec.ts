@@ -51,9 +51,11 @@ test.describe('Rich editor text styling', () => {
 		await expect(emphasis).toBeVisible()
 
 		// Nextcloud core paints em with --color-text-maxcontrast, which reads as
-		// washed-out grey next to the body text. It has to match its paragraph.
-		const paragraph = editor.surface.locator('p').filter({ has: emphasis }).first()
-		expect(await painted(emphasis, 'color')).toBe(await painted(paragraph, 'color'))
+		// washed-out grey next to the body text. It has to match the block it
+		// sits in — which is that block whatever it is, since a new note starts
+		// on its title line rather than in a paragraph.
+		expect(await painted(emphasis, 'color'))
+			.toBe(await painted(emphasis.locator('xpath=..'), 'color'))
 	})
 
 	test('highlights on a ground that keeps the text readable', async ({ page }) => {
@@ -66,11 +68,10 @@ test.describe('Rich editor text styling', () => {
 		const highlight = editor.surface.locator('mark').first()
 		await expect(highlight).toBeVisible()
 
-		const paragraph = editor.surface.locator('p').filter({ has: highlight }).first()
-
 		// The browser's own mark styling forces near-black text, which against the
-		// dark theme's --color-mark is unreadable. The text has to follow its
-		// paragraph; the ground stays whatever core themed it.
-		expect(await painted(highlight, 'color')).toBe(await painted(paragraph, 'color'))
+		// dark theme's --color-mark is unreadable. The text has to follow the
+		// block it sits in; the ground stays whatever core themed it.
+		expect(await painted(highlight, 'color'))
+			.toBe(await painted(highlight.locator('xpath=..'), 'color'))
 	})
 })

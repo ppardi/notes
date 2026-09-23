@@ -5,7 +5,7 @@
 
 import type { APIRequestContext, Locator, Page, TestInfo } from '@playwright/test'
 
-import { expect } from '@playwright/test'
+import { expect, request as playwrightRequest } from '@playwright/test'
 import { NoteEditor } from './sections/NoteEditor.ts'
 
 export function uniqueTitle(prefix: string, testInfo: TestInfo): string {
@@ -14,6 +14,28 @@ export function uniqueTitle(prefix: string, testInfo: TestInfo): string {
 
 function apiUser(): string {
 	return process.env.NC_USER ?? 'admin'
+}
+
+/**
+ * Run some API calls on a request context with an empty cookie jar.
+ *
+ * A context carrying a Nextcloud session cookie is answered as a session
+ * request, and WebDAV then refuses it for want of a CSRF token however good the
+ * Authorization header is. A context of its own keeps that header the only
+ * thing authenticating these calls.
+ *
+ * @param work what to do with the context
+ * @return whatever the work returns
+ */
+async function onOwnContext<T>(work: (api: APIRequestContext) => Promise<T>): Promise<T> {
+	const api = await playwrightRequest.newContext({
+		baseURL: process.env.BASE_URL ?? 'http://localhost:8089',
+	})
+	try {
+		return await work(api)
+	} finally {
+		await api.dispose()
+	}
 }
 
 function apiHeaders(): Record<string, string> {
@@ -26,33 +48,71 @@ function apiHeaders(): Record<string, string> {
  * given revision. Writing goes around the app on purpose, so the note keeps its
  * file name instead of being retitled from the changed content.
  *
- * @param request The request fixture to use
  * @param revisions The contents to write, oldest first
  * @return The id of the created note
  */
-export async function createNoteRevisions(request: APIRequestContext, revisions: string[]): Promise<number> {
+export async function createNoteRevisions(revisions: string[]): Promise<number> {
 	expect(revisions.length, 'revisions to write').toBeGreaterThan(0)
 
-	const created = await request.post('/index.php/apps/notes/api/v1/notes', {
-		headers: apiHeaders(),
-		data: { content: revisions[0] },
-	})
-	expect(created.ok(), 'creating the note').toBeTruthy()
-
-	const note = await created.json()
-	const path = note.internalPath.split('/').map(encodeURIComponent).join('/')
-
-	for (const content of revisions.slice(1)) {
-		// recent versions are thinned out to one per two seconds
-		await new Promise((resolve) => setTimeout(resolve, 3500))
-		const written = await request.put(`/remote.php/dav/files/${apiUser()}${path}`, {
+	return onOwnContext(async (request) => {
+		const created = await request.post('/index.php/apps/notes/api/v1/notes', {
 			headers: apiHeaders(),
-			data: content,
+			data: { content: revisions[0] },
 		})
-		expect(written.ok(), 'writing a revision').toBeTruthy()
-	}
+		expect(created.ok(), 'creating the note').toBeTruthy()
 
-	return note.id
+		const note = await created.json()
+		const path = note.internalPath.split('/').map(encodeURIComponent).join('/')
+
+		for (const content of revisions.slice(1)) {
+			// recent versions are thinned out to one per two seconds
+			await new Promise((resolve) => setTimeout(resolve, 3500))
+			const written = await request.put(`/remote.php/dav/files/${apiUser()}${path}`, {
+				headers: apiHeaders(),
+				data: content,
+			})
+			expect(written.ok(), `writing a revision (HTTP ${written.status()})`).toBeTruthy()
+		}
+
+		return note.id as number
+	})
+}
+
+/**
+ * Remove every note, on a request context of its own.
+ *
+ * @see onOwnContext for why these calls do not use the page's own context
+ */
+export async function deleteAllNotesVia(): Promise<void> {
+	return onOwnContext(async (request) => {
+		const headers = apiHeaders()
+		const response = await request.get('/index.php/apps/notes/api/v1/notes', { headers })
+		expect(response.ok()).toBeTruthy()
+
+		for (const note of await response.json()) {
+			const deletion = await request.delete(`/index.php/apps/notes/api/v1/notes/${note.id}`, { headers })
+			expect(deletion.ok(), `deleting note ${note.id}`).toBeTruthy()
+		}
+	})
+}
+
+/**
+ * Create a note through the API, on a request context of its own.
+ *
+ * @param category The category to file it in
+ * @param title The note's title
+ * @param body Text to put under the title
+ * @return The id of the created note
+ */
+export async function createNoteViaRequest(category: string, title: string, body = ''): Promise<number> {
+	return onOwnContext(async (request) => {
+		const response = await request.post('/index.php/apps/notes/api/v1/notes', {
+			headers: apiHeaders(),
+			data: { category, title, content: `# ${title}\n\n${body}` },
+		})
+		expect(response.ok(), `creating note in "${category}"`).toBeTruthy()
+		return (await response.json() as { id: number }).id
+	})
 }
 
 /**
@@ -84,6 +144,21 @@ export function newNoteButton(page: Page): Locator {
 export function noteRow(page: Page, noteId: number): Locator {
 	return page.locator(`a[href$="/note/${noteId}"], a[href*="/note/${noteId}?"]`).first()
 		.locator('xpath=ancestor::li[1]')
+}
+
+/**
+ * Wait until the list shows a note under the title just typed into it.
+ *
+ * The rich editor's file is written by the Text app rather than by Notes, and
+ * a note is retitled from the file, so the title in the list can lag several
+ * seconds behind the typing.
+ *
+ * @param page The page under test
+ * @param noteId The note that was typed into
+ * @param title The title it should end up under
+ */
+export async function expectTitled(page: Page, noteId: number, title: string): Promise<void> {
+	await expect(noteRow(page, noteId)).toContainText(title, { timeout: 20000 })
 }
 
 export async function openNoteActions(page: Page, noteId: number): Promise<Locator> {

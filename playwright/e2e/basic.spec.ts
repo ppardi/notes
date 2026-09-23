@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { currentNoteId, newNoteButton, waitForNoteRoute } from '../support/note.ts'
+import { currentNoteId, expectTitled, newNoteButton, waitForNoteRoute } from '../support/note.ts'
 import { NoteEditor } from '../support/sections/NoteEditor.ts'
 
 test.describe('Basic checks', () => {
@@ -81,6 +81,8 @@ test.describe('Basic checks', () => {
 		const editor = new NoteEditor(page)
 		await editor.type(uniqueWord)
 		await editor.expectText(uniqueWord)
+		// the list matches on the title, which follows the saved file
+		await expectTitled(page, noteId, uniqueWord)
 
 		const noteLink = page.locator(`a[href$="/note/${noteId}"], a[href*="/note/${noteId}?"]`).first()
 

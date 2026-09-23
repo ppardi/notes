@@ -30,8 +30,25 @@ function templateContent(testInfo: TestInfo): string {
  */
 async function expectNoteContent(page: Page, content: string): Promise<void> {
 	const editor = new NoteEditor(page)
-	await expect(editor.codeMirror).toBeVisible()
-	await editor.expectText(content)
+	await expect(editor.el).toBeVisible()
+
+	if (await editor.codeMirror.count() > 0) {
+		await editor.expectText(content)
+		return
+	}
+
+	/* The rich editor renders the markdown rather than showing it, so the
+	   markup itself is never on the page: this asks for the words. */
+	if (content === '') {
+		await expect.poll(async () => (await editor.surface.innerText()).trim()).toBe('')
+		return
+	}
+	for (const line of content.split('\n')) {
+		const words = line.replace(/^[#\s\-[\]x]+/, '').trim()
+		if (words !== '') {
+			await expect(editor.surface).toContainText(words)
+		}
+	}
 }
 
 test.describe('Note templates', () => {

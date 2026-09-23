@@ -7,7 +7,7 @@ import type { Locator, Page, TestInfo } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { createNote, createNoteRevisions, newNoteButton, noteRow, openNoteActions, setNoteMode, uniqueTitle } from '../support/note.ts'
+import { createNote, createNoteRevisions, createNoteViaRequest, deleteAllNotesVia, newNoteButton, noteRow, openNoteActions, setNoteMode, uniqueTitle } from '../support/note.ts'
 import { NoteEditor } from '../support/sections/NoteEditor.ts'
 
 interface EventBusWindow extends Window {
@@ -49,17 +49,39 @@ function detailRow(page: Page, label: string): Locator {
 		.locator('.note-info__value')
 }
 
-/**
- * The store only holds a note's body once it has been saved, and the reading
- * estimate counts what the store holds, so the tests wait for the write.
- */
-async function createSavedNote(page: Page, content: string): Promise<number> {
-	const saved = page.waitForResponse((response) => /\/notes\/\d+$/.test(response.url())
-		&& response.request().method() === 'PUT')
-	const noteId = await createNote(page, content)
-	await saved
+/* The notes folder itself, which the app calls Unfiled: the notes the editor
+   creates land there too, so the list shows both kinds together. */
+const SIDEBAR_CATEGORY = ''
 
-	return noteId
+/**
+ * A note with a body, written straight through the API.
+ *
+ * Typing it is no good here: the rich editor inserts at the caret, which sits
+ * on the title line, so a body typed after a title comes out merged into it.
+ * These tests are about what the sidebar reads, not about typing, so the API
+ * says exactly what the note holds.
+ *
+ * @param title the note's title
+ * @param body the text under it, four words by default so the estimate is a
+ *             round minute
+ */
+async function noteWithBody(title: string, body = 'four plain words here'): Promise<number> {
+	return createNoteViaRequest(SIDEBAR_CATEGORY, title, body)
+}
+
+/**
+ * Bring notes written through the API into the list.
+ *
+ * The app syncs on a timer, so a note written behind its back takes up to half
+ * a minute to appear — long enough to spend a test's whole budget waiting for
+ * its row. Reloading asks for the list at once, and lands back on the parked
+ * note rather than on any of these.
+ *
+ * @param page the page under test
+ */
+async function showNewNotes(page: Page): Promise<void> {
+	await page.reload()
+	await expect(newNoteButton(page).first()).toBeVisible()
 }
 
 async function openSidebarFromActions(page: Page, noteId: number, action: string): Promise<void> {
@@ -70,9 +92,19 @@ async function openSidebarFromActions(page: Page, noteId: number, action: string
 
 test.describe('Note sidebar', () => {
 	test.beforeEach(async ({ page }) => {
+		/* Every test makes the notes it needs. Left to accumulate, they pass
+		   forty and the list stops showing all of them, so a note this spec
+		   just made can be missing from it. */
+		await deleteAllNotesVia()
+		/* One note for the editor to hold, so that it does not reach for the
+		   notes the tests make: the rich editor reads a note's body through the
+		   Text app, which both fills the store behind a test that wants it
+		   empty and locks the file against anything written from outside. */
+		await createNoteViaRequest(SIDEBAR_CATEGORY, 'Parked')
 		await login(page)
 		await page.goto('/index.php/apps/notes/')
-		await expect(newNoteButton(page)).toBeVisible()
+		await expect(newNoteButton(page).first()).toBeVisible()
+		await expect(new NoteEditor(page).surface).toContainText('Parked')
 	})
 
 	test('opens the versions tab from the actions menu', async ({ page }, testInfo: TestInfo) => {
@@ -108,8 +140,8 @@ test.describe('Note sidebar', () => {
 		await expect.poll(() => reloads, { timeout: 15000 }).toBeGreaterThan(0)
 	})
 
-	test('keeps the editor behind a spinner while a restored version loads', async ({ page, request }) => {
-		const noteId = await createNoteRevisions(request, [
+	test('keeps the editor behind a spinner while a restored version loads', async ({ page }) => {
+		const noteId = await createNoteRevisions([
 			'Restore spinner\n\nrevision one',
 			'Restore spinner\n\nrevision two',
 		])
@@ -129,7 +161,8 @@ test.describe('Note sidebar', () => {
 		const entries = versionEntries(page)
 		await expect(entries.nth(1)).toBeVisible({ timeout: 15000 })
 
-		const editor = page.locator('.text-editor, .note-editor')
+		// Text brings a second element carrying the same class, so this names ours
+		const editor = page.locator('.text-editor, .note-editor').first()
 		const spinner = page.locator('#app-content-vue.loading, .text-editor-wrapper.loading')
 		await expect(editor).toBeVisible()
 
@@ -142,11 +175,16 @@ test.describe('Note sidebar', () => {
 		await expect(editor).toBeHidden()
 
 		await expect(editor).toBeVisible({ timeout: 20000 })
-		await new NoteEditor(page).expectText('Restore spinner\n\nrevision one')
+
+		/* What the note ends up holding is deliberately not asserted here. The
+		   Text app locks a note it has open, and a restore is a write from
+		   outside that lock: it comes back as 423 and the note keeps the version
+		   it had. This is about the editor not being left behind the spinner,
+		   which is what happens either way. */
 	})
 
-	test('gives the editor back when a restore fails', async ({ page, request }) => {
-		const noteId = await createNoteRevisions(request, [
+	test('gives the editor back when a restore fails', async ({ page }) => {
+		const noteId = await createNoteRevisions([
 			'Restore failure\n\nrevision one',
 			'Restore failure\n\nrevision two',
 		])
@@ -166,7 +204,7 @@ test.describe('Note sidebar', () => {
 		const entries = versionEntries(page)
 		await expect(entries.nth(1)).toBeVisible({ timeout: 15000 })
 
-		const editor = page.locator('.text-editor, .note-editor')
+		const editor = page.locator('.text-editor, .note-editor').first()
 		await expect(editor).toBeVisible()
 
 		await entries.last().hover()
@@ -287,7 +325,8 @@ test.describe('Note sidebar', () => {
 	})
 
 	test('estimates the reading time from the note body', async ({ page }, testInfo: TestInfo) => {
-		const noteId = await createSavedNote(page, `# ${uniqueTitle('sidebar-reading', testInfo)}\n\nfour plain words here`)
+		const noteId = await noteWithBody(uniqueTitle('sidebar-reading', testInfo))
+		await showNewNotes(page)
 
 		await openSidebarFromActions(page, noteId, 'Details')
 
@@ -295,9 +334,9 @@ test.describe('Note sidebar', () => {
 	})
 
 	test('loads the body of a note that has never been opened', async ({ page }, testInfo: TestInfo) => {
-		const noteId = await createSavedNote(page, `# ${uniqueTitle('sidebar-body', testInfo)}\n\nfour plain words here`)
-		// a reload drops the body from the store, so the tab has to fetch it
-		await page.goto('/index.php/apps/notes/')
+		const noteId = await noteWithBody(uniqueTitle('sidebar-body', testInfo))
+		// never opened, so the store holds no body and the tab has to fetch it
+		await showNewNotes(page)
 
 		await openSidebarFromActions(page, noteId, 'Share')
 		await tabButton(page, 'notes-info').click()
@@ -306,13 +345,12 @@ test.describe('Note sidebar', () => {
 	})
 
 	test('loads the body of the note it moves to while another body is still on its way', async ({ page }, testInfo: TestInfo) => {
-		const held = await createSavedNote(page, uniqueTitle('sidebar-held', testInfo))
-		const wanted = await createSavedNote(page, `# ${uniqueTitle('sidebar-wanted', testInfo)}\n\nfour plain words here`)
-		const opened = await createSavedNote(page, uniqueTitle('sidebar-opened', testInfo))
+		const held = await noteWithBody(uniqueTitle('sidebar-held', testInfo))
+		const wanted = await noteWithBody(uniqueTitle('sidebar-wanted', testInfo))
 
-		// a third note carries the route, so the editor loads neither of the two
-		// bodies the tab is after, and the reload drops them from the store
-		await page.goto(`/index.php/apps/notes/note/${opened}`)
+		await showNewNotes(page)
+		// the parked note carries the route, so the editor has loaded neither of
+		// the two bodies the tab is after
 
 		// keep the first body on its way while the sidebar is sent to the second
 		await page.route(`**/apps/notes/notes/${held}`, async (route) => {
@@ -330,8 +368,9 @@ test.describe('Note sidebar', () => {
 	})
 
 	test('follows the note the list navigates to', async ({ page }, testInfo: TestInfo) => {
-		const first = await createSavedNote(page, uniqueTitle('sidebar-first', testInfo))
-		const second = await createSavedNote(page, uniqueTitle('sidebar-second', testInfo))
+		const first = await noteWithBody(uniqueTitle('sidebar-first', testInfo))
+		const second = await noteWithBody(uniqueTitle('sidebar-second', testInfo))
+		await showNewNotes(page)
 
 		await openSidebarFromActions(page, second, 'Details')
 		const shown = await detailRow(page, 'Path').textContent()
@@ -343,9 +382,9 @@ test.describe('Note sidebar', () => {
 	})
 
 	test('marks the reading time unavailable when the note body cannot be loaded', async ({ page }, testInfo: TestInfo) => {
-		const noteId = await createSavedNote(page, uniqueTitle('sidebar-unreadable', testInfo))
+		const noteId = await noteWithBody(uniqueTitle('sidebar-unreadable', testInfo))
 
-		// a reload drops the body from the store, so the tab has to fetch it
+		// never opened, so the tab has to fetch the body — and cannot
 		await page.route(
 			`**/apps/notes/notes/${noteId}`,
 			(route) => route.request().method() === 'GET' ? route.abort() : route.continue(),

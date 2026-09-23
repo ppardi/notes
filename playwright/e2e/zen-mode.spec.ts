@@ -85,7 +85,9 @@ test.describe('Zen mode', () => {
 		// Every nested box has to give up the room it reserves for the header and the
 		// rounded body container, not just the outermost one. NcAppContent nests, so a
 		// selector can legitimately match more than one element.
-		for (const selector of ['#content', '#content-vue', '#app-content-vue', '.note-container']) {
+		// the last one names whichever editor is in use: the rich editor brings
+		// its own wrapper rather than the markdown editor's container
+		for (const selector of ['#content', '#content-vue', '#app-content-vue', '.note-container, .text-editor-wrapper']) {
 			const elements = await page.locator(selector).all()
 			expect(elements.length, selector).toBeGreaterThan(0)
 
@@ -195,8 +197,10 @@ test.describe('Zen mode', () => {
 
 		const editor = new NoteEditor(page)
 		const content = `${title}\n\nWritten without the chrome`
-		await editor.type(content)
-		await editor.expectText(content)
+		await editor.replaceAll(content)
+		// the rendered text drops the markdown's line breaks, so this asks for
+		// the words that were typed rather than for the markup
+		await expect(editor.surface).toContainText('Written without the chrome')
 	})
 
 	test('is not offered while no note is open', async ({ page }) => {
