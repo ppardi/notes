@@ -201,3 +201,78 @@ describe('notes store content search', () => {
 		expect(visibleIds()).toEqual([])
 	})
 })
+
+describe('notes store tags', () => {
+	let store
+
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		store = useNotesStore()
+		store.updateNote({ id: 1, title: 'Kripke', category: 'Reading', tags: ['philosophy', 'mill'] })
+		store.updateNote({ id: 2, title: 'Frege', category: 'Reading', tags: ['philosophy'] })
+		store.updateNote({ id: 3, title: 'Shopping', category: 'Home', tags: [] })
+		store.updateNote({ id: 4, title: 'Trip', category: 'Home' })
+	})
+
+	it('derives the tag list from the notes, alphabetically, with counts', () => {
+		expect(store.getTags()).toEqual([
+			{ name: 'mill', count: 1 },
+			{ name: 'philosophy', count: 2 },
+		])
+	})
+
+	it('offers no tags when nothing is tagged', () => {
+		setActivePinia(createPinia())
+		const empty = useNotesStore()
+		empty.updateNote({ id: 9, title: 'Bare', category: '', tags: [] })
+
+		expect(empty.getTags()).toEqual([])
+	})
+
+	it('shows only the notes carrying the selected tag', () => {
+		store.setSelectedTags(['mill'])
+
+		expect(store.getFilteredNotes().map((note) => note.id)).toEqual([1])
+	})
+
+	it('unions the notes when several tags are selected', () => {
+		store.setSelectedTags(['mill', 'philosophy'], 'any')
+
+		expect(store.getFilteredNotes().map((note) => note.id).sort()).toEqual([1, 2])
+	})
+
+	it('intersects the notes in all mode', () => {
+		store.setSelectedTags(['mill', 'philosophy'], 'all')
+
+		expect(store.getFilteredNotes().map((note) => note.id)).toEqual([1])
+	})
+
+	it('selecting a tag clears the category, since they are alternative sources', () => {
+		store.setSelectedCategory('Home')
+		store.setSelectedTags(['philosophy'])
+
+		expect(store.getSelectedCategory()).toBeNull()
+		expect(store.getFilteredNotes().map((note) => note.id).sort()).toEqual([1, 2])
+	})
+
+	it('selecting a category clears the tags', () => {
+		store.setSelectedTags(['philosophy'])
+		store.setSelectedCategory('Home')
+
+		expect(store.getSelectedTags()).toEqual([])
+		expect(store.getFilteredNotes().map((note) => note.id).sort()).toEqual([3, 4])
+	})
+
+	it('takes the tags an update to an existing note reports', () => {
+		store.updateNote({ id: 2, title: 'Frege', category: 'Reading', tags: ['frege', 'sense'] })
+
+		expect(store.getNote(2).tags).toEqual(['frege', 'sense'])
+		expect(store.getTags().map((tag) => tag.name)).toEqual(['frege', 'mill', 'philosophy', 'sense'])
+	})
+
+	it('treats a note with no tags attribute as untagged rather than failing', () => {
+		store.setSelectedTags(['philosophy'])
+
+		expect(store.getFilteredNotes().map((note) => note.id)).not.toContain(4)
+	})
+})

@@ -22,6 +22,10 @@ export const useNotesStore = defineStore('notes', {
 		notes: [],
 		notesIds: {},
 		selectedCategory: null,
+		/* Tags and a category are alternative answers to "where am I looking",
+		   never combined: selecting one clears the other. */
+		selectedTags: [],
+		tagMode: 'any',
 		selectedNote: null,
 		filterString: '',
 	}),
@@ -129,6 +133,16 @@ export const useNotesStore = defineStore('notes', {
 					return false
 				}
 
+				if (!searching && state.selectedTags.length > 0) {
+					const tags = note.tags ?? []
+					const matches = state.tagMode === 'all'
+						? state.selectedTags.every((tag) => tags.includes(tag))
+						: state.selectedTags.some((tag) => tags.includes(tag))
+					if (!matches) {
+						return false
+					}
+				}
+
 				if (searching) {
 					const titleMatches = note.title.toLowerCase().indexOf(searchText) !== -1
 					/* Titles still count alongside the server's answer: a note
@@ -167,6 +181,30 @@ export const useNotesStore = defineStore('notes', {
 			notes.sort(state.selectedCategory === null ? cmpRecent : cmpCategory)
 
 			return notes
+		},
+
+		/* The tags in use, with how many notes carry each. Derived from the
+		   loaded notes rather than fetched, exactly as the category list is:
+		   the server already sends each note's tags, so there is nothing more
+		   to ask it for. */
+		getTags: (state) => () => {
+			const counts = new Map()
+			for (const note of state.notes) {
+				for (const tag of note.tags ?? []) {
+					counts.set(tag, (counts.get(tag) ?? 0) + 1)
+				}
+			}
+			return [...counts.entries()]
+				.map(([name, count]) => ({ name, count }))
+				.sort((a, b) => a.name.localeCompare(b.name))
+		},
+
+		getSelectedTags: (state) => () => {
+			return state.selectedTags
+		},
+
+		getTagMode: (state) => () => {
+			return state.tagMode
 		},
 
 		getSelectedCategory: (state) => () => {
@@ -269,6 +307,13 @@ export const useNotesStore = defineStore('notes', {
 
 		setSelectedCategory(category) {
 			this.selectedCategory = category
+			this.selectedTags = []
+		},
+
+		setSelectedTags(tags, mode = 'any') {
+			this.selectedTags = [...tags]
+			this.tagMode = mode === 'all' ? 'all' : 'any'
+			this.selectedCategory = null
 		},
 
 		setSelectedNote(note) {

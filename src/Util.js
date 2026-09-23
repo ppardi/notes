@@ -11,6 +11,7 @@ export const noteAttributes = [
 	'modified',
 	'favorite',
 	'category',
+	'tags',
 ]
 
 export function copyNote(from, to, exclude) {
@@ -77,6 +78,70 @@ export function categoryFromQuery(query) {
 }
 
 /**
+ * The tags a route query selects.
+ *
+ * @param {object} [query] the route query
+ * @return {string[]} the selected tags, empty when none are
+ */
+export function tagsFromQuery(query) {
+	const value = query?.tags
+	const raw = Array.isArray(value) ? (value[0] ?? '') : (value ?? '')
+	return String(raw).split(',').map((tag) => tag.trim()).filter((tag) => tag !== '')
+}
+
+/**
+ * How a route query combines several tags.
+ *
+ * Anything that is not exactly "all" is "any", so a hand-edited or stale URL
+ * cannot produce a mode the filter has no branch for.
+ *
+ * @param {object} [query] the route query
+ * @return {string} 'all' or 'any'
+ */
+export function tagModeFromQuery(query) {
+	const value = query?.mode
+	return (Array.isArray(value) ? value[0] : value) === 'all' ? 'all' : 'any'
+}
+
+/**
+ * Query fields that select a set of tags.
+ *
+ * The default mode is left out of the URL, so the common case stays readable.
+ *
+ * @param {string[]} tags the selected tags
+ * @param {string} mode 'all' or 'any'
+ * @return {object} query fields to merge into the route
+ */
+export function tagsToQuery(tags, mode) {
+	const selected = (tags ?? []).filter((tag) => tag !== '')
+	return {
+		tags: selected.length ? selected.join(',') : undefined,
+		mode: selected.length && mode === 'all' ? 'all' : undefined,
+	}
+}
+
+/**
+ * The route that selects a set of tags, keeping the rest of the current query.
+ *
+ * A tag and a category are alternative answers to "where am I looking", never
+ * combined, so this drops the category on the way.
+ *
+ * @param {object} $route the current route
+ * @param {string[]} tags the tags to select
+ * @param {string} mode 'all' or 'any'
+ * @return {object} the route to navigate to
+ */
+export function tagsRoute($route, tags, mode) {
+	return {
+		query: {
+			...$route?.query,
+			...categoryToQuery(null),
+			...tagsToQuery(tags, mode),
+		},
+	}
+}
+
+/**
  * The route that selects a category, keeping the rest of the current query.
  *
  * @param {object} $route the current route
@@ -84,7 +149,15 @@ export function categoryFromQuery(query) {
  * @return {object} a route location to push
  */
 export function categoryRoute($route, category) {
-	return { query: { ...$route?.query, ...categoryToQuery(category) } }
+	/* Tags are cleared on the way: a category and a set of tags are
+	   alternatives, so the URL must never describe both. */
+	return {
+		query: {
+			...$route?.query,
+			...categoryToQuery(category),
+			...tagsToQuery([], 'any'),
+		},
+	}
 }
 
 /**

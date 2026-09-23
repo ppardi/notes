@@ -23,6 +23,10 @@ import {
 	keepCategory,
 	noteAttributes,
 	routeIsNewNote,
+	tagModeFromQuery,
+	tagsFromQuery,
+	tagsRoute,
+	tagsToQuery,
 } from '../Util.js'
 
 const NOTE_ID_TYPE = 'application/x-nextcloud-notes-note-id'
@@ -65,6 +69,7 @@ describe('copyNote', () => {
 			modified: undefined,
 			favorite: undefined,
 			category: undefined,
+			tags: undefined,
 		})
 	})
 
@@ -383,5 +388,53 @@ describe('getDraggedCategory', () => {
 	it('has nothing for a drag that carries no category', () => {
 		expect(getDraggedCategory(dragEvent({ [NOTE_ID_TYPE]: '7' }))).toBe(null)
 		expect(getDraggedCategory(undefined)).toBe(null)
+	})
+})
+
+describe('tag route queries', () => {
+	it('reads a comma separated list of tags', () => {
+		expect(tagsFromQuery({ tags: 'philosophy,mill' })).toEqual(['philosophy', 'mill'])
+	})
+
+	it('reads no tags when the parameter is absent or empty', () => {
+		expect(tagsFromQuery({})).toEqual([])
+		expect(tagsFromQuery({ tags: '' })).toEqual([])
+		expect(tagsFromQuery(undefined)).toEqual([])
+	})
+
+	it('drops blank entries rather than selecting a tag with no name', () => {
+		expect(tagsFromQuery({ tags: 'philosophy,,mill,' })).toEqual(['philosophy', 'mill'])
+	})
+
+	it('reads the mode, defaulting to any for anything but "all"', () => {
+		expect(tagModeFromQuery({ mode: 'all' })).toBe('all')
+		expect(tagModeFromQuery({ mode: 'ALL' })).toBe('any')
+		expect(tagModeFromQuery({ mode: 'nonsense' })).toBe('any')
+		expect(tagModeFromQuery({})).toBe('any')
+	})
+
+	it('writes the tags, and the mode only when it is not the default', () => {
+		expect(tagsToQuery(['philosophy', 'mill'], 'any')).toEqual({ tags: 'philosophy,mill', mode: undefined })
+		expect(tagsToQuery(['philosophy'], 'all')).toEqual({ tags: 'philosophy', mode: 'all' })
+	})
+
+	it('drops both parameters when nothing is selected', () => {
+		expect(tagsToQuery([], 'any')).toEqual({ tags: undefined, mode: undefined })
+	})
+
+	it('clears the tags when a category is chosen, the other way round', () => {
+		const route = { query: { tags: 'philosophy', mode: 'all', other: 'kept' } }
+
+		expect(categoryRoute(route, 'Work')).toEqual({
+			query: { other: 'kept', category: 'Work', tags: undefined, mode: undefined },
+		})
+	})
+
+	it('clears the category, because a tag and a category are alternatives', () => {
+		const route = { query: { category: 'Work', other: 'kept' } }
+
+		expect(tagsRoute(route, ['philosophy'], 'any')).toEqual({
+			query: { other: 'kept', category: undefined, tags: 'philosophy', mode: undefined },
+		})
 	})
 })

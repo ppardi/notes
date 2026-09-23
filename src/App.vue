@@ -17,6 +17,7 @@
 
 			<template #list>
 				<CategoriesList :loading="loading.notes" :hideNewCategoryAction="!!error" />
+				<TagsList :loading="loading.notes" />
 			</template>
 
 			<template #footer>
@@ -95,12 +96,13 @@ import CategoriesList from './components/CategoriesList.vue'
 import EditorHint from './components/Modal/EditorHint.vue'
 import NoteSidebar from './components/NoteSidebar.vue'
 import NotesSearch from './components/NotesSearch.vue'
+import TagsList from './components/TagsList.vue'
 import { landingCategory } from './categoryTree.js'
 import { config } from './config.js'
 import logger from './Logger.js'
 import { fetchNotes, noteExists, setSettings, undoDeleteNote } from './NotesService.js'
 import store from './store.js'
-import { categoryFromQuery, categoryFromSetting, categoryRoute, categoryToSetting, keepCategory } from './Util.js'
+import { categoryFromQuery, categoryFromSetting, categoryRoute, categoryToSetting, keepCategory, tagModeFromQuery, tagsFromQuery } from './Util.js'
 
 import '@nextcloud/dialogs/style.css'
 
@@ -115,6 +117,7 @@ export default {
 	components: {
 		AppSettings,
 		CategoriesList,
+		TagsList,
 		CogIcon,
 		EditorHint,
 		NcAppContent,
@@ -214,6 +217,25 @@ export default {
 				this.rememberCategory(category)
 			},
 		},
+
+		/* Tags are the other way of choosing what the list shows, and the route
+		   owns that selection too. Selecting either clears the other, so the URL
+		   always describes exactly one source. */
+		'$route.query.tags': {
+			immediate: true,
+			handler() {
+				const tags = tagsFromQuery(this.$route.query)
+				const mode = tagModeFromQuery(this.$route.query)
+				const selected = store.notes.getSelectedTags()
+				if (tags.join(',') !== selected.join(',') || store.notes.getTagMode() !== mode) {
+					if (tags.length > 0) {
+						store.notes.setSelectedTags(tags, mode)
+					} else if (selected.length > 0) {
+						store.notes.setSelectedTags([], 'any')
+					}
+				}
+			},
+		},
 	},
 
 	created() {
@@ -309,6 +331,12 @@ export default {
 		   category in the URL is a deliberate choice and wins. */
 		async restoreCategory() {
 			if (categoryFromQuery(this.$route.query) !== null) {
+				return
+			}
+			/* Tags are a deliberate choice too, and the only other way of saying
+			   what the list should show. Restoring a category over them would
+			   throw away the selection the URL just asked for. */
+			if (tagsFromQuery(this.$route.query).length > 0) {
 				return
 			}
 			const stored = categoryFromSetting(store.app.settings?.lastViewedCategory)
