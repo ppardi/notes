@@ -104,6 +104,20 @@ export async function deleteAllNotesVia(): Promise<void> {
  * @param body Text to put under the title
  * @return The id of the created note
  */
+/**
+ * What a note holds on disk, read through the API.
+ *
+ * @param noteId The note to read
+ * @return Its content
+ */
+export async function noteContent(noteId: number): Promise<string> {
+	return onOwnContext(async (request) => {
+		const response = await request.get(`/index.php/apps/notes/api/v1/notes/${noteId}`, { headers: apiHeaders() })
+		expect(response.ok(), `reading note ${noteId}`).toBeTruthy()
+		return (await response.json() as { content: string }).content
+	})
+}
+
 export async function createNoteViaRequest(category: string, title: string, body = ''): Promise<number> {
 	return onOwnContext(async (request) => {
 		const response = await request.post('/index.php/apps/notes/api/v1/notes', {

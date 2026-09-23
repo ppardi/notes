@@ -44,6 +44,7 @@
 
 <script>
 import { showWarning } from '@nextcloud/dialogs'
+import { emit, subscribe, unsubscribe } from '@nextcloud/event-bus'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
@@ -53,6 +54,13 @@ import PoundIcon from 'vue-material-design-icons/Pound.vue'
 import { fetchNotes, renameTag } from '../NotesService.js'
 import store from '../store.js'
 import { tagsRoute } from '../Util.js'
+
+/* Long enough for the lock to have gone, short enough not to be noticed. */
+const RENAME_RETRY_DELAY = 400
+const RENAME_ATTEMPTS = 4
+
+/* If no editor answers, the rename goes ahead rather than hanging on it. */
+const CLOSE_TIMEOUT = 5000
 
 export default {
 	name: 'TagsList',
@@ -108,7 +116,13 @@ export default {
 			if (!to || to === from) {
 				return
 			}
-			const result = await renameTag(from, to)
+			/* The note on screen is the one most likely to carry the tag, and
+			   the one the server cannot write: the rich editor locks a note it
+			   has open. It is closed for the length of the rename. */
+			const held = this.heldNote(from)
+			const result = held === null
+				? await renameTag(from, to)
+				: await this.renameWithEditorClosed(held.id, from, to)
 			await fetchNotes()
 			this.reportSkipped(result?.skipped ?? [])
 			/* Following the selection matters: without it the list would empty
@@ -118,6 +132,93 @@ export default {
 				const following = this.selectedTags.map((tag) => (tag === from ? to : tag))
 				this.$router.push(tagsRoute(this.$route, [...new Set(following)], store.notes.getTagMode()))
 			}
+		},
+
+		/**
+		 * The note the rich editor is holding, when it carries the tag.
+		 *
+		 * Only the rich editor matters here: the markdown editor saves through
+		 * the API and takes no lock, so a rename reaches its note like any
+		 * other.
+		 *
+		 * @param {string} tag the tag being renamed
+		 * @return {object|null} the note, or null when none applies
+		 */
+		heldNote(tag) {
+			if (!OC.appswebroots?.text || store.app?.settings?.noteMode !== 'rich') {
+				return null
+			}
+			const noteId = store.notes.getSelectedNote()
+			const note = noteId === null ? null : store.notes.getNote(noteId)
+			if (!note) {
+				return null
+			}
+			return (note.tags ?? []).includes(tag) ? note : null
+		},
+
+		/**
+		 * Rename with the editor out of the way, then put it back.
+		 *
+		 * The lock the editor holds is released a moment after it closes, and
+		 * not at a moment this can be told about, so a refused write is tried
+		 * again rather than waited out. Everything else about the rename is the
+		 * ordinary path, including what it reports.
+		 *
+		 * @param {number} noteId the note the editor is holding
+		 * @param {string} from the tag to rewrite
+		 * @param {string} to the tag to rewrite it as
+		 * @return {Promise<object>} what the last attempt answered
+		 */
+		async renameWithEditorClosed(noteId, from, to) {
+			await this.closeEditor(noteId)
+			try {
+				let result
+				for (let attempt = 0; attempt < RENAME_ATTEMPTS; attempt++) {
+					result = await renameTag(from, to)
+					const stillLocked = (note) => note.id === noteId && note.reason === 'locked'
+					const refused = (result?.skipped ?? []).some(stillLocked)
+					if (!refused) {
+						break
+					}
+					await new Promise((resolve) => setTimeout(resolve, RENAME_RETRY_DELAY))
+				}
+				return result
+			} finally {
+				emit('notes:editor:reopen', { noteId })
+			}
+		},
+
+		/**
+		 * Ask the editor to let go of a note, and wait until it has.
+		 *
+		 * Resolves anyway if nothing answers, so a rename is never left waiting
+		 * on an editor that is not there.
+		 *
+		 * @param {number} noteId the note to close
+		 * @return {Promise<void>} once the editor has closed, or given up on
+		 */
+		closeEditor(noteId) {
+			return new Promise((resolve) => {
+				let timer = null
+				const onClosed = (event) => {
+					if (event?.noteId !== noteId) {
+						return
+					}
+					if (timer !== null) {
+						clearTimeout(timer)
+						timer = null
+					}
+					unsubscribe('notes:editor:closed', onClosed)
+					resolve()
+				}
+				subscribe('notes:editor:closed', onClosed)
+				timer = setTimeout(() => {
+					timer = null
+					unsubscribe('notes:editor:closed', onClosed)
+					resolve()
+				}, CLOSE_TIMEOUT)
+				emit('notes:editor:close', { noteId })
+			})
 		},
 
 		/**

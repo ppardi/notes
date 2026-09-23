@@ -7,7 +7,7 @@ import type { Locator, Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { createNoteViaApi, deleteAllNotes, newNoteButton, noteRow } from '../support/note.ts'
+import { createNoteViaApi, deleteAllNotes, newNoteButton, noteContent, noteRow } from '../support/note.ts'
 import { NoteEditor } from '../support/sections/NoteEditor.ts'
 
 function tagRow(page: Page, name: string): Locator {
@@ -24,15 +24,13 @@ async function openNotesApp(page: Page): Promise<void> {
 }
 
 /**
- * Open a note that no rename in the test will touch.
+ * Leave a particular note open in the editor.
  *
- * The app opens a note of its own accord when it starts, and the Text app
- * locks whatever is open — enough on its own to make a rename skip that note.
- * Choosing which note holds the lock keeps that out of the way of specs about
- * renaming; being refused by a lock has a spec of its own.
+ * The app opens one by itself, and which one it picks is not this spec's to
+ * say — so a test that cares which note the editor is holding says so.
  *
  * @param page the page under test
- * @param title the note to leave open
+ * @param title the note to open
  */
 async function parkTheEditorOn(page: Page, title: string): Promise<void> {
 	await page.getByRole('link', { name: title, exact: true }).click()
@@ -84,7 +82,6 @@ test.describe('Tags', () => {
 		const two = await createNoteViaApi(page, 'Personal', 'Second', 'also #oldname')
 		const untouched = await createNoteViaApi(page, 'Personal', 'Third', 'a different #keeper')
 		await openNotesApp(page)
-		await parkTheEditorOn(page, 'Third')
 
 		const row = tagRow(page, 'oldname').locator('xpath=ancestor::li[1]').first()
 		await row.hover()
@@ -105,6 +102,32 @@ test.describe('Tags', () => {
 		await expect(noteRow(page, one)).toBeVisible()
 		await expect(noteRow(page, two)).toBeVisible()
 		await expect(noteRow(page, untouched)).toBeHidden()
+	})
+
+	test('renames the tag in the note the editor is holding', async ({ page }) => {
+		const held = await createNoteViaApi(page, 'Personal', 'Held open', 'tagged #heldtag')
+		await openNotesApp(page)
+		/* The note being renamed is the one on screen, which is the ordinary
+		   case: the app opens a note by itself, and the Text app locks whatever
+		   it opens, so the server cannot write that file at all. The rename has
+		   to reach it through the editor instead. */
+		await parkTheEditorOn(page, 'Held open')
+
+		const row = tagRow(page, 'heldtag').locator('xpath=ancestor::li[1]').first()
+		await row.hover()
+		await row.getByRole('button', { name: 'Actions', exact: true }).click()
+		await page.getByRole('menuitem', { name: 'Rename tag', exact: true }).click()
+		const input = page.getByPlaceholder('heldtag', { exact: true })
+		await input.fill('heldrenamed')
+		await input.press('Enter')
+
+		// on screen...
+		await expect(new NoteEditor(page).surface).toContainText('#heldrenamed')
+		await expect(tagRow(page, 'heldrenamed')).toBeVisible()
+		await expect(tagRow(page, 'heldtag')).toHaveCount(0)
+
+		// ...and written to the note itself
+		await expect.poll(() => noteContent(held), { timeout: 20000 }).toContain('#heldrenamed')
 	})
 
 	test('says which notes a rename could not touch', async ({ page }) => {
@@ -139,9 +162,7 @@ test.describe('Tags', () => {
 
 	test('follows the selection when the tag being viewed is renamed', async ({ page }) => {
 		const note = await createNoteViaApi(page, 'Personal', 'Followed', 'tagged #before')
-		await createNoteViaApi(page, 'Personal', 'Parked', 'nothing to rename here')
 		await openNotesApp(page)
-		await parkTheEditorOn(page, 'Parked')
 
 		await tagRow(page, 'before').click()
 		await expect(page).toHaveURL(/[?&]tags=before(&|$)/)
@@ -163,9 +184,7 @@ test.describe('Tags', () => {
 	test('merges two tags when one is renamed to the other', async ({ page }) => {
 		const a = await createNoteViaApi(page, 'Personal', 'MergeA', 'tagged #mergefrom')
 		const b = await createNoteViaApi(page, 'Personal', 'MergeB', 'tagged #mergeinto')
-		await createNoteViaApi(page, 'Personal', 'Parked', 'nothing to rename here')
 		await openNotesApp(page)
-		await parkTheEditorOn(page, 'Parked')
 
 		const row = tagRow(page, 'mergefrom').locator('xpath=ancestor::li[1]').first()
 		await row.hover()

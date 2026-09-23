@@ -79,6 +79,8 @@ export default {
 	mounted() {
 		this.fetchData()
 		subscribe('files:node:updated', this.fileUpdated)
+		subscribe('notes:editor:close', this.closeForWrite)
+		subscribe('notes:editor:reopen', this.reopenAfterWrite)
 		subscribe('files_versions:restore:requested', this.onFileRestoreRequested)
 		subscribe('files_versions:restore:restored', this.onFileRestored)
 		subscribe('files_versions:restore:failed', this.onFileRestoreFailed)
@@ -88,6 +90,8 @@ export default {
 		this.clearTagTimers()
 		this?.editor?.destroy()
 		unsubscribe('files:node:updated', this.fileUpdated)
+		unsubscribe('notes:editor:close', this.closeForWrite)
+		unsubscribe('notes:editor:reopen', this.reopenAfterWrite)
 		unsubscribe('files_versions:restore:requested', this.onFileRestoreRequested)
 		unsubscribe('files_versions:restore:restored', this.onFileRestored)
 		unsubscribe('files_versions:restore:failed', this.onFileRestoreFailed)
@@ -163,6 +167,49 @@ export default {
 				}
 				this.refreshTags()
 			}
+		},
+
+		/**
+		 * Let go of this note so that something else can write it.
+		 *
+		 * The Text app locks a note for as long as it has it open, and it holds
+		 * the text in a session of its own that no other app can set — so a
+		 * write from outside is refused, and a write that did get through would
+		 * be saved over by this editor anyway. Closing it first answers both:
+		 * the lock goes, and there is no session left holding the old text.
+		 *
+		 * What is on screen is saved before it goes.
+		 *
+		 * @param {object} event the event
+		 * @param {number} event.noteId the note being written
+		 */
+		async closeForWrite({ noteId }) {
+			if (!this.note || this.note.id !== noteId || !this.editor) {
+				return
+			}
+			this.clearTagTimers()
+			try {
+				await this.editor.save?.()
+			} catch {
+				// Text reports its own save failures.
+			}
+			this.editor.destroy()
+			this.editor = null
+			this.loading = true
+			emit('notes:editor:closed', { noteId })
+		},
+
+		/**
+		 * Open the note again, against whatever it now holds.
+		 *
+		 * @param {object} event the event
+		 * @param {number} event.noteId the note that was written
+		 */
+		reopenAfterWrite({ noteId }) {
+			if (!this.note || this.note.id !== noteId || this.editor) {
+				return
+			}
+			this.loadTextEditor()
 		},
 
 		/**
