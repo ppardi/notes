@@ -131,6 +131,40 @@ test.describe('Search', () => {
 		await expect(page.locator('a[href*="/note/"]')).toHaveCount(1)
 	})
 
+	test('matches a tag exactly rather than as a substring', async ({ page }) => {
+		const longer = await createNoteViaApi(page, 'Personal', 'Kripke', 'naming and necessity #philosophy')
+		const shorter = await createNoteViaApi(page, 'Personal', 'Shorter', 'a note tagged #phil')
+		const wordOnly = await createNoteViaApi(page, 'Personal', 'Word', 'the word philosophy, but no tag')
+		await page.goto('/index.php/apps/notes/')
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		await searchBox(page).fill('#phil')
+
+		// A tag term is exact: "#phil" must not reach a note tagged "#philosophy".
+		await expect(noteRow(page, shorter)).toBeVisible()
+		await expect(noteRow(page, longer)).toBeHidden()
+		await expect(noteRow(page, wordOnly)).toBeHidden()
+
+		// Without the hash it goes back to matching text anywhere in the note.
+		await searchBox(page).fill('philosophy')
+		await expect(noteRow(page, longer)).toBeVisible()
+		await expect(noteRow(page, wordOnly)).toBeVisible()
+	})
+
+	test('ignores a hash that is part of a code block or a link', async ({ page }) => {
+		const code = await createNoteViaApi(page, 'Personal', 'Snippet', 'see\n\n```c\n#include <stdio.h>\n```\n')
+		const link = await createNoteViaApi(page, 'Personal', 'Link', 'read https://example.com/page#include today')
+		const real = await createNoteViaApi(page, 'Personal', 'Real', 'tagged for real #include')
+		await page.goto('/index.php/apps/notes/')
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		await searchBox(page).fill('#include')
+
+		await expect(noteRow(page, real)).toBeVisible()
+		await expect(noteRow(page, code)).toBeHidden()
+		await expect(noteRow(page, link)).toBeHidden()
+	})
+
 	test('puts the search box above the category list', async ({ page }) => {
 		const field = page.locator('.app-navigation__search').getByRole('textbox', { name: 'Search for notes' })
 		await expect(field).toBeVisible()

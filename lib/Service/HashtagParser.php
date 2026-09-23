@@ -65,6 +65,20 @@ class HashtagParser {
 	}
 
 	/**
+	 * Read a single search term as a tag, or null if it is not one.
+	 *
+	 * Deliberately goes through the same parse as note content, so a term can
+	 * never mean something the content would not. `#Philosophy` typed into the
+	 * search box and `#philosophy` written in a note have to meet.
+	 */
+	public function parseTerm(string $term) : ?string {
+		if (!str_starts_with($term, '#')) {
+			return null;
+		}
+		return $this->parse($term)[0] ?? null;
+	}
+
+	/**
 	 * Blank out the parts of a note that are code.
 	 *
 	 * Notes about code are full of hashes that are not tags: `#include`,

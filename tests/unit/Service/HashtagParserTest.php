@@ -132,4 +132,28 @@ class HashtagParserTest extends TestCase {
 		$content = "````\n```\n#define X 1\n````\nafter #done";
 		$this->assertSame(['done'], $this->parser->parse($content));
 	}
+
+	public function testReadsASearchTermAsATag() : void {
+		$this->assertSame('philosophy', $this->parser->parseTerm('#philosophy'));
+	}
+
+	public function testFoldsTheCaseOfASearchTerm() : void {
+		$this->assertSame('philosophy', $this->parser->parseTerm('#Philosophy'));
+	}
+
+	public function testATermWithoutAHashIsNotATagTerm() : void {
+		$this->assertNull($this->parser->parseTerm('philosophy'));
+	}
+
+	public function testABareHashIsNotATagTerm() : void {
+		$this->assertNull($this->parser->parseTerm('#'));
+		$this->assertNull($this->parser->parseTerm('#-'));
+	}
+
+	public function testATermKeepsTheSameRulesAsTheContent() : void {
+		// trailing punctuation is dropped in content, so it is dropped here too
+		$this->assertSame('philosophy', $this->parser->parseTerm('#philosophy.'));
+		// and a term that is only a hash inside a word is not a tag
+		$this->assertNull($this->parser->parseTerm('a#b'));
+	}
 }

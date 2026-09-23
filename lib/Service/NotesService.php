@@ -24,6 +24,7 @@ class NotesService {
 		private SettingsService $settings,
 		private NoteUtil $noteUtil,
 		private IFilenameValidator $filenameValidator,
+		private HashtagParser $hashtagParser,
 	) {
 	}
 
@@ -98,7 +99,23 @@ class NotesService {
 		try {
 			$d = $note->getData();
 			$strings = [ $d['title'], $d['category'], $d['content'] ];
+			/* Parsed only if the search actually mentions a tag, and then only
+			   once however many tag terms there are. */
+			$tags = null;
 			foreach ($terms as $term) {
+				$tag = $this->hashtagParser->parseTerm($term);
+				if ($tag !== null) {
+					/* A tag term is an exact test, not a substring one: "#phil"
+					   must not find a note tagged "#philosophy". The tags are
+					   parsed from the content in hand rather than read from the
+					   cache on the note's meta row, which search has no access
+					   to and should not be given. */
+					$tags ??= $this->hashtagParser->parse($d['content']);
+					if (!in_array($tag, $tags, true)) {
+						return false;
+					}
+					continue;
+				}
 				if (!$this->searchTermInData($strings, $term)) {
 					return false;
 				}
