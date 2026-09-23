@@ -25,6 +25,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setContentEtag(string $value)
  * @method string getFileEtag()
  * @method void setFileEtag(string $value)
+ * @method ?list<string> getTags()
+ * @method void setTags(?array $value)
  * @package OCA\Notes\Db
  */
 class Meta extends Entity {
@@ -33,5 +35,18 @@ class Meta extends Entity {
 	protected $lastUpdate;
 	protected $etag;
 	protected $contentEtag;
+
+	/**
+	 * The tags parsed out of the note's content, or null when the note has not
+	 * been parsed yet. That distinction matters: null means "unknown, read the
+	 * file", while an empty list means "read, and it has no tags".
+	 */
+	protected $tags;
 	protected $fileEtag;
+
+	public function __construct() {
+		// Decoded on read and encoded on write by the mapper, so the rest of
+		// the app sees a plain list of strings.
+		$this->addType('tags', 'json');
+	}
 }

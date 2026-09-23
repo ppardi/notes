@@ -56,10 +56,12 @@ use OCA\Notes\Db\MetaMapper;
 class MetaService {
 	private MetaMapper $metaMapper;
 	private Util $util;
+	private HashtagParser $hashtagParser;
 
-	public function __construct(MetaMapper $metaMapper, Util $util) {
+	public function __construct(MetaMapper $metaMapper, Util $util, HashtagParser $hashtagParser) {
 		$this->metaMapper = $metaMapper;
 		$this->util = $util;
+		$this->hashtagParser = $hashtagParser;
 	}
 
 	public function deleteByNote(int $id) : void {
@@ -170,11 +172,25 @@ class MetaService {
 			$meta->setFileEtag($fileEtag);
 			$generateContentEtag = true;
 		}
-		// generate new Content-ETag
+		// read the content, and derive everything that comes from it
 		if ($generateContentEtag) {
-			$contentEtag = $this->generateContentEtag($note); // this is expensive
-			if ($contentEtag !== $meta->getContentEtag()) {
-				$meta->setContentEtag($contentEtag);
+			$content = $this->readContent($note); // this is expensive
+			if ($content === null) {
+				// The read failed. Clear the Content-ETag so the next sync tries
+				// again, but leave the tags: a transient lock must not look like
+				// a note that has had its tags removed.
+				if ($meta->getContentEtag() !== '') {
+					$meta->setContentEtag('');
+				}
+			} else {
+				$contentEtag = md5($content);
+				if ($contentEtag !== $meta->getContentEtag()) {
+					$meta->setContentEtag($contentEtag);
+				}
+				$tags = $this->hashtagParser->parse($content);
+				if ($tags !== $meta->getTags()) {
+					$meta->setTags($tags);
+				}
 			}
 		}
 		// always update ETag based on meta data (not content!)
@@ -186,18 +202,24 @@ class MetaService {
 		return !empty($meta->getUpdatedFields());
 	}
 
-	// warning: this is expensive
-	private function generateContentEtag(Note $note) : string {
+	/**
+	 * The note's content, or null if it could not be read.
+	 *
+	 * warning: this is expensive — it reads the file. Everything derived from
+	 * the content is derived from this one string, so that a sync never reads
+	 * the same note twice.
+	 */
+	private function readContent(Note $note) : ?string {
 		try {
 			return Util::retryIfLocked(function () use ($note) {
-				return md5($note->getContent());
+				return $note->getContent();
 			}, 3);
 		} catch (\Throwable $t) {
 			$this->util->logger->error(
-				'Could not generate Content Etag for note ' . $note->getId(),
+				'Could not read content for note ' . $note->getId(),
 				[ 'exception' => $t ]
 			);
-			return '';
+			return null;
 		}
 	}
 
@@ -211,6 +233,7 @@ class MetaService {
 			$note->getFavorite(),
 			$note->getReadOnly(),
 			$meta->getContentEtag(),
+			$meta->getTags(),
 		];
 		return md5(json_encode($data));
 	}
