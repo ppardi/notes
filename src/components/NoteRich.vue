@@ -26,6 +26,10 @@ const HASH_WORD = /#[\p{L}\p{N}][\p{L}\p{N}_-]*/gu
 /* Long enough that typing a tag is one save rather than one per letter. */
 const TAG_SAVE_DELAY = 1500
 
+/* How long Text's own autosave takes to be accepted, for the editors that
+   cannot be asked to save. Its server allows one every ten seconds. */
+const TAG_AUTOSAVE_WAIT = 11000
+
 export default {
 	name: 'NoteRich',
 
@@ -49,6 +53,7 @@ export default {
 			shouldAutotitle: true,
 			hashWords: null,
 			tagSaveTimer: null,
+			tagRefreshTimer: null,
 		}
 	},
 
@@ -80,7 +85,7 @@ export default {
 	},
 
 	unmounted() {
-		this.clearTagSaveTimer()
+		this.clearTagTimers()
 		this?.editor?.destroy()
 		unsubscribe('files:node:updated', this.fileUpdated)
 		unsubscribe('files_versions:restore:requested', this.onFileRestoreRequested)
@@ -108,7 +113,7 @@ export default {
 			this?.editor?.destroy()
 			this.loading = true
 			this.shouldAutotitle = undefined
-			this.clearTagSaveTimer()
+			this.clearTagTimers()
 			this.hashWords = this.readHashWords(this.note?.content ?? '')
 			this.editor = markRaw(await window.OCA.Text.createEditor({
 				el: this.$refs.editor,
@@ -170,10 +175,14 @@ export default {
 			return (markdown.match(HASH_WORD) ?? []).join(' ').toLowerCase()
 		},
 
-		clearTagSaveTimer() {
+		clearTagTimers() {
 			if (this.tagSaveTimer !== null) {
 				clearTimeout(this.tagSaveTimer)
 				this.tagSaveTimer = null
+			}
+			if (this.tagRefreshTimer !== null) {
+				clearTimeout(this.tagRefreshTimer)
+				this.tagRefreshTimer = null
 			}
 		},
 
@@ -198,13 +207,38 @@ export default {
 				return
 			}
 			this.hashWords = hashWords
-			this.clearTagSaveTimer()
+			this.clearTagTimers()
 			this.tagSaveTimer = setTimeout(() => {
 				this.tagSaveTimer = null
-				/* Text reports its own save failures, and a note whose tags are
-				   a moment late is not worth a second complaint. */
-				Promise.resolve(this.editor?.save?.()).catch(() => {})
+				this.saveAndRefreshTags()
 			}, TAG_SAVE_DELAY)
+		},
+
+		/**
+		 * Write the note out, then read back what the server parsed from it.
+		 *
+		 * The refresh hangs off the save rather than off Text's save event: that
+		 * event is emitted even when the server refused the write, so it is no
+		 * promise that anything reached the disk. Waiting for the request to
+		 * finish is.
+		 */
+		async saveAndRefreshTags() {
+			if (typeof this.editor?.save !== 'function') {
+				/* An editor that cannot be asked still writes the file through
+				   its own autosave. Later is better than never. */
+				this.tagRefreshTimer = setTimeout(() => {
+					this.tagRefreshTimer = null
+					this.refreshTags()
+				}, TAG_AUTOSAVE_WAIT)
+				return
+			}
+			try {
+				await this.editor.save()
+			} catch {
+				// Text reports its own save failures; a second complaint here
+				// would say nothing new.
+			}
+			this.refreshTags()
 		},
 
 		/**
