@@ -55,6 +55,13 @@ class Helper {
 		}
 		$data = $note->getData($exclude);
 		$data['etag'] = $meta->getEtag();
+		if (!in_array('tags', $exclude)) {
+			/* Tags come from the meta row rather than the note, because they are
+			   a cache of what the content was parsed into. A note that has not
+			   been parsed yet has null here, which the client sees as no tags —
+			   it cannot act on "unknown", and the next sync will fill it in. */
+			$data['tags'] = $meta->getTags() ?? [];
+		}
 		return $data;
 	}
 
