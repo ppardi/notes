@@ -193,6 +193,30 @@ export function keepCategory($route, query = {}) {
 	return { ...query, ...categoryToQuery(categoryFromQuery($route?.query)) }
 }
 
+/**
+ * A route query that keeps whatever the list is showing.
+ *
+ * The category and the tags are alternative answers to "where am I looking",
+ * and only one of them is ever set, but navigation has to carry either one or
+ * the list resets itself on the way. Opening a note from a tag's list is the
+ * case that matters: keepCategory() alone would drop the tag and land on every
+ * note.
+ *
+ * Creating a note is the exception, and keeps using keepCategory(): a new note
+ * carries no tags, so a tag selection would file it straight out of the list.
+ *
+ * @param {object} $route the current route
+ * @param {object} [query] the query the target route wants
+ * @return {object} that query, plus the current selection
+ */
+export function keepSelection($route, query = {}) {
+	return {
+		...query,
+		...categoryToQuery(categoryFromQuery($route?.query)),
+		...tagsToQuery(tagsFromQuery($route?.query), tagModeFromQuery($route?.query)),
+	}
+}
+
 const CATEGORY_SETTING_PREFIX = 'category:'
 
 /**

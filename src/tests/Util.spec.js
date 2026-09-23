@@ -21,6 +21,7 @@ import {
 	isInCategory,
 	isNoteDrag,
 	keepCategory,
+	keepSelection,
 	noteAttributes,
 	routeIsNewNote,
 	tagModeFromQuery,
@@ -206,6 +207,33 @@ describe('keepCategory', () => {
 
 	it('copes with no target query at all', () => {
 		expect(keepCategory({ query: { category: 'Work' } })).toEqual({ category: 'Work' })
+	})
+})
+
+describe('keepSelection', () => {
+	it('carries the selected category into another route', () => {
+		expect(keepSelection({ query: { category: 'Work' } }, { new: null }))
+			.toEqual({ new: null, category: 'Work', tags: undefined, mode: undefined })
+	})
+
+	it('carries the selected tags, which keepCategory drops', () => {
+		expect(keepSelection({ query: { tags: 'philosophy' } }, {}))
+			.toEqual({ category: undefined, tags: 'philosophy', mode: undefined })
+	})
+
+	it('carries the mode along with several tags', () => {
+		expect(keepSelection({ query: { tags: 'a,b', mode: 'all' } }, {}))
+			.toEqual({ category: undefined, tags: 'a,b', mode: 'all' })
+	})
+
+	it('leaves an unset selection unset', () => {
+		expect(keepSelection({ query: {} }, { new: null }))
+			.toEqual({ new: null, category: undefined, tags: undefined, mode: undefined })
+	})
+
+	it('does not carry unrelated query fields across', () => {
+		expect(keepSelection({ query: { tags: 'a', new: null } }, {}))
+			.toEqual({ category: undefined, tags: 'a', mode: undefined })
 	})
 })
 

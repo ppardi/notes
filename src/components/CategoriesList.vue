@@ -68,7 +68,7 @@ import CategoryTreeItem from './CategoryTreeItem.vue'
 import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import store from '../store.js'
-import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepCategory } from '../Util.js'
+import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepSelection } from '../Util.js'
 
 export default {
 	name: 'CategoriesList',
@@ -586,10 +586,10 @@ export default {
 					await this.$router.push({
 						name: 'note',
 						params: { noteId: remainingNote.id.toString() },
-						query: keepCategory(this.$route),
+						query: keepSelection(this.$route),
 					}).catch(() => {})
 				} else {
-					await this.$router.push({ name: 'welcome', query: keepCategory(this.$route) }).catch(() => {})
+					await this.$router.push({ name: 'welcome', query: keepSelection(this.$route) }).catch(() => {})
 				}
 			}
 		},

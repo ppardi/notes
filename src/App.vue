@@ -102,7 +102,7 @@ import { config } from './config.js'
 import logger from './Logger.js'
 import { fetchNotes, noteExists, setSettings, undoDeleteNote } from './NotesService.js'
 import store from './store.js'
-import { categoryFromQuery, categoryFromSetting, categoryRoute, categoryToSetting, keepCategory, tagModeFromQuery, tagsFromQuery } from './Util.js'
+import { categoryFromQuery, categoryFromSetting, categoryRoute, categoryToSetting, keepSelection, tagModeFromQuery, tagsFromQuery } from './Util.js'
 
 import '@nextcloud/dialogs/style.css'
 
@@ -318,7 +318,7 @@ export default {
 
 		reloadNotes() {
 			if (this.$route.path !== '/') {
-				this.$router.push({ path: '/', query: keepCategory(this.$route) })
+				this.$router.push({ path: '/', query: keepSelection(this.$route) })
 			}
 			store.notes.removeAllNotes()
 			store.sync.clearSyncCache()
@@ -386,7 +386,7 @@ export default {
 
 		routeWelcome() {
 			if (this.$route.name !== 'welcome') {
-				this.$router.push({ name: 'welcome', query: keepCategory(this.$route) })
+				this.$router.push({ name: 'welcome', query: keepSelection(this.$route) })
 			}
 		},
 
@@ -396,7 +396,7 @@ export default {
 				this.$router.push({
 					name: 'note',
 					params: { noteId },
-					query: keepCategory(this.$route, query),
+					query: keepSelection(this.$route, query),
 				})
 			}
 		},

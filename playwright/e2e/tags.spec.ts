@@ -144,6 +144,23 @@ test.describe('Tags', () => {
 		await expect(noteRow(page, untagged)).toBeHidden()
 	})
 
+	test('keeps the tag selected when one of its notes is opened', async ({ page }) => {
+		const tagged = await createNoteViaApi(page, 'Personal', 'Opened', 'carries #kappa')
+		const other = await createNoteViaApi(page, 'Personal', 'Elsewhere', 'carries nothing')
+		await openNotesApp(page)
+
+		await tagRow(page, 'kappa').click()
+		await expect(noteRow(page, other)).toBeHidden()
+
+		await noteRow(page, tagged).click()
+
+		/* Opening a note must not throw the filter away: the list stayed on
+		   every note before, which reads as the selection having been lost. */
+		await expect(page).toHaveURL(/[?&]tags=kappa(&|$)/)
+		await expect(noteRow(page, other)).toBeHidden()
+		await expect(noteRow(page, tagged)).toBeVisible()
+	})
+
 	test('keeps the selected tag across a reload', async ({ page }) => {
 		const tagged = await createNoteViaApi(page, 'Personal', 'Reloaded', 'sticky #gamma')
 		const other = await createNoteViaApi(page, 'Personal', 'Other', 'different #omega')

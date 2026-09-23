@@ -127,7 +127,7 @@ import StarOutlineIcon from 'vue-material-design-icons/StarOutline.vue'
 import logger from '../Logger.js'
 import { deleteNote, fetchNote, setCategory, setFavorite, setTitle } from '../NotesService.js'
 import store from '../store.js'
-import { categoryLabel, keepCategory, routeIsNewNote } from '../Util.js'
+import { categoryLabel, keepSelection, routeIsNewNote } from '../Util.js'
 
 export default {
 	name: 'NoteItem',
@@ -197,13 +197,13 @@ export default {
 			return this.note.title + (this.note.unsaved ? ' *' : '')
 		},
 
-		/* The route carries the selected category, so opening a note has to pass
-		   it on or the selection is lost on the way. */
+		/* The route carries what the list is showing, so opening a note has to
+		   pass it on or the selection is lost on the way. */
 		noteRoute() {
 			return {
 				name: 'note',
 				params: { noteId: this.note.id.toString() },
-				query: keepCategory(this.$route),
+				query: keepSelection(this.$route),
 			}
 		},
 
