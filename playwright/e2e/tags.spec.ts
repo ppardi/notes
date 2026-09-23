@@ -63,6 +63,75 @@ test.describe('Tags', () => {
 		await expect(tagRow(page, 'fresh')).toBeVisible({ timeout: 15000 })
 	})
 
+	test('renames a tag from its actions menu, in the notes and in the list', async ({ page }) => {
+		const one = await createNoteViaApi(page, 'Personal', 'First', 'about #oldname here')
+		const two = await createNoteViaApi(page, 'Personal', 'Second', 'also #oldname')
+		const untouched = await createNoteViaApi(page, 'Personal', 'Third', 'a different #keeper')
+		await openNotesApp(page)
+
+		const row = tagRow(page, 'oldname').locator('xpath=ancestor::li[1]').first()
+		await row.hover()
+		await row.getByRole('button', { name: 'Actions', exact: true }).click()
+		await page.getByRole('menuitem', { name: 'Rename tag', exact: true }).click()
+
+		const input = page.getByPlaceholder('oldname', { exact: true })
+		await expect(input).toBeVisible()
+		await input.fill('newname')
+		await input.press('Enter')
+
+		await expect(tagRow(page, 'newname')).toBeVisible()
+		await expect(tagRow(page, 'oldname')).toHaveCount(0)
+		await expect(tagRow(page, 'keeper')).toBeVisible()
+
+		// The notes themselves were rewritten, not just the list.
+		await tagRow(page, 'newname').click()
+		await expect(noteRow(page, one)).toBeVisible()
+		await expect(noteRow(page, two)).toBeVisible()
+		await expect(noteRow(page, untouched)).toBeHidden()
+	})
+
+	test('follows the selection when the tag being viewed is renamed', async ({ page }) => {
+		const note = await createNoteViaApi(page, 'Personal', 'Followed', 'tagged #before')
+		await openNotesApp(page)
+
+		await tagRow(page, 'before').click()
+		await expect(page).toHaveURL(/[?&]tags=before(&|$)/)
+
+		const row = tagRow(page, 'before').locator('xpath=ancestor::li[1]').first()
+		await row.hover()
+		await row.getByRole('button', { name: 'Actions', exact: true }).click()
+		await page.getByRole('menuitem', { name: 'Rename tag', exact: true }).click()
+		const input = page.getByPlaceholder('before', { exact: true })
+		await input.fill('after')
+		await input.press('Enter')
+
+		/* The view must not empty itself as the notes leave the old tag, so the
+		   selection moves to the new name. */
+		await expect(page).toHaveURL(/[?&]tags=after(&|$)/)
+		await expect(noteRow(page, note)).toBeVisible()
+	})
+
+	test('merges two tags when one is renamed to the other', async ({ page }) => {
+		const a = await createNoteViaApi(page, 'Personal', 'MergeA', 'tagged #mergefrom')
+		const b = await createNoteViaApi(page, 'Personal', 'MergeB', 'tagged #mergeinto')
+		await openNotesApp(page)
+
+		const row = tagRow(page, 'mergefrom').locator('xpath=ancestor::li[1]').first()
+		await row.hover()
+		await row.getByRole('button', { name: 'Actions', exact: true }).click()
+		await page.getByRole('menuitem', { name: 'Rename tag', exact: true }).click()
+		const input = page.getByPlaceholder('mergefrom', { exact: true })
+		await input.fill('mergeinto')
+		await input.press('Enter')
+
+		await expect(tagRow(page, 'mergefrom')).toHaveCount(0)
+		await expect(tagRow(page, 'mergeinto')).toBeVisible()
+
+		await tagRow(page, 'mergeinto').click()
+		await expect(noteRow(page, a)).toBeVisible()
+		await expect(noteRow(page, b)).toBeVisible()
+	})
+
 	test('shows only the notes carrying the tag, and says so in the URL', async ({ page }) => {
 		const tagged = await createNoteViaApi(page, 'Personal', 'Tagged', 'has one #beta')
 		const untagged = await createNoteViaApi(page, 'Personal', 'Untagged', 'carries none')

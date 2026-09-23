@@ -353,6 +353,27 @@ export function searchNotes(term) {
 		})
 }
 
+/**
+ * Rewrite one tag as another across every note that carries it.
+ *
+ * Naming a tag that is already in use merges the two, which the server handles
+ * by leaving the duplicate references to collapse when the notes are parsed.
+ *
+ * @param {string} from the tag to rewrite
+ * @param {string} to the tag to rewrite it as
+ * @return {Promise<object>} which notes were rewritten and which were skipped
+ */
+export function renameTag(from, to) {
+	return axios
+		.post(url('/notes/tags/rename'), { from, to })
+		.then((response) => response.data)
+		.catch((err) => {
+			logger.error('Renaming a tag has failed', { from, to, err })
+			showError(t('notes', 'Renaming the tag has failed.'))
+			throw err
+		})
+}
+
 export function setFavorite(noteId, favorite) {
 	return axios
 		.put(url('/notes/' + noteId + '/favorite'), { favorite })
