@@ -23,9 +23,9 @@
 	</NcAppNavigationCaption>
 
 	<NcAppNavigationItem
-		v-if="newCategoryDraft"
+		v-if="newCategoryDraft && newCategoryParent === null"
 		v-show="!loading"
-		ref="newCategoryItem"
+		:ref="(el) => setDraftRef(el)"
 		name=""
 		:draggable="false"
 		:editPlaceholder="t('notes', 'New category')"
@@ -50,6 +50,7 @@
 		:dragOverCategory="dragOverCategory"
 		:dropBesideCategory="dropBesideCategory"
 		:dropBesideSide="dropBesideSide"
+		:draftParent="newCategoryParent"
 		:collapsedCategories="collapsedCategories"
 	/>
 </template>
@@ -64,7 +65,7 @@ import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import CategoryTreeItem from './CategoryTreeItem.vue'
-import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import store from '../store.js'
 import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepCategory } from '../Util.js'
@@ -87,6 +88,9 @@ export default {
 			tree: {
 				select: (name) => this.onSelectCategory(name),
 				startRename: (name) => this.onStartRenameCategory(name),
+				startSubcategory: (name) => this.startNewCategory({ parent: name }),
+				createCategory: (name) => this.onCreateCategory(name),
+				setDraftRef: (el) => this.setDraftRef(el),
 				rename: (name, newName) => this.onRenameCategory(name, newName),
 				remove: (name) => this.onDeleteCategory(name),
 				dragStart: (name, event) => this.onCategoryDragStart(name, event),
@@ -116,6 +120,8 @@ export default {
 			dropBesideSide: 'before',
 			dragOverNewCategory: false,
 			newCategoryDraft: false,
+			newCategoryParent: null,
+			newCategoryItem: null,
 			newCategoryMonitor: null,
 			newCategoryDropNoteId: null,
 			categoryItems: {},
@@ -221,14 +227,23 @@ export default {
 			return categoryLabel(category)
 		},
 
+		setDraftRef(el) {
+			this.newCategoryItem = el ?? null
+		},
+
 		startNewCategory(payload = {}) {
 			if (this.newCategoryDraft) {
 				return
 			}
+			const parent = payload?.parent ?? null
 			this.newCategoryDropNoteId = payload?.noteId ?? null
+			this.newCategoryParent = parent
 			this.newCategoryDraft = true
+			if (parent !== null) {
+				this.revealCategory(parent)
+			}
 			this.$nextTick(() => {
-				this.$refs.newCategoryItem?.handleEdit?.()
+				this.newCategoryItem?.handleEdit?.()
 				this.monitorNewCategoryEditing()
 			})
 		},
@@ -280,13 +295,15 @@ export default {
 				if (!this.newCategoryDraft) {
 					this.stopNewCategoryMonitor()
 					this.newCategoryDropNoteId = null
+					this.newCategoryParent = null
 					return
 				}
-				const item = this.$refs.newCategoryItem
+				const item = this.newCategoryItem
 				if (item && item.editingActive === false) {
 					this.newCategoryDraft = false
 					this.stopNewCategoryMonitor()
 					this.newCategoryDropNoteId = null
+					this.newCategoryParent = null
 					return
 				}
 				this.newCategoryMonitor = requestAnimationFrame(check)
@@ -295,21 +312,23 @@ export default {
 		},
 
 		onCreateCategory(newCategory) {
-			const trimmed = newCategory?.trim() ?? ''
+			const parent = this.newCategoryParent
 			this.newCategoryDraft = false
+			this.newCategoryParent = null
 			this.stopNewCategoryMonitor()
 			const droppedNoteId = this.newCategoryDropNoteId
 			this.newCategoryDropNoteId = null
-			if (!trimmed) {
+			const name = joinCategory(parent, newCategory)
+			if (!name) {
 				return
 			}
-			const exists = this.categories.some((category) => category.name === trimmed)
+			const exists = this.categories.some((category) => category.name === name)
 			if (!exists) {
-				store.notes.addLocalCategory(trimmed)
+				store.notes.addLocalCategory(name)
 			}
-			this.selectCategory(trimmed)
+			this.selectCategory(name)
 			if (droppedNoteId !== null) {
-				setCategory(droppedNoteId, trimmed).catch(() => {})
+				setCategory(droppedNoteId, name).catch(() => {})
 			}
 		},
 

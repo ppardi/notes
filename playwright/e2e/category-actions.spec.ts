@@ -127,6 +127,37 @@ test.describe('Category actions', () => {
 		await expect(page).toHaveURL(new RegExp(`/note/${noteId}(\\?.*)?$`))
 	})
 
+	test('creates a subcategory from the actions menu', async ({ page }, testInfo: TestInfo) => {
+		const parent = uniqueTitle('parent', testInfo)
+		const child = uniqueTitle('child', testInfo)
+
+		await createCategory(page, parent)
+
+		await openCategoryActions(page, parent)
+		await page.getByRole('menuitem', { name: 'New subcategory', exact: true }).click()
+
+		const input = appNavigation(page).getByPlaceholder('New category', { exact: true })
+		await expect(input).toBeVisible()
+		await input.fill(child)
+		await input.press('Enter')
+
+		// The new row is nested under its parent, not made a sibling of it.
+		await expect(navigationRow(page, child)).toBeVisible()
+		// .first() because deeper rows carry a children list of their own.
+		await expect(navigationRow(page, parent).locator('.app-navigation-entry__children').first())
+			.toContainText(child)
+		await expectNavigationItemActive(page, child)
+
+		// A note filed here has to come back nested after a reload, which is what
+		// shows the category was stored as the path "parent/child" on the server
+		// rather than only assembled in the browser.
+		await createNoteInSelectedCategory(page, child)
+		await page.reload()
+		await expect(newCategoryButton(page)).toBeVisible()
+		await expect(navigationRow(page, parent).locator('.app-navigation-entry__children').first())
+			.toContainText(child)
+	})
+
 	test('deletes a category from the actions menu', async ({ page }, testInfo: TestInfo) => {
 		const category = uniqueTitle('delete', testInfo)
 		await createCategory(page, category)

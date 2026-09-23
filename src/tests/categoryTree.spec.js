@@ -5,7 +5,7 @@
 
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
 import { useNotesStore } from '../stores/notes.js'
 
 /**
@@ -373,5 +373,39 @@ describe('landingCategory', () => {
 
 	it('has nowhere to start when there are no categories at all', () => {
 		expect(landingCategory([{ name: '', count: 0 }])).toBeNull()
+	})
+})
+
+describe('joinCategory', () => {
+	it('returns the name alone at the top level', () => {
+		expect(joinCategory(null, 'Work')).toBe('Work')
+		expect(joinCategory('', 'Work')).toBe('Work')
+	})
+
+	it('nests the name under its parent', () => {
+		expect(joinCategory('PROJECTS', 'Apps')).toBe('PROJECTS/Apps')
+		expect(joinCategory('PROJECTS/Apps', 'Notes')).toBe('PROJECTS/Apps/Notes')
+	})
+
+	it('is empty when the name is empty, whatever the parent', () => {
+		expect(joinCategory('PROJECTS', '')).toBe('')
+		expect(joinCategory('PROJECTS', '   ')).toBe('')
+		expect(joinCategory(null, '')).toBe('')
+	})
+
+	it('trims the segments so a stray space does not become part of a folder name', () => {
+		expect(joinCategory('PROJECTS', '  Apps  ')).toBe('PROJECTS/Apps')
+		expect(joinCategory('  PROJECTS ', 'Apps')).toBe('PROJECTS/Apps')
+	})
+
+	it('swallows stray slashes rather than making an empty path segment', () => {
+		expect(joinCategory('PROJECTS', '/Apps')).toBe('PROJECTS/Apps')
+		expect(joinCategory('PROJECTS/', 'Apps')).toBe('PROJECTS/Apps')
+		expect(joinCategory('PROJECTS', 'Apps/')).toBe('PROJECTS/Apps')
+		expect(joinCategory('PROJECTS', 'Apps//Notes')).toBe('PROJECTS/Apps/Notes')
+	})
+
+	it('still allows a deliberate path typed into the name', () => {
+		expect(joinCategory(null, 'PROJECTS/Apps')).toBe('PROJECTS/Apps')
 	})
 })

@@ -243,3 +243,28 @@ export function landingCategory(categories) {
 	const withNotes = named.filter((category) => category.count > 0)
 	return (preferred(withNotes) ?? preferred(named))?.name ?? null
 }
+
+/**
+ * Join a new category name onto its parent path.
+ *
+ * Categories are slash-delimited paths, so nesting is just a matter of
+ * prefixing. Segments are trimmed and empty ones dropped, so a stray slash or
+ * space typed into the field cannot produce a folder named " " or a path with a
+ * hole in it.
+ *
+ * @param {string|null} parent the category to nest below, or null for the top level
+ * @param {string} name the name that was typed
+ * @return {string} the full category path, or '' if the name was blank
+ */
+export function joinCategory(parent, name) {
+	const segments = (value) => (value ?? '')
+		.split('/')
+		.map((segment) => segment.trim())
+		.filter((segment) => segment !== '')
+
+	const child = segments(name)
+	if (child.length === 0) {
+		return ''
+	}
+	return [...segments(parent), ...child].join('/')
+}

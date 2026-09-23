@@ -39,6 +39,15 @@
 		<template v-if="node.name !== ''" #actions>
 			<NcActionButton
 				:closeAfterClick="true"
+				@click="tree.startSubcategory(node.name)"
+			>
+				<template #icon>
+					<FolderPlusIcon :size="20" />
+				</template>
+				{{ t('notes', 'New subcategory') }}
+			</NcActionButton>
+			<NcActionButton
+				:closeAfterClick="true"
 				@click="tree.startRename(node.name)"
 			>
 				<template #icon>
@@ -57,6 +66,23 @@
 			</NcActionButton>
 		</template>
 
+		<NcAppNavigationItem v-if="node.name === draftParent"
+			:ref="(el) => tree.setDraftRef(el)"
+			name=""
+			:draggable="false"
+			:editPlaceholder="t('notes', 'New category')"
+			class="category-draft"
+			@click.prevent.stop
+			@update:name="tree.createCategory($event)"
+		>
+			<template #icon>
+				<FolderIcon :size="20" />
+			</template>
+			<template #counter>
+				<NcCounterBubble :count="0" />
+			</template>
+		</NcAppNavigationItem>
+
 		<CategoryTreeItem v-for="child in node.children"
 			:key="child.name"
 			:node="child"
@@ -65,6 +91,7 @@
 			:dragOverCategory="dragOverCategory"
 			:dropBesideCategory="dropBesideCategory"
 			:dropBesideSide="dropBesideSide"
+			:draftParent="draftParent"
 			:collapsedCategories="collapsedCategories"
 		/>
 	</NcAppNavigationItem>
@@ -77,6 +104,7 @@ import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import DeleteIcon from 'vue-material-design-icons/DeleteOutline.vue'
 import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderOutlineIcon from 'vue-material-design-icons/FolderOutline.vue'
+import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 
 export default {
@@ -86,6 +114,7 @@ export default {
 		DeleteIcon,
 		FolderIcon,
 		FolderOutlineIcon,
+		FolderPlusIcon,
 		NcActionButton,
 		NcAppNavigationItem,
 		NcCounterBubble,
@@ -123,6 +152,12 @@ export default {
 			default: 'before',
 		},
 
+		/* The category a new subcategory is being typed into, if any. */
+		draftParent: {
+			type: String,
+			default: null,
+		},
+
 		collapsedCategories: {
 			type: Array,
 			required: true,
@@ -135,12 +170,16 @@ export default {
 		},
 
 		hasChildren() {
-			return this.node.children.length > 0
+			return this.node.children.length > 0 || this.node.name === this.draftParent
 		},
 
 		/* Open unless it was collapsed on purpose: a tree that starts closed
 		   hides the hierarchy it exists to show. */
 		isOpen() {
+			/* A subcategory being typed is invisible inside a collapsed parent. */
+			if (this.node.name === this.draftParent) {
+				return true
+			}
 			return !this.collapsedCategories.includes(this.node.name)
 		},
 	},
