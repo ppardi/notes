@@ -52,6 +52,22 @@ async function chooseTag(dialog: Locator, tag: string): Promise<void> {
 	await expect(dialog.getByRole('checkbox', { name: tag })).toBeChecked()
 }
 
+/**
+ * Open a row's own menu.
+ *
+ * The actions only appear on hover or focus, so the row has to be hovered
+ * before its trigger can be clicked.
+ *
+ * @param row the row, from smartRow()
+ */
+async function openMenu(row: Locator): Promise<void> {
+	await expect(row).toBeVisible()
+	await row.hover()
+	const actions = row.getByRole('button', { name: 'Actions', exact: true })
+	await expect(actions).toBeVisible()
+	await actions.click()
+}
+
 async function openNotesApp(page: Page): Promise<void> {
 	await page.goto('/index.php/apps/notes/')
 	await expect(page.locator('#app-navigation-vue')).toBeVisible()
@@ -240,5 +256,96 @@ test.describe('Smart categories', () => {
 		const dialog = page.getByRole('dialog')
 		await dialog.getByRole('textbox', { name: 'Name' }).fill('Empty')
 		await expect(dialog.getByRole('button', { name: 'Create' })).toBeDisabled()
+	})
+
+	test('adds a tag to one that already exists', async ({ page }) => {
+		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy')
+		await createNoteViaRequest('', 'Rigid Designators', 'On #kripke')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' },
+		])
+
+		await openNotesApp(page)
+		await smartLink(page, 'Reading').click()
+		await expect(page.getByRole('link', { name: 'Rigid Designators' })).toHaveCount(0)
+
+		await openMenu(smartRow(page, 'Reading'))
+		await page.getByRole('menuitem', { name: 'Edit tags' }).click()
+
+		const dialog = page.getByRole('dialog')
+		await expect(dialog.getByRole('checkbox', { name: 'philosophy' })).toBeChecked()
+		await chooseTag(dialog, 'kripke')
+		await dialog.getByRole('button', { name: 'Save' }).click()
+
+		/* The list follows the record, not the URL: the id in the URL has not
+		   changed, so a view built from the URL's own tags would still be
+		   showing the old ones. */
+		await expect(page.getByRole('link', { name: 'Rigid Designators' })).toBeVisible()
+		await expect(smartRow(page, 'Reading')
+			.locator('.app-navigation-entry__counter-wrapper').first()).toContainText('2')
+	})
+
+	test('keeps a tag no note carries any more', async ({ page }) => {
+		/* The tag is still part of what the category means. Offering only the
+		   tags in use would drop it from the list, and the next save would drop
+		   it from the category without anyone saying so. */
+		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy', 'retired'], mode: 'any', parent: '' },
+		])
+
+		await openNotesApp(page)
+		await openMenu(smartRow(page, 'Reading'))
+		await page.getByRole('menuitem', { name: 'Edit tags' }).click()
+
+		const dialog = page.getByRole('dialog')
+		await expect(dialog.getByRole('checkbox', { name: 'retired' })).toBeChecked()
+		await dialog.getByRole('button', { name: 'Save' }).click()
+
+		await openMenu(smartRow(page, 'Reading'))
+		await page.getByRole('menuitem', { name: 'Edit tags' }).click()
+		await expect(page.getByRole('dialog').getByRole('checkbox', { name: 'retired' })).toBeChecked()
+	})
+
+	test('renames one without changing what it holds', async ({ page }) => {
+		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' },
+		])
+
+		await openNotesApp(page)
+		await smartLink(page, 'Reading').click()
+
+		await openMenu(smartRow(page, 'Reading'))
+		await page.getByRole('menuitem', { name: 'Rename smart category' }).click()
+		/* Not scoped to the row: while it is being renamed the row has an
+		   input where its link was, so a locator that looks for the link by
+		   name no longer finds it. */
+		const field = page.locator('.smart-category-entry input[type="text"]').first()
+		await field.fill('Philosophy shelf')
+		await field.press('Enter')
+
+		await expect(smartLink(page, 'Philosophy shelf')).toBeVisible()
+		/* Identity is the id, so the row it renamed is the row that stays open. */
+		await expect(page).toHaveURL(/smart=reading/)
+		await expect(page.getByRole('link', { name: 'Naming and Necessity' })).toBeVisible()
+	})
+
+	test('deletes one and leaves the notes alone', async ({ page }) => {
+		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' },
+		])
+
+		await openNotesApp(page)
+		await smartLink(page, 'Reading').click()
+
+		await openMenu(smartRow(page, 'Reading'))
+		await page.getByRole('menuitem', { name: 'Delete smart category' }).click()
+
+		await expect(page.locator('.smart-category-entry')).toHaveCount(0)
+		await expect(page).not.toHaveURL(/smart=/)
+		// the note it named is still there, wherever it is filed
+		await expect(page.getByRole('link', { name: 'Naming and Necessity' })).toBeVisible()
 	})
 })

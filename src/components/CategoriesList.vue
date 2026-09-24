@@ -316,13 +316,51 @@ export default {
 			this.$router.push(smartRoute(this.$route, smart.id)).catch(() => {})
 		},
 
-		/* Filled in by Task 7. Declared without parameters so that the stub
-		   does not read as code with arguments it ignores. */
-		onRenameSmart() {},
+		onEditSmart(id) {
+			const smart = this.smartCategories.find((entry) => entry.id === id)
+			if (!smart) {
+				return
+			}
+			this.smartDialogRecord = smart
+			this.smartDialogParent = smart.parent
+			this.smartDialogOpen = true
+		},
 
-		onEditSmart() {},
+		async onRenameSmart(id, name) {
+			const trimmed = (name ?? '').trim()
+			const smart = this.smartCategories.find((entry) => entry.id === id)
+			if (!smart || trimmed === '' || trimmed === smart.name) {
+				return
+			}
+			try {
+				await setSettings({
+					smartCategories: this.smartCategories.map((entry) => (
+						entry.id === id ? { ...entry, name: trimmed } : entry
+					)),
+				})
+			} catch {
+				// NotesService already shows a toast on failure.
+			}
+		},
 
-		onRemoveSmart() {},
+		/* No confirmation: it holds no notes of its own, and making it again is
+		   the same two clicks it took the first time. */
+		async onRemoveSmart(id) {
+			try {
+				await setSettings({
+					smartCategories: this.smartCategories.filter((entry) => entry.id !== id),
+				})
+			} catch {
+				// NotesService already shows a toast on failure.
+				return
+			}
+			/* Deleting what the list is showing would otherwise leave the app on
+			   a selection that no longer exists. */
+			if (this.selectedSmartId === id) {
+				const category = landingCategory(this.categories)
+				this.$router.replace(categoryRoute(this.$route, category)).catch(() => {})
+			}
+		},
 
 		// Filled in by Task 8.
 		onSmartDragStart() {},
