@@ -14,19 +14,33 @@ function folderRow(page: Page, name: string): Locator {
 }
 
 /**
- * How many smart folder rows are painted as the current one.
+ * The smart folders the navigation is showing as current.
  *
- * Read from what is painted rather than from a class: the class sits on an
- * inner element, and a correct class has hidden an unlit row here before. The
- * pointer is moved away first, since hovering paints a row too.
+ * Both signals are read, because either alone has lied here: the class sits on
+ * an inner element and has been present while nothing was painted, and the
+ * paint picks up focus and hover from whatever was last clicked.
  *
  * @param page the page under test
  */
-async function litFolders(page: Page): Promise<number> {
-	await page.mouse.move(0, 0)
-	return page.locator('.smart-folder-entry .app-navigation-entry').evaluateAll(
-		(rows) => rows.filter((row) => window.getComputedStyle(row).backgroundColor !== 'rgba(0, 0, 0, 0)').length,
-	)
+async function chosenFolders(page: Page): Promise<string[]> {
+	return page.locator('.smart-folder-entry').evaluateAll((items) => items
+		.filter((item) => item.querySelector('.app-navigation-entry.active') !== null)
+		.map((item) => item.querySelector('a')?.textContent?.trim() ?? ''))
+}
+
+/**
+ * Whether a row is painted differently from one that is not current.
+ *
+ * @param page the page under test
+ * @param chosen the row that should be painted
+ * @param plain a row that should not be
+ */
+async function looksDifferent(page: Page, chosen: string, plain: string): Promise<boolean> {
+	// well clear of the navigation, or the pointer paints a row of its own
+	await page.mouse.move(600, 600)
+	const background = (name: string) => folderRow(page, name).locator('.app-navigation-entry').first()
+		.evaluate((element) => window.getComputedStyle(element).backgroundColor)
+	return await background(chosen) !== await background(plain)
 }
 
 /**
@@ -251,6 +265,19 @@ test.describe('Smart folders', () => {
 			.locator('.app-navigation-entry__counter-wrapper')).toContainText('1')
 	})
 
+	test('opens the folder it has just saved', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationRow(page, 'philosophy').click()
+		await fromTagsMenu(page, 'Save as smart folder')
+		await nameTheFolder(page, 'Reading')
+
+		/* It was saved from what is on screen, so it is what is on screen —
+		   a row that sat unlit beside its own contents read as a failed save. */
+		await expect(navigationRow(page, 'Reading')).toBeVisible()
+		expect(await chosenFolders(page), 'the new folder is the current one').toEqual(['Reading'])
+		await expect(page).toHaveURL(/[?&]folder=Reading(&|$)/)
+	})
+
 	test('lights only the folder that was opened, not every one holding those tags', async ({ page }) => {
 		await openNotesApp(page)
 		await navigationRow(page, 'philosophy').click()
@@ -268,7 +295,8 @@ test.describe('Smart folders', () => {
 
 		/* Both hold the same tags, so working the highlight out from the tags
 		   lights both — which reads as a fault. */
-		expect(await litFolders(page), 'only the folder that was clicked is lit').toBe(1)
+		expect(await chosenFolders(page), 'only the folder that was clicked').toEqual(['First'])
+		expect(await looksDifferent(page, 'First', 'Second'), 'and it looks different').toBe(true)
 	})
 
 	test('takes the filter on screen as a folder’s new meaning', async ({ page }) => {

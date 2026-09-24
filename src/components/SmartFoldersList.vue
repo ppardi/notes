@@ -222,6 +222,10 @@ export default {
 			}
 			const chosen = (name ?? '').trim() || draft.tags.map((tag) => `#${tag}`).join(' ')
 			await this.save([...this.folders, { ...draft, name: chosen }])
+			/* Saved from what is on screen, so the folder is now what is on
+			   screen: it lights up, rather than sitting there looking like it
+			   holds something else. */
+			this.$router.push(tagsRoute(this.$route, draft.tags, draft.mode, chosen))
 		},
 
 		/**
