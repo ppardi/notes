@@ -4,26 +4,31 @@
 -->
 
 <template>
-	<ul v-if="matches.length > 0"
-		:id="listId"
-		ref="list"
-		:style="style"
-		class="tag-completion"
-		role="listbox"
-		:aria-label="t('notes', 'Tags')"
-	>
-		<li v-for="(tag, index) in matches"
-			:id="`${listId}-${index}`"
-			:key="tag"
-			:class="{ 'tag-completion__item--active': index === active }"
-			:aria-selected="index === active"
-			class="tag-completion__item"
-			role="option"
-			@mousedown.prevent="choose(tag)"
+	<!-- Out of the app's own boxes: a list positioned against the window has to
+	     hang off the body, or an ancestor with a transform or a will-change
+	     becomes what "the window" means. -->
+	<Teleport to="body">
+		<ul v-if="matches.length > 0"
+			:id="listId"
+			ref="list"
+			:style="style"
+			class="tag-completion"
+			role="listbox"
+			:aria-label="t('notes', 'Tags')"
 		>
-			#{{ tag }}
-		</li>
-	</ul>
+			<li v-for="(tag, index) in matches"
+				:id="`${listId}-${index}`"
+				:key="tag"
+				:class="{ 'tag-completion__item--active': index === active }"
+				:aria-selected="index === active"
+				class="tag-completion__item"
+				role="option"
+				@mousedown.prevent="choose(tag)"
+			>
+				#{{ tag }}
+			</li>
+		</ul>
+	</Teleport>
 </template>
 
 <script>
@@ -229,7 +234,39 @@ export default {
 					top = above >= EDGE_MARGIN ? above : Math.max(EDGE_MARGIN, room.bottom - height)
 				}
 
-				this.style = { top: `${Math.round(top)}px`, left: `${Math.round(left)}px` }
+				this.place(left, top)
+			})
+		},
+
+		/**
+		 * Put the list at a point in the window, and check that it went there.
+		 *
+		 * A fixed element is positioned against the window only until some
+		 * ancestor has a transform, a filter or a will-change, at which point it
+		 * is positioned against that ancestor instead — and the editor sits
+		 * inside several candidates, which browsers do not agree about. Hanging
+		 * the list off the body settles it almost everywhere; measuring where it
+		 * actually landed settles the rest, and costs one frame.
+		 *
+		 * @param {number} left where the left edge should be, in the window
+		 * @param {number} top where the top edge should be, in the window
+		 */
+		place(left, top) {
+			this.style = { top: `${Math.round(top)}px`, left: `${Math.round(left)}px` }
+			this.$nextTick(() => {
+				const list = this.$refs.list
+				if (!list) {
+					return
+				}
+				const landed = list.getBoundingClientRect()
+				const adriftX = left - landed.left
+				const adriftY = top - landed.top
+				if (Math.abs(adriftX) > 1 || Math.abs(adriftY) > 1) {
+					this.style = {
+						top: `${Math.round(top + adriftY)}px`,
+						left: `${Math.round(left + adriftX)}px`,
+					}
+				}
 			})
 		},
 

@@ -47,6 +47,42 @@ function caretRight(page: Page): Promise<number> {
 }
 
 /**
+ * Make an ancestor of the editor position its fixed children itself.
+ *
+ * A fixed element is positioned against the window only until some ancestor
+ * has a transform, a filter or a will-change. The Nextcloud layout has
+ * candidates for that, and browsers disagree about which of them count — so
+ * the list has to land in the right place whether or not one does. This makes
+ * the case certain, rather than waiting for a browser to spring it.
+ *
+ * @param page the page under test
+ */
+async function transformAnAncestor(page: Page): Promise<void> {
+	await page.evaluate(() => {
+		const content = document.querySelector('#content-vue') as HTMLElement | null
+		if (content === null) {
+			throw new Error('the app content is not where this expected')
+		}
+		content.style.transform = 'translateZ(0)'
+	})
+}
+
+/**
+ * How far the list sits from the caret it belongs to.
+ *
+ * @param page the page under test
+ */
+function gapFromCaret(page: Page): Promise<{ below: number, indent: number }> {
+	return page.evaluate(() => {
+		const list = document.querySelector('.tag-completion') as HTMLElement
+		const selection = window.getSelection()
+		const caret = selection!.getRangeAt(0).getBoundingClientRect()
+		const box = list.getBoundingClientRect()
+		return { below: box.top - caret.bottom, indent: box.left - caret.left }
+	})
+}
+
+/**
  * Whether an element sits entirely within the window.
  *
  * @param locator the element to measure
@@ -161,6 +197,52 @@ test.describe('Tag completion', () => {
 			return selection?.getRangeAt(0).getBoundingClientRect().top ?? 0
 		})
 		expect(list!.y + list!.height).toBeLessThanOrEqual(caretBox + 1)
+	})
+
+	test('opens beside the caret, not adrift from it', async ({ page }) => {
+		const target = await createNoteViaApi(page, 'Personal', 'Beside the caret', 'start')
+		await page.setViewportSize(DESKTOP)
+		await startTyping(page, target)
+
+		await page.keyboard.insertText('reading about ')
+		await page.keyboard.type('#ph')
+		await expect(completions(page)).toBeVisible()
+
+		const loose = await gapFromCaret(page)
+		expect(loose.below, 'just under the line').toBeLessThanOrEqual(8)
+		expect(Math.abs(loose.indent), 'lined up with the caret').toBeLessThanOrEqual(2)
+	})
+
+	test('opens beside the caret even where the window is not what it seems', async ({ page }) => {
+		const target = await createNoteViaApi(page, 'Personal', 'Transformed', 'start')
+		await page.setViewportSize(DESKTOP)
+		await startTyping(page, target)
+		await transformAnAncestor(page)
+
+		await page.keyboard.insertText('reading about ')
+		await page.keyboard.type('#ph')
+		await expect(completions(page)).toBeVisible()
+
+		const gap = await gapFromCaret(page)
+		expect(gap.below, 'just under the line').toBeLessThanOrEqual(8)
+		expect(Math.abs(gap.indent), 'lined up with the caret').toBeLessThanOrEqual(2)
+	})
+
+	test('stays on the screen even where the window is not what it seems', async ({ page }) => {
+		const target = await createNoteViaApi(page, 'Personal', 'Transformed edge', 'start')
+		await page.setViewportSize(DESKTOP)
+		await startTyping(page, target)
+		await transformAnAncestor(page)
+
+		for (const words of [2, 6, 10, 14, 18, 22]) {
+			await surface(page).press('ControlOrMeta+a')
+			await page.keyboard.insertText(`${Array(words).fill('designator').join(' ')} `)
+			await page.keyboard.type('#ph')
+
+			await expect(completions(page)).toBeVisible()
+			expect(await isOnScreen(completions(page)), `with ${words} words before it`).toBe(true)
+			await page.keyboard.press('Escape')
+		}
 	})
 
 	test('says nothing about a tag that is not in use yet', async ({ page }) => {
