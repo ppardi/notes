@@ -42,17 +42,24 @@
 		</template>
 	</NcAppNavigationItem>
 
-	<CategoryTreeItem v-for="node in categoryTree"
-		:key="node.name"
-		:node="node"
-		:loading="loading"
-		:selectedCategory="selectedCategory"
-		:dragOverCategory="dragOverCategory"
-		:dropBesideCategory="dropBesideCategory"
-		:dropBesideSide="dropBesideSide"
-		:draftParent="newCategoryParent"
-		:collapsedCategories="collapsedCategories"
-	/>
+	<template v-for="node in categoryTree" :key="node.smart ? `smart:${node.id}` : node.name">
+		<SmartCategoryTreeItem v-if="node.smart"
+			:node="node"
+			:loading="loading"
+			:selectedSmartId="selectedSmartId"
+		/>
+		<CategoryTreeItem v-else
+			:node="node"
+			:loading="loading"
+			:selectedCategory="selectedCategory"
+			:selectedSmartId="selectedSmartId"
+			:dragOverCategory="dragOverCategory"
+			:dropBesideCategory="dropBesideCategory"
+			:dropBesideSide="dropBesideSide"
+			:draftParent="newCategoryParent"
+			:collapsedCategories="collapsedCategories"
+		/>
+	</template>
 </template>
 
 <script>
@@ -65,16 +72,18 @@ import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import CategoryTreeItem from './CategoryTreeItem.vue'
-import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
+import { categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import store from '../store.js'
-import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepSelection } from '../Util.js'
+import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepSelection, smartFromQuery, smartRoute } from '../Util.js'
 
 export default {
 	name: 'CategoriesList',
 
 	components: {
 		CategoryTreeItem,
+		SmartCategoryTreeItem,
 		NcActionButton,
 		NcAppNavigationItem,
 		NcAppNavigationCaption,
@@ -100,6 +109,14 @@ export default {
 				drop: (name, event) => this.onCategoryDrop(name, event),
 				setItemRef: (name, el) => this.setCategoryItemRef(name, el),
 				setOpen: (name, open) => this.setCategoryOpen(name, open),
+				selectSmart: (id) => this.onSelectSmart(id),
+				setSmartRef: (id, el) => this.setSmartItemRef(id, el),
+				startRenameSmart: (id) => this.smartItems[id]?.handleEdit?.(),
+				renameSmart: (id, name) => this.onRenameSmart(id, name),
+				editSmart: (id) => this.onEditSmart(id),
+				removeSmart: (id) => this.onRemoveSmart(id),
+				smartDragStart: (id, event) => this.onSmartDragStart(id, event),
+				clearDropMarks: () => this.clearCategoryDropMarks(),
 			},
 		}
 	},
@@ -125,6 +142,7 @@ export default {
 			newCategoryMonitor: null,
 			newCategoryDropNoteId: null,
 			categoryItems: {},
+			smartItems: {},
 			collapsedCategories: [],
 			collapsedLoaded: false,
 		}
@@ -142,7 +160,21 @@ export default {
 		},
 
 		categoryTree() {
-			return buildCategoryTree(this.categories)
+			return withSmartCategories(
+				this.categories,
+				this.smartCategories,
+				/* The same reading the note list gives, so the number on the row
+				   always describes the list the row opens. */
+				(smart) => store.notes.countNotesWithTags(smart.tags, smart.mode),
+			)
+		},
+
+		smartCategories() {
+			return store.app.settings?.smartCategories ?? []
+		},
+
+		selectedSmartId() {
+			return smartFromQuery(this.$route.query)
 		},
 
 		storedCollapsed() {
@@ -210,6 +242,29 @@ export default {
 			}
 			this.applyCollapsed(withCategoriesExpanded(this.collapsedCategories, ancestors))
 		},
+
+		setSmartItemRef(id, el) {
+			if (el) {
+				this.smartItems[id] = el
+			} else {
+				delete this.smartItems[id]
+			}
+		},
+
+		onSelectSmart(id) {
+			this.$router.push(smartRoute(this.$route, id)).catch(() => {})
+		},
+
+		/* Filled in by Task 7. Declared without parameters so that the stub
+		   does not read as code with arguments it ignores. */
+		onRenameSmart() {},
+
+		onEditSmart() {},
+
+		onRemoveSmart() {},
+
+		// Filled in by Task 8.
+		onSmartDragStart() {},
 
 		setCategoryItemRef(category, el) {
 			if (el) {

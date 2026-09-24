@@ -83,17 +83,24 @@
 			</template>
 		</NcAppNavigationItem>
 
-		<CategoryTreeItem v-for="child in node.children"
-			:key="child.name"
-			:node="child"
-			:loading="loading"
-			:selectedCategory="selectedCategory"
-			:dragOverCategory="dragOverCategory"
-			:dropBesideCategory="dropBesideCategory"
-			:dropBesideSide="dropBesideSide"
-			:draftParent="draftParent"
-			:collapsedCategories="collapsedCategories"
-		/>
+		<template v-for="child in node.children" :key="child.smart ? `smart:${child.id}` : child.name">
+			<SmartCategoryTreeItem v-if="child.smart"
+				:node="child"
+				:loading="loading"
+				:selectedSmartId="selectedSmartId"
+			/>
+			<CategoryTreeItem v-else
+				:node="child"
+				:loading="loading"
+				:selectedCategory="selectedCategory"
+				:selectedSmartId="selectedSmartId"
+				:dragOverCategory="dragOverCategory"
+				:dropBesideCategory="dropBesideCategory"
+				:dropBesideSide="dropBesideSide"
+				:draftParent="draftParent"
+				:collapsedCategories="collapsedCategories"
+			/>
+		</template>
 	</NcAppNavigationItem>
 </template>
 
@@ -106,6 +113,7 @@ import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderOutlineIcon from 'vue-material-design-icons/FolderOutline.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
+import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
 
 export default {
 	name: 'CategoryTreeItem',
@@ -119,6 +127,7 @@ export default {
 		NcAppNavigationItem,
 		NcCounterBubble,
 		PencilOutlineIcon,
+		SmartCategoryTreeItem,
 	},
 
 	/* The handlers come from CategoriesList through provide/inject so that they
@@ -133,6 +142,11 @@ export default {
 
 		loading: Boolean,
 		selectedCategory: {
+			type: String,
+			default: null,
+		},
+
+		selectedSmartId: {
 			type: String,
 			default: null,
 		},
