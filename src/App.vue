@@ -222,6 +222,7 @@ export default {
 					store.notes.setSelectedCategory(category)
 				}
 				this.rememberCategory(category)
+				this.leaveWelcomeForSelection()
 			},
 		},
 
@@ -444,9 +445,33 @@ export default {
 			/* The record's own tags, never the URL's: one source, so the row and
 			   the list cannot disagree. */
 			store.notes.setSelectedTags(smart.tags, smart.mode, smart.id)
+			this.leaveWelcomeForSelection()
+		},
+
+		/**
+		 * Leave the welcome screen once a selection has something to show.
+		 *
+		 * The note list belongs to the note route, so a category chosen while
+		 * the welcome screen is up changed the URL and nothing else: no list,
+		 * no note, and a sidebar that looked dead. Only a selection somebody
+		 * has just made reaches this, so "do not open a note on start-up" is
+		 * left alone - that path never changes the selection.
+		 */
+		leaveWelcomeForSelection() {
+			if (this.$route.name !== 'welcome') {
+				return
+			}
+			/* One tick, so the list has been filtered by the selection that has
+			   only just been applied. */
+			this.$nextTick(() => {
+				if (this.$route.name === 'welcome') {
+					this.routeFirst()
+				}
+			})
 		},
 
 		applyTagsFromRoute() {
+			this.leaveWelcomeForSelection()
 			const tags = tagsFromQuery(this.$route.query)
 			const mode = tagModeFromQuery(this.$route.query)
 			const selected = store.notes.getSelectedTags()

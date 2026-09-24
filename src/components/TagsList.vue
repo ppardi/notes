@@ -30,7 +30,7 @@
 			:key="tag.name"
 			:ref="(el) => setTagRef(tag.name, el)"
 			:name="tag.name"
-			:active="selectedTags.includes(tag.name)"
+			:active="selectedSmart === null && selectedTags.includes(tag.name)"
 			:editPlaceholder="tag.name"
 			forceMenu
 			class="tag-entry"
@@ -112,6 +112,14 @@ export default {
 
 		tagMode() {
 			return store.notes.getTagMode()
+		},
+
+		/* A smart category's tags are genuinely the selection, so without this
+		   the tag list lights them up too: one click, three rows lit, which
+		   reads as everything being selected at once. What was chosen is the
+		   smart category, and that is the row that says so. */
+		selectedSmart() {
+			return store.notes.getSelectedSmart()
 		},
 
 	},

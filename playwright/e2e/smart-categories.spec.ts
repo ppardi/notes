@@ -441,4 +441,51 @@ test.describe('Smart categories', () => {
 		expect(await indentOf(smartLink(page, 'Reading')))
 			.toBe(await indentOf(categoryLink(page, 'Work')))
 	})
+
+	test('leaves the tag rows dark while a smart category is driving', async ({ page }) => {
+		/* Its tags really are the selection, so the tag list would light them
+		   too - three rows lit from one click, which reads as "why is
+		   everything highlighted". The smart category is what was chosen. */
+		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' },
+		])
+
+		await openNotesApp(page)
+		await page.goto('/index.php/apps/notes/?smart=reading')
+		await expect(smartLink(page, 'Reading')).toBeVisible()
+
+		await page.mouse.move(600, 600)
+		const tagRow = page.locator('.tag-entry')
+			.filter({ has: page.getByRole('link', { name: 'philosophy', exact: true }) }).first()
+		const paint = (row: Locator) => row.locator('.app-navigation-entry').first()
+			.evaluate((el) => window.getComputedStyle(el).backgroundColor)
+
+		/* The smart row is painted as current; the tag it holds is not. */
+		expect(await paint(smartRow(page, 'Reading'))).not.toBe(await paint(tagRow))
+
+		/* Chosen by hand, the same tag does light up - the rule is about which
+		   thing was selected, not about hiding the tag list. */
+		await page.getByRole('link', { name: 'philosophy', exact: true }).click()
+		await expect(page).toHaveURL(/tags=philosophy/)
+		await page.mouse.move(600, 600)
+		expect(await paint(tagRow)).not.toBe(await paint(smartRow(page, 'Reading')))
+	})
+
+	test('leaves the welcome screen when a selection has something to show', async ({ page }) => {
+		/* The note list lives on the note route, so a selection made while the
+		   welcome screen is up changed the URL and nothing else - no list, no
+		   note, sidebar looking dead. */
+		await createNoteViaRequest('Work', 'Naming and Necessity', 'On #philosophy')
+
+		await page.goto('/index.php/apps/notes/welcome')
+		await expect(page.locator('#app-navigation-vue')).toBeVisible()
+		await expect(page).toHaveURL(/welcome/)
+		await expect(page.locator('.notes-list')).toHaveCount(0)
+
+		await page.getByTitle('Work', { exact: true }).first().click()
+
+		await expect(page).not.toHaveURL(/welcome/)
+		await expect(page.getByRole('link', { name: 'Naming and Necessity' })).toBeVisible()
+	})
 })
