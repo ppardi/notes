@@ -18,10 +18,16 @@ use OCP\IConfig;
 use OCP\IL10N;
 
 class SettingsService {
+	/** Caps on the saved tag queries, which are user-editable stored JSON. */
+	private const SMART_FOLDERS = 64;
+	private const SMART_FOLDER_NAME_LENGTH = 128;
+	private const SMART_FOLDER_TAGS = 32;
+
 	private IConfig $config;
 	private IL10N $l10n;
 	private IRootFolder $root;
 	private IAppManager $appManager;
+	private HashtagParser $hashtagParser;
 
 	/* Allowed attributes */
 	private array $attrs;
@@ -33,11 +39,13 @@ class SettingsService {
 		IL10N $l10n,
 		IRootFolder $root,
 		IAppManager $appManager,
+		HashtagParser $hashtagParser,
 	) {
 		$this->config = $config;
 		$this->l10n = $l10n;
 		$this->root = $root;
 		$this->appManager = $appManager;
+		$this->hashtagParser = $hashtagParser;
 		$this->attrs = [
 			'fileSuffix' => $this->getListAttrs('fileSuffix', [...$this->defaultSuffixes, 'custom']),
 			'notesPath' => [
@@ -100,6 +108,69 @@ class SettingsService {
 						}
 					}
 					return array_values(array_unique($names));
+				},
+			],
+			// Saved tag queries, shown in the navigation above the tags
+			// themselves. Settings are stored JSON and come back as untrusted
+			// input, so every field is capped and coerced on the way in rather
+			// than being trusted at the point of use.
+			'smartFolders' => [
+				'default' => [],
+				'validate' => function (mixed $value) : array {
+					if (!is_array($value)) {
+						return [];
+					}
+					$folders = [];
+					foreach ($value as $folder) {
+						/* Settings are stored as one JSON blob and read back as
+						   objects, so a folder saved earlier arrives here in a
+						   different shape from one that has just come in on a
+						   request — and every write revalidates all of them. */
+						if ($folder instanceof \stdClass) {
+							$folder = (array)$folder;
+						}
+						if (!is_array($folder)) {
+							continue;
+						}
+						$name = is_string($folder['name'] ?? null)
+							? mb_substr(trim($folder['name']), 0, self::SMART_FOLDER_NAME_LENGTH)
+							: '';
+						if ($name === '') {
+							continue;
+						}
+						$tags = [];
+						$stored = $folder['tags'] ?? null;
+						foreach (is_array($stored) ? $stored : [] as $tag) {
+							if (!is_string($tag)) {
+								continue;
+							}
+							/* The same reading a tag gets when it is parsed out
+							   of a note, so a stored query cannot name something
+							   no note could ever carry. */
+							$parsed = $this->hashtagParser->parseExactTag($tag);
+							if ($parsed !== null && !in_array($parsed, $tags, true)) {
+								$tags[] = $parsed;
+							}
+							if (count($tags) >= self::SMART_FOLDER_TAGS) {
+								break;
+							}
+						}
+						if ($tags === []) {
+							continue;
+						}
+						$folders[] = [
+							'name' => $name,
+							'tags' => $tags,
+							/* Exactly 'all' or nothing: the filter then has only
+							   the two branches it is written for, however the
+							   setting was edited. */
+							'mode' => ($folder['mode'] ?? null) === 'all' ? 'all' : 'any',
+						];
+						if (count($folders) >= self::SMART_FOLDERS) {
+							break;
+						}
+					}
+					return $folders;
 				},
 			],
 			// The category selected when the app was last used, so that opening

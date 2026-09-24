@@ -199,6 +199,21 @@ export const useNotesStore = defineStore('notes', {
 				.sort((a, b) => a.name.localeCompare(b.name))
 		},
 
+		/* How many notes carry a set of tags. The same reading the note list
+		   gives the same set: "all" wants every tag on one note, anything else
+		   wants any of them. */
+		countNotesWithTags: (state) => (tags, mode) => {
+			if (!tags || tags.length === 0) {
+				return 0
+			}
+			return state.notes.filter((note) => {
+				const carried = note.tags ?? []
+				return mode === 'all'
+					? tags.every((tag) => carried.includes(tag))
+					: tags.some((tag) => carried.includes(tag))
+			}).length
+		},
+
 		getSelectedTags: (state) => () => {
 			return state.selectedTags
 		},

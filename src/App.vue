@@ -17,6 +17,7 @@
 
 			<template #list>
 				<CategoriesList :loading="loading.notes" :hideNewCategoryAction="!!error" />
+				<SmartFoldersList :loading="loading.notes" />
 				<TagsList :loading="loading.notes" />
 			</template>
 
@@ -96,6 +97,7 @@ import CategoriesList from './components/CategoriesList.vue'
 import EditorHint from './components/Modal/EditorHint.vue'
 import NoteSidebar from './components/NoteSidebar.vue'
 import NotesSearch from './components/NotesSearch.vue'
+import SmartFoldersList from './components/SmartFoldersList.vue'
 import TagsList from './components/TagsList.vue'
 import { landingCategory } from './categoryTree.js'
 import { config } from './config.js'
@@ -129,6 +131,7 @@ export default {
 		NoteSidebar,
 		NotesSearch,
 		ShareVariantOutlineIcon,
+		SmartFoldersList,
 	},
 
 	setup() {
@@ -220,20 +223,20 @@ export default {
 
 		/* Tags are the other way of choosing what the list shows, and the route
 		   owns that selection too. Selecting either clears the other, so the URL
-		   always describes exactly one source. */
+		   always describes exactly one source.
+
+		   Both halves are watched: how several tags are combined lives in its
+		   own parameter, and changing only that has to reach the list. */
 		'$route.query.tags': {
 			immediate: true,
 			handler() {
-				const tags = tagsFromQuery(this.$route.query)
-				const mode = tagModeFromQuery(this.$route.query)
-				const selected = store.notes.getSelectedTags()
-				if (tags.join(',') !== selected.join(',') || store.notes.getTagMode() !== mode) {
-					if (tags.length > 0) {
-						store.notes.setSelectedTags(tags, mode)
-					} else if (selected.length > 0) {
-						store.notes.setSelectedTags([], 'any')
-					}
-				}
+				this.applyTagsFromRoute()
+			},
+		},
+
+		'$route.query.mode': {
+			handler() {
+				this.applyTagsFromRoute()
 			},
 		},
 	},
@@ -374,6 +377,20 @@ export default {
 				return null
 			}
 			return store.notes.getNote(noteId)?.category ?? null
+		},
+
+		applyTagsFromRoute() {
+			const tags = tagsFromQuery(this.$route.query)
+			const mode = tagModeFromQuery(this.$route.query)
+			const selected = store.notes.getSelectedTags()
+			if (tags.join(',') === selected.join(',') && store.notes.getTagMode() === mode) {
+				return
+			}
+			if (tags.length > 0) {
+				store.notes.setSelectedTags(tags, mode)
+			} else if (selected.length > 0) {
+				store.notes.setSelectedTags([], 'any')
+			}
 		},
 
 		rememberCategory(category) {

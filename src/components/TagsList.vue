@@ -7,10 +7,32 @@
 	<!-- Nothing at all until something is tagged: the navigation must not grow
 	     a heading for a feature that has not been used yet. -->
 	<template v-if="tags.length > 0">
+		<!-- Nothing inline: everything about the current filter lives in the one
+		     menu, rather than a button beside a menu holding the rest. -->
 		<NcAppNavigationCaption v-show="!loading"
 			:name="t('notes', 'Tags')"
-			:inline="1"
-		/>
+			:inline="0"
+		>
+			<!-- Only while something is filtered: a query is saved from what is
+			     on screen rather than built in the abstract. -->
+			<template v-if="selectedTags.length > 0" #actions>
+				<NcActionButton :closeAfterClick="true" @click="onSaveAsSmartFolder">
+					<template #icon>
+						<FolderCogOutlineIcon :size="20" />
+					</template>
+					{{ t('notes', 'Save as smart folder') }}
+				</NcActionButton>
+				<NcActionButton v-if="selectedTags.length > 1"
+					:closeAfterClick="true"
+					@click="onToggleMode"
+				>
+					<template #icon>
+						<FilterOutlineIcon :size="20" />
+					</template>
+					{{ tagMode === 'all' ? t('notes', 'Match any tag') : t('notes', 'Match all tags') }}
+				</NcActionButton>
+			</template>
+		</NcAppNavigationCaption>
 
 		<NcAppNavigationItem v-for="tag in tags"
 			v-show="!loading"
@@ -21,7 +43,7 @@
 			:editPlaceholder="tag.name"
 			forceMenu
 			class="tag-entry"
-			@click.prevent.stop="onSelect(tag.name)"
+			@click.prevent.stop="onSelect(tag.name, $event)"
 			@update:name="onRename(tag.name, $event)"
 		>
 			<template #icon>
@@ -49,6 +71,8 @@ import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
+import FilterOutlineIcon from 'vue-material-design-icons/FilterOutline.vue'
+import FolderCogOutlineIcon from 'vue-material-design-icons/FolderCogOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import PoundIcon from 'vue-material-design-icons/Pound.vue'
 import { fetchNotes, renameTag } from '../NotesService.js'
@@ -70,6 +94,8 @@ export default {
 		NcAppNavigationCaption,
 		NcAppNavigationItem,
 		NcCounterBubble,
+		FilterOutlineIcon,
+		FolderCogOutlineIcon,
 		PencilOutlineIcon,
 		PoundIcon,
 	},
@@ -93,6 +119,10 @@ export default {
 
 		selectedTags() {
 			return store.notes.getSelectedTags()
+		},
+
+		tagMode() {
+			return store.notes.getTagMode()
 		},
 	},
 
@@ -255,11 +285,48 @@ export default {
 			}
 		},
 
-		onSelect(tag) {
-			/* The route owns the selection, so that it survives a reload and
-			   moves with the browser's history — and it drops the category,
-			   because a tag and a category are alternatives. */
-			this.$router.push(tagsRoute(this.$route, [tag], 'any'))
+		/**
+		 * Choose a tag, or add one to those already chosen.
+		 *
+		 * The route owns the selection, so that it survives a reload and moves
+		 * with the browser's history — and it drops the category, because a tag
+		 * and a category are alternatives.
+		 *
+		 * @param {string} tag the tag that was clicked
+		 * @param {object} [event] the click, whose modifier says which it was
+		 */
+		onSelect(tag, event) {
+			if (!(event?.metaKey || event?.ctrlKey)) {
+				this.$router.push(tagsRoute(this.$route, [tag], 'any'))
+				return
+			}
+
+			const selected = this.selectedTags
+			const next = selected.includes(tag)
+				? selected.filter((name) => name !== tag)
+				: [...selected, tag]
+			/* Adding a second tag narrows the list: combining tags reads as
+			   "and also this". Once that has been said, an explicit choice of
+			   mode is left alone. */
+			const mode = next.length > 1 && selected.length < 2 ? 'all' : this.tagMode
+			this.$router.push(tagsRoute(this.$route, next, next.length > 1 ? mode : 'any'))
+		},
+
+		onToggleMode() {
+			this.$router.push(tagsRoute(
+				this.$route,
+				this.selectedTags,
+				this.tagMode === 'all' ? 'any' : 'all',
+			))
+		},
+
+		/* The list of saved queries owns the naming, the way the category list
+		   owns naming a new category. */
+		onSaveAsSmartFolder() {
+			emit('notes:smart-folder:new', {
+				tags: [...this.selectedTags],
+				mode: this.selectedTags.length > 1 ? this.tagMode : 'any',
+			})
 		},
 	},
 }

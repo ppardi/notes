@@ -1,0 +1,234 @@
+/**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+import type { APIRequestContext, Locator, Page } from '@playwright/test'
+
+import { expect, test } from '@playwright/test'
+import { login } from '../support/login.ts'
+import { createNoteViaApi, deleteAllNotes, newNoteButton, noteRow } from '../support/note.ts'
+
+function navigationRow(page: Page, name: string): Locator {
+	return page.getByRole('link', { name, exact: true })
+}
+
+function tagsCaption(page: Page): Locator {
+	return page.locator('.app-navigation-caption').filter({ hasText: 'Tags' }).first()
+}
+
+async function openNotesApp(page: Page): Promise<void> {
+	await page.goto('/index.php/apps/notes/')
+	await expect(newNoteButton(page).first()).toBeVisible()
+}
+
+/**
+ * Choose an item from the Tags heading's actions.
+ *
+ * A lone action is drawn as a button of its own and several go behind a menu,
+ * which is the component's business rather than this spec's — so this takes
+ * either.
+ *
+ * @param page the page under test
+ * @param action the action to choose
+ */
+async function fromTagsMenu(page: Page, action: string): Promise<void> {
+	await tagsCaption(page).hover()
+	const alone = tagsCaption(page).getByRole('button', { name: action, exact: true })
+	if (await alone.count() > 0) {
+		await alone.click()
+		return
+	}
+	await tagsCaption(page).getByRole('button', { name: 'Actions', exact: true }).click()
+	await page.getByRole('menuitem', { name: action, exact: true }).click()
+}
+
+/**
+ * Add a tag to the selection rather than replacing it.
+ *
+ * @param page the page under test
+ * @param tag the tag to add
+ */
+async function alsoSelect(page: Page, tag: string): Promise<void> {
+	await navigationRow(page, tag).click({ modifiers: ['ControlOrMeta'] })
+}
+
+/**
+ * Forget every saved query, so one test cannot seed the next.
+ *
+ * @param request the request fixture
+ */
+async function clearSmartFolders(request: APIRequestContext): Promise<void> {
+	const user = process.env.NC_USER ?? 'admin'
+	const password = process.env.NC_PASS ?? 'admin'
+	const response = await request.put('/index.php/apps/notes/settings', {
+		headers: {
+			Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+			'OCS-APIRequest': 'true',
+		},
+		data: { smartFolders: [] },
+	})
+	expect(response.ok(), 'clearing the smart folders').toBeTruthy()
+}
+
+test.describe('Smart folders', () => {
+	let both: number
+	let onlyPhilosophy: number
+	let onlyKripke: number
+
+	test.beforeEach(async ({ page, request }) => {
+		await clearSmartFolders(request)
+		await login(page)
+		await deleteAllNotes(page)
+		both = await createNoteViaApi(page, 'Personal', 'Naming and Necessity', 'on #philosophy and #kripke')
+		onlyPhilosophy = await createNoteViaApi(page, 'Personal', 'Tractatus', 'on #philosophy')
+		onlyKripke = await createNoteViaApi(page, 'Personal', 'A letter', 'about #kripke')
+	})
+
+	test.afterEach(async ({ request }) => {
+		await clearSmartFolders(request)
+	})
+
+	test('adding a second tag narrows the list', async ({ page }) => {
+		await openNotesApp(page)
+
+		await navigationRow(page, 'philosophy').click()
+		await expect(noteRow(page, both)).toBeVisible()
+		await expect(noteRow(page, onlyPhilosophy)).toBeVisible()
+		await expect(noteRow(page, onlyKripke)).toBeHidden()
+
+		await alsoSelect(page, 'kripke')
+
+		// both tags, and only the note carrying both
+		await expect(page).toHaveURL(/[?&]mode=all(&|$)/)
+		await expect(noteRow(page, both)).toBeVisible()
+		await expect(noteRow(page, onlyPhilosophy)).toBeHidden()
+		await expect(noteRow(page, onlyKripke)).toBeHidden()
+	})
+
+	test('the menu widens it again, and back', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationRow(page, 'philosophy').click()
+		await alsoSelect(page, 'kripke')
+
+		await fromTagsMenu(page, 'Match any tag')
+
+		await expect(noteRow(page, both)).toBeVisible()
+		await expect(noteRow(page, onlyPhilosophy)).toBeVisible()
+		await expect(noteRow(page, onlyKripke)).toBeVisible()
+
+		await fromTagsMenu(page, 'Match all tags')
+
+		await expect(noteRow(page, onlyPhilosophy)).toBeHidden()
+	})
+
+	test('a second click on a chosen tag takes it back out', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationRow(page, 'philosophy').click()
+		await alsoSelect(page, 'kripke')
+		await expect(noteRow(page, onlyPhilosophy)).toBeHidden()
+
+		await alsoSelect(page, 'kripke')
+
+		await expect(noteRow(page, onlyPhilosophy)).toBeVisible()
+		await expect(noteRow(page, onlyKripke)).toBeHidden()
+	})
+
+	test('saves what is on screen as a smart folder, and goes back to it', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationRow(page, 'philosophy').click()
+		await alsoSelect(page, 'kripke')
+
+		await fromTagsMenu(page, 'Save as smart folder')
+		await page.getByPlaceholder('#philosophy #kripke', { exact: true }).fill('Kripke reading')
+		await page.getByPlaceholder('#philosophy #kripke', { exact: true }).press('Enter')
+
+		await expect(navigationRow(page, 'Kripke reading')).toBeVisible()
+
+		// away, and back through the saved query
+		await navigationRow(page, 'Personal').click()
+		await expect(noteRow(page, onlyKripke)).toBeVisible()
+
+		await navigationRow(page, 'Kripke reading').click()
+		await expect(noteRow(page, both)).toBeVisible()
+		await expect(noteRow(page, onlyPhilosophy)).toBeHidden()
+		await expect(noteRow(page, onlyKripke)).toBeHidden()
+	})
+
+	test('a saved folder survives a reload, and says how many notes it holds', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationRow(page, 'philosophy').click()
+		await fromTagsMenu(page, 'Save as smart folder')
+		await page.getByPlaceholder('#philosophy', { exact: true }).fill('Philosophy')
+		await page.getByPlaceholder('#philosophy', { exact: true }).press('Enter')
+		await expect(navigationRow(page, 'Philosophy')).toBeVisible()
+
+		await page.reload()
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		const row = navigationRow(page, 'Philosophy').locator('xpath=ancestor::li[1]')
+		await expect(row).toBeVisible()
+		await expect(row.locator('.app-navigation-entry__counter-wrapper')).toContainText('2')
+	})
+
+	test('renames and deletes a saved folder', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationRow(page, 'philosophy').click()
+		await fromTagsMenu(page, 'Save as smart folder')
+		await page.getByPlaceholder('#philosophy', { exact: true }).fill('First name')
+		await page.getByPlaceholder('#philosophy', { exact: true }).press('Enter')
+		await expect(navigationRow(page, 'First name')).toBeVisible()
+
+		const row = navigationRow(page, 'First name').locator('xpath=ancestor::li[1]').first()
+		await row.hover()
+		await row.getByRole('button', { name: 'Actions', exact: true }).click()
+		await page.getByRole('menuitem', { name: 'Rename smart folder', exact: true }).click()
+		const rename = page.getByPlaceholder('First name', { exact: true })
+		await rename.fill('Second name')
+		await rename.press('Enter')
+
+		await expect(navigationRow(page, 'Second name')).toBeVisible()
+		await expect(navigationRow(page, 'First name')).toHaveCount(0)
+
+		const renamed = navigationRow(page, 'Second name').locator('xpath=ancestor::li[1]').first()
+		await renamed.hover()
+		await renamed.getByRole('button', { name: 'Actions', exact: true }).click()
+		await page.getByRole('menuitem', { name: 'Delete smart folder', exact: true }).click()
+
+		await expect(navigationRow(page, 'Second name')).toHaveCount(0)
+		// and the heading goes with the last one
+		await expect(page.locator('.app-navigation-caption').filter({ hasText: 'Smart folders' })).toHaveCount(0)
+	})
+
+	test('offers nothing to save until something is filtered', async ({ page }) => {
+		await openNotesApp(page)
+
+		// the heading has no menu at all while no tag is chosen
+		await tagsCaption(page).hover()
+		await expect(tagsCaption(page).getByRole('button')).toHaveCount(0)
+
+		await navigationRow(page, 'philosophy').click()
+		await tagsCaption(page).hover()
+		await expect(tagsCaption(page).getByRole('button').first()).toBeVisible()
+	})
+
+	test('a folder naming a tag nobody uses any more shows an empty list', async ({ page, request }) => {
+		const user = process.env.NC_USER ?? 'admin'
+		const password = process.env.NC_PASS ?? 'admin'
+		await request.put('/index.php/apps/notes/settings', {
+			headers: {
+				Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+				'OCS-APIRequest': 'true',
+			},
+			data: { smartFolders: [{ name: 'Gone', tags: ['vanished'], mode: 'any' }] },
+		})
+
+		await openNotesApp(page)
+		await navigationRow(page, 'Gone').click()
+
+		// empty rather than broken: the tag may come back
+		await expect(noteRow(page, both)).toBeHidden()
+		await expect(noteRow(page, onlyPhilosophy)).toBeHidden()
+		await expect(navigationRow(page, 'Gone')).toBeVisible()
+	})
+})
