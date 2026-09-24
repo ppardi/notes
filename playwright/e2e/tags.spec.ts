@@ -130,6 +130,36 @@ test.describe('Tags', () => {
 		await expect.poll(() => noteContent(held), { timeout: 20000 }).toContain('#heldrenamed')
 	})
 
+	test('renames the tag in a note an abandoned editor still holds', async ({ page }) => {
+		const abandoned = await createNoteViaApi(page, 'Personal', 'Left open', 'tagged #strandedtag')
+		const elsewhere = await createNoteViaApi(page, 'Personal', 'Somewhere else', 'no tag here')
+		await openNotesApp(page)
+
+		/* Closing a tab sends the editor no warning, so its session is never
+		   closed and the note stays locked — for good, since the lock has no
+		   expiry unless an administrator sets one. Renaming from another note
+		   then could not touch this one. (Without the Files Lock app there is
+		   no lock to leave behind, and this passes for want of the problem.) */
+		await parkTheEditorOn(page, 'Left open')
+		await page.goto('about:blank')
+
+		await openNotesApp(page)
+		await parkTheEditorOn(page, 'Somewhere else')
+
+		const row = tagRow(page, 'strandedtag').locator('xpath=ancestor::li[1]').first()
+		await row.hover()
+		await row.getByRole('button', { name: 'Actions', exact: true }).click()
+		await page.getByRole('menuitem', { name: 'Rename tag', exact: true }).click()
+		const input = page.getByPlaceholder('strandedtag', { exact: true })
+		await input.fill('freedtag')
+		await input.press('Enter')
+
+		await expect(tagRow(page, 'freedtag')).toBeVisible()
+		await expect(tagRow(page, 'strandedtag')).toHaveCount(0)
+		await expect.poll(() => noteContent(abandoned), { timeout: 20000 }).toContain('#freedtag')
+		expect(elsewhere).toBeGreaterThan(0)
+	})
+
 	test('says which notes a rename could not touch', async ({ page }) => {
 		const stuck = await createNoteViaApi(page, 'Personal', 'Open elsewhere', 'tagged #stuck')
 		await openNotesApp(page)

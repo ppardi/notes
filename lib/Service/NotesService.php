@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace OCA\Notes\Service;
 
+use OCP\App\IAppManager;
 use OCP\Files\File;
 use OCP\Files\FileInfo;
 use OCP\Files\Folder;
@@ -25,6 +26,7 @@ class NotesService {
 		private NoteUtil $noteUtil,
 		private IFilenameValidator $filenameValidator,
 		private HashtagParser $hashtagParser,
+		private IAppManager $appManager,
 	) {
 	}
 
@@ -142,19 +144,22 @@ class NotesService {
 				continue;
 			}
 			try {
-				$content = $note->getContent();
-				$updated = $this->hashtagParser->rename($content, $from, $to);
-				if ($updated !== $content) {
-					$note->setContent($updated);
-				}
+				$this->writeRenamedTag($note, $from, $to);
 				$renamed[] = $id;
 			} catch (\OCP\Lock\LockedException $e) {
 				/* Told apart from any other failure because it is the common
-				   one and the only one the user can clear: the Files Lock app
-				   holds a lock for as long as a note is open in the editor, and
-				   the note whose tag is being renamed is the one most likely to
-				   be open. Retrying would not help — a manual lock outlives the
-				   request by hours. */
+				   one: the Files Lock app holds a lock for as long as a note is
+				   open in the editor, and a lock left behind by a closed tab is
+				   never released on its own. */
+				if ($this->releaseEditorSession($id)) {
+					try {
+						$this->writeRenamedTag($note, $from, $to);
+						$renamed[] = $id;
+						continue;
+					} catch (\Throwable $stillRefused) {
+						$e = $stillRefused;
+					}
+				}
 				$this->noteUtil->util->logger->info(
 					'Could not rename tag in note ' . $id . ': the file is locked',
 					[ 'exception' => $e ]
@@ -170,6 +175,57 @@ class NotesService {
 		}
 
 		return [ 'renamed' => $renamed, 'skipped' => $skipped ];
+	}
+
+	private function writeRenamedTag(Note $note, string $from, string $to) : void {
+		$content = $note->getContent();
+		$updated = $this->hashtagParser->rename($content, $from, $to);
+		if ($updated !== $content) {
+			$note->setContent($updated);
+		}
+	}
+
+	/**
+	 * Ask the Text app to let go of a note nobody is editing any more.
+	 *
+	 * Text locks a note while an editing session is open and releases it when
+	 * the last one closes — which a browser tab that is simply closed never
+	 * does. Nothing clears the lock afterwards: the Files Lock app's expiry is
+	 * off unless an administrator turns it on, and Text's own cleanup job
+	 * removes stale sessions without touching their locks. The note is then
+	 * unwritable for good, and the tag it carries cannot be renamed.
+	 *
+	 * Resetting the document releases the lock. Text refuses when the session
+	 * holds changes that never reached the file, so nothing unsaved is thrown
+	 * away — and Text itself resets a document outright whenever its file is
+	 * written from outside, which is more than this asks for.
+	 *
+	 * Reaching into another app's service is deliberate. There is no event or
+	 * interface for this, and it is guarded on every side: if Text is absent,
+	 * or has moved this, the rename reports the note as locked exactly as it
+	 * did before.
+	 *
+	 * @param int $noteId the note to release
+	 * @return bool whether it is worth trying the write again
+	 */
+	private function releaseEditorSession(int $noteId) : bool {
+		if (!$this->appManager->isEnabledForUser('text')
+			|| !class_exists('\OCA\Text\Service\DocumentService')) {
+			return false;
+		}
+		try {
+			\OCP\Server::get(\OCA\Text\Service\DocumentService::class)->resetDocument($noteId);
+			return true;
+		} catch (\Throwable $e) {
+			/* Refused because the session has unsaved work, or Text is not
+			   what this expected. Either way the note stays locked and is
+			   reported as such. */
+			$this->noteUtil->util->logger->info(
+				'Could not release the editor session for note ' . $noteId,
+				[ 'exception' => $e ]
+			);
+			return false;
+		}
 	}
 
 	private function searchTermsInNote(Note $note, array $terms) : bool {
