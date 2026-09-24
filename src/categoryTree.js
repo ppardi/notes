@@ -153,7 +153,10 @@ export function withCategoriesExpanded(collapsed, categories) {
  * @return {string[]} every node's category path
  */
 export function categoryNames(tree) {
-	return tree.flatMap((node) => [node.name, ...categoryNames(node.children)])
+	return tree
+		// a smart category's name is not a path, and nothing can nest below it
+		.filter((node) => !node.smart)
+		.flatMap((node) => [node.name, ...categoryNames(node.children)])
 }
 
 /**
@@ -267,4 +270,72 @@ export function joinCategory(parent, name) {
 		return ''
 	}
 	return [...segments(parent), ...child].join('/')
+}
+
+/**
+ * Draw smart categories into a category tree.
+ *
+ * A smart category has no folder behind it, so it cannot come out of the note
+ * paths the tree is built from: it is a stored record, placed at the path it
+ * remembers. The placement is filing only - what it holds is decided by its
+ * tags, wherever those notes are really kept.
+ *
+ * The flat categories are taken rather than a built tree: the nodes are placed
+ * by mutating, so this has to own what it mutates. A caller holding a tree
+ * across renders would otherwise collect a fresh set of smart nodes each time.
+ *
+ * @param {Array<{name: string, count: number}>} categories the categories to arrange
+ * @param {Array<object>} smartCategories the stored records
+ * @param {(smart: object) => number} countFor how many notes a record holds
+ * @return {CategoryNode[]} the roots, with the smart categories in place
+ */
+export function withSmartCategories(categories, smartCategories, countFor) {
+	const tree = buildCategoryTree(categories)
+	if (!smartCategories || smartCategories.length === 0) {
+		return tree
+	}
+
+	const nodes = new Map()
+	const collect = (level) => level.forEach((node) => {
+		nodes.set(node.name, node)
+		collect(node.children)
+	})
+	collect(tree)
+
+	const touched = new Set()
+	for (const smart of smartCategories) {
+		const count = countFor(smart)
+		const node = {
+			smart: true,
+			id: smart.id,
+			name: smart.name,
+			label: smart.name,
+			tags: [...smart.tags],
+			mode: smart.mode,
+			parent: smart.parent,
+			count,
+			/* Nothing reads a leaf's total, but every node carries one, and a
+			   node of a different shape is the kind of thing that trips a walk
+			   written later. Its notes are counted wherever they are really
+			   filed, so this total stops here rather than rolling up. */
+			totalCount: count,
+			children: [],
+		}
+
+		/* The unfiled category is not a folder, so it takes no children - the
+		   same rule the drag targets follow. A parent that has since been
+		   renamed or deleted would otherwise swallow the category, so it comes
+		   back to the top instead of disappearing. */
+		const parent = smart.parent === '' ? null : (nodes.get(smart.parent) ?? null)
+		if (parent === null) {
+			tree.push(node)
+			touched.add(tree)
+		} else {
+			parent.children.push(node)
+			touched.add(parent.children)
+		}
+	}
+
+	touched.forEach((level) => level.sort((a, b) => a.label.localeCompare(b.label)))
+	return tree
 }

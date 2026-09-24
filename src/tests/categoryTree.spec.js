@@ -5,7 +5,7 @@
 
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed } from '../categoryTree.js'
+import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
 import { useNotesStore } from '../stores/notes.js'
 
 /**
@@ -407,5 +407,95 @@ describe('joinCategory', () => {
 
 	it('still allows a deliberate path typed into the name', () => {
 		expect(joinCategory(null, 'PROJECTS/Apps')).toBe('PROJECTS/Apps')
+	})
+})
+
+describe('withSmartCategories', () => {
+	const countFor = (smart) => smart.tags.length
+
+	it('builds the same tree when there are none', () => {
+		const categories = [{ name: 'Work', count: 1 }]
+		expect(outline(withSmartCategories(categories, [], countFor)))
+			.toEqual(outline(buildCategoryTree(categories)))
+	})
+
+	it('builds a fresh tree every time', () => {
+		/* It places the nodes by mutating, so it has to own the tree it is
+		   mutating: called twice, a caller must not end up with the same smart
+		   category in the list twice. */
+		const categories = [{ name: 'Work', count: 1 }]
+		const smart = [{ id: 'a', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' }]
+		withSmartCategories(categories, smart, countFor)
+		expect(withSmartCategories(categories, smart, countFor)).toHaveLength(2)
+	})
+
+	it('puts a parentless category at the top level', () => {
+		const tree = withSmartCategories(
+			[{ name: 'Work', count: 1 }],
+			[{ id: 'a', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' }],
+			countFor,
+		)
+		expect(tree.map((node) => node.name)).toEqual(['Reading', 'Work'])
+		expect(tree[0]).toMatchObject({ smart: true, id: 'a', label: 'Reading', count: 1, children: [] })
+	})
+
+	it('nests one under its parent, sorted among the real categories', () => {
+		const tree = withSmartCategories(
+			[
+				{ name: 'Work', count: 1 },
+				{ name: 'Work/Zebra', count: 1 },
+				{ name: 'Work/Alpha', count: 1 },
+			],
+			[{ id: 'a', name: 'Marmot', tags: ['philosophy'], mode: 'any', parent: 'Work' }],
+			countFor,
+		)
+		expect(tree[0].children.map((node) => node.label)).toEqual(['Alpha', 'Marmot', 'Zebra'])
+	})
+
+	it('brings one whose parent has gone back to the top level', () => {
+		/* The parent is a stored path, so renaming or deleting a category
+		   leaves records pointing at somewhere that is no longer there. It
+		   must stay visible, or a category vanishes with no way to get it
+		   back. */
+		const tree = withSmartCategories(
+			[{ name: 'Work', count: 1 }],
+			[{ id: 'a', name: 'Orphan', tags: ['philosophy'], mode: 'any', parent: 'Gone' }],
+			countFor,
+		)
+		expect(tree.map((node) => node.name)).toEqual(['Orphan', 'Work'])
+	})
+
+	it('never nests one under the unfiled category', () => {
+		const tree = withSmartCategories(
+			[{ name: '', count: 1 }],
+			[{ id: 'a', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' }],
+			countFor,
+		)
+		const unfiled = tree.find((node) => node.name === '')
+		expect(unfiled.children).toEqual([])
+		expect(tree.some((node) => node.id === 'a')).toBe(true)
+	})
+
+	it('keeps its notes out of the parent total', () => {
+		/* Its notes are already counted wherever they are really filed, so
+		   rolling them up would count them twice. */
+		const tree = withSmartCategories(
+			[{ name: 'Work', count: 3 }],
+			[{ id: 'a', name: 'Reading', tags: ['philosophy', 'kripke'], mode: 'any', parent: 'Work' }],
+			countFor,
+		)
+		expect(tree[0].totalCount).toBe(3)
+		expect(tree[0].children[0].totalCount).toBe(2)
+	})
+
+	it('leaves smart categories out of the names of categories', () => {
+		/* Their names are not category paths, and the collapsed-category list
+		   is pruned against this answer. */
+		const tree = withSmartCategories(
+			[{ name: 'Work', count: 1 }],
+			[{ id: 'a', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: 'Work' }],
+			countFor,
+		)
+		expect(categoryNames(tree)).toEqual(['Work'])
 	})
 })
