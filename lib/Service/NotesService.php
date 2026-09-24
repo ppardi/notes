@@ -195,10 +195,14 @@ class NotesService {
 	 * removes stale sessions without touching their locks. The note is then
 	 * unwritable for good, and the tag it carries cannot be renamed.
 	 *
-	 * Resetting the document releases the lock. Text refuses when the session
-	 * holds changes that never reached the file, so nothing unsaved is thrown
-	 * away — and Text itself resets a document outright whenever its file is
-	 * written from outside, which is more than this asks for.
+	 * Resetting the document releases the lock, but it also ends the editing
+	 * session it belongs to — so a note somebody still has open is left alone,
+	 * however long its lock has been there. Text's own idea of who is still
+	 * there decides that: a session that has not been in touch for five
+	 * minutes is not one the person is sitting in front of.
+	 *
+	 * Text refuses the reset anyway when the session holds changes that never
+	 * reached the file, so nothing unsaved is thrown away.
 	 *
 	 * Reaching into another app's service is deliberate. There is no event or
 	 * interface for this, and it is guarded on every side: if Text is absent,
@@ -210,10 +214,20 @@ class NotesService {
 	 */
 	private function releaseEditorSession(int $noteId) : bool {
 		if (!$this->appManager->isEnabledForUser('text')
-			|| !class_exists('\OCA\Text\Service\DocumentService')) {
+			|| !class_exists('\OCA\Text\Service\DocumentService')
+			|| !class_exists('\OCA\Text\Service\SessionService')) {
 			return false;
 		}
 		try {
+			$sessions = \OCP\Server::get(\OCA\Text\Service\SessionService::class)
+				->getActiveSessions($noteId);
+			if ($sessions !== []) {
+				/* Someone has this note open. Ending their session to rename a
+				   tag would drop the editor out from under them with nothing
+				   said, which is worse than leaving one tag behind and saying
+				   so. */
+				return false;
+			}
 			\OCP\Server::get(\OCA\Text\Service\DocumentService::class)->resetDocument($noteId);
 			return true;
 		} catch (\Throwable $e) {

@@ -130,16 +130,19 @@ test.describe('Tags', () => {
 		await expect.poll(() => noteContent(held), { timeout: 20000 }).toContain('#heldrenamed')
 	})
 
-	test('renames the tag in a note an abandoned editor still holds', async ({ page }) => {
-		const abandoned = await createNoteViaApi(page, 'Personal', 'Left open', 'tagged #strandedtag')
-		const elsewhere = await createNoteViaApi(page, 'Personal', 'Somewhere else', 'no tag here')
+	test('leaves a note alone while someone still has it open', async ({ page }) => {
+		const held = await createNoteViaApi(page, 'Personal', 'Left open', 'tagged #strandedtag')
+		await createNoteViaApi(page, 'Personal', 'Somewhere else', 'no tag here')
 		await openNotesApp(page)
 
-		/* Closing a tab sends the editor no warning, so its session is never
-		   closed and the note stays locked — for good, since the lock has no
-		   expiry unless an administrator sets one. Renaming from another note
-		   then could not touch this one. (Without the Files Lock app there is
-		   no lock to leave behind, and this passes for want of the problem.) */
+		/* Closing a tab sends the editor no warning, so the note stays locked.
+		   The rename can clear a lock whose session has been quiet for five
+		   minutes — but not this one, which was in touch seconds ago and might
+		   be someone typing in another window. It says so instead.
+
+		   The session that is still alive five minutes later is the case this
+		   cannot reach: nothing but waiting makes a session look abandoned, so
+		   that path is checked by hand rather than here. */
 		await parkTheEditorOn(page, 'Left open')
 		await page.goto('about:blank')
 
@@ -154,10 +157,11 @@ test.describe('Tags', () => {
 		await input.fill('freedtag')
 		await input.press('Enter')
 
-		await expect(tagRow(page, 'freedtag')).toBeVisible()
-		await expect(tagRow(page, 'strandedtag')).toHaveCount(0)
-		await expect.poll(() => noteContent(abandoned), { timeout: 20000 }).toContain('#freedtag')
-		expect(elsewhere).toBeGreaterThan(0)
+		const toast = page.locator('.toastify')
+		await expect(toast).toBeVisible()
+		await expect(toast).toContainText('Left open')
+		await expect(tagRow(page, 'strandedtag')).toBeVisible()
+		expect(await noteContent(held)).toContain('#strandedtag')
 	})
 
 	test('says which notes a rename could not touch', async ({ page }) => {
