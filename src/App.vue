@@ -17,7 +17,6 @@
 
 			<template #list>
 				<CategoriesList :loading="loading.notes" :hideNewCategoryAction="!!error" />
-				<SmartFoldersList :loading="loading.notes" />
 				<TagsList :loading="loading.notes" />
 			</template>
 
@@ -97,7 +96,6 @@ import CategoriesList from './components/CategoriesList.vue'
 import EditorHint from './components/Modal/EditorHint.vue'
 import NoteSidebar from './components/NoteSidebar.vue'
 import NotesSearch from './components/NotesSearch.vue'
-import SmartFoldersList from './components/SmartFoldersList.vue'
 import TagsList from './components/TagsList.vue'
 import { landingCategory } from './categoryTree.js'
 import { config } from './config.js'
@@ -131,7 +129,6 @@ export default {
 		NoteSidebar,
 		NotesSearch,
 		ShareVariantOutlineIcon,
-		SmartFoldersList,
 	},
 
 	setup() {

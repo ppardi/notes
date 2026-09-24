@@ -13,28 +13,10 @@
 			:name="t('notes', 'Tags')"
 			:inline="0"
 		>
-			<!-- Only while something is filtered: a query is saved from what is
-			     on screen rather than built in the abstract. -->
-			<template v-if="selectedTags.length > 0" #actions>
-				<NcActionButton :closeAfterClick="true" @click="onSaveAsSmartFolder">
-					<template #icon>
-						<FolderCogOutlineIcon :size="20" />
-					</template>
-					{{ t('notes', 'Save as smart folder') }}
-				</NcActionButton>
-				<NcActionButton v-if="folderHasChanged"
-					:closeAfterClick="true"
-					@click="onUpdateSmartFolder"
-				>
-					<template #icon>
-						<FolderCogOutlineIcon :size="20" />
-					</template>
-					{{ t('notes', 'Update “{folder}”', { folder: openFolder }) }}
-				</NcActionButton>
-				<NcActionButton v-if="selectedTags.length > 1"
-					:closeAfterClick="true"
-					@click="onToggleMode"
-				>
+			<!-- Only while more than one tag is filtered: with a single tag
+			     there is nothing for "all" and "any" to differ about. -->
+			<template v-if="selectedTags.length > 1" #actions>
+				<NcActionButton :closeAfterClick="true" @click="onToggleMode">
 					<template #icon>
 						<FilterOutlineIcon :size="20" />
 					</template>
@@ -81,12 +63,11 @@ import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCap
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import FilterOutlineIcon from 'vue-material-design-icons/FilterOutline.vue'
-import FolderCogOutlineIcon from 'vue-material-design-icons/FolderCogOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import PoundIcon from 'vue-material-design-icons/Pound.vue'
 import { fetchNotes, renameTag } from '../NotesService.js'
 import store from '../store.js'
-import { smartFolderFromQuery, tagsRoute } from '../Util.js'
+import { tagsRoute } from '../Util.js'
 
 /* Long enough for the lock to have gone, short enough not to be noticed. */
 const RENAME_RETRY_DELAY = 400
@@ -104,7 +85,6 @@ export default {
 		NcAppNavigationItem,
 		NcCounterBubble,
 		FilterOutlineIcon,
-		FolderCogOutlineIcon,
 		PencilOutlineIcon,
 		PoundIcon,
 	},
@@ -134,26 +114,6 @@ export default {
 			return store.notes.getTagMode()
 		},
 
-		/* The smart folder these tags were opened from, if any. */
-		openFolder() {
-			return smartFolderFromQuery(this.$route.query)
-		},
-
-		/* Whether what is on screen has moved away from what that folder holds,
-		   which is when offering to update it means something. */
-		folderHasChanged() {
-			if (this.openFolder === null) {
-				return false
-			}
-			const folder = (store.app.settings?.smartFolders ?? [])
-				.find((saved) => saved.name === this.openFolder)
-			if (!folder) {
-				return false
-			}
-			return folder.tags.length !== this.selectedTags.length
-				|| !folder.tags.every((tag) => this.selectedTags.includes(tag))
-				|| (this.selectedTags.length > 1 && folder.mode !== this.tagMode)
-		},
 	},
 
 	methods: {
@@ -327,7 +287,6 @@ export default {
 		 */
 		onSelect(tag, event) {
 			if (!(event?.metaKey || event?.ctrlKey)) {
-				// chosen by hand, so no longer what any saved query asked for
 				this.$router.push(tagsRoute(this.$route, [tag], 'any'))
 				return
 			}
@@ -340,14 +299,7 @@ export default {
 			   "and also this". Once that has been said, an explicit choice of
 			   mode is left alone. */
 			const mode = next.length > 1 && selected.length < 2 ? 'all' : this.tagMode
-			/* The folder stays named while its filter is being changed, so that
-			   the menu can offer to save the change back to it. */
-			this.$router.push(tagsRoute(
-				this.$route,
-				next,
-				next.length > 1 ? mode : 'any',
-				next.length > 0 ? this.openFolder : null,
-			))
+			this.$router.push(tagsRoute(this.$route, next, next.length > 1 ? mode : 'any'))
 		},
 
 		onToggleMode() {
@@ -355,21 +307,7 @@ export default {
 				this.$route,
 				this.selectedTags,
 				this.tagMode === 'all' ? 'any' : 'all',
-				this.openFolder,
 			))
-		},
-
-		onUpdateSmartFolder() {
-			emit('notes:smart-folder:update', { name: this.openFolder })
-		},
-
-		/* The list of saved queries owns the naming, the way the category list
-		   owns naming a new category. */
-		onSaveAsSmartFolder() {
-			emit('notes:smart-folder:new', {
-				tags: [...this.selectedTags],
-				mode: this.selectedTags.length > 1 ? this.tagMode : 'any',
-			})
 		},
 	},
 }
