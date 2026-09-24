@@ -6,6 +6,7 @@
 <template>
 	<div class="text-editor-wrapper" :class="{ loading: loading, 'icon-error': !loading && (!note || note.error), 'is-mobile': isMobile }">
 		<div v-show="!loading" ref="editor" class="text-editor" />
+		<TagCompletion :editorElement="editorElement" @select="onTagCompleted" />
 	</div>
 </template>
 
@@ -14,6 +15,7 @@
 import { emit, subscribe, unsubscribe } from '@nextcloud/event-bus'
 import { useIsMobile } from '@nextcloud/vue/composables/useIsMobile'
 import { markRaw } from 'vue'
+import TagCompletion from './TagCompletion.vue'
 import { queueCommand, refreshNote } from '../NotesService.js'
 import store from '../store.js'
 import { routeIsNewNote, tagsMayHaveChanged } from '../Util.js'
@@ -33,6 +35,10 @@ const TAG_AUTOSAVE_WAIT = 11000
 export default {
 	name: 'NoteRich',
 
+	components: {
+		TagCompletion,
+	},
+
 	props: {
 		noteId: {
 			type: String,
@@ -51,6 +57,7 @@ export default {
 			loading: false,
 			editor: null,
 			shouldAutotitle: true,
+			editorElement: null,
 			hashWords: null,
 			tagSaveTimer: null,
 			tagRefreshTimer: null,
@@ -116,6 +123,7 @@ export default {
 			}
 			this?.editor?.destroy()
 			this.loading = true
+			this.editorElement = null
 			this.shouldAutotitle = undefined
 			this.clearTagTimers()
 			this.hashWords = this.readHashWords(this.note?.content ?? '')
@@ -126,6 +134,7 @@ export default {
 				readOnly: false,
 				onLoaded: () => {
 					this.loading = false
+					this.editorElement = this.$refs.editor
 				},
 				onUpdate: ({ markdown }) => {
 					if (this.note) {
@@ -139,6 +148,23 @@ export default {
 					}
 				},
 			}))
+		},
+
+		/**
+		 * Finish the tag that was being typed.
+		 *
+		 * Only the letters still missing are inserted, since the caret is
+		 * already sitting at the end of what was typed.
+		 *
+		 * @param {object} completion the chosen tag and what had been typed
+		 * @param {string} completion.tag the tag to complete to
+		 * @param {string} completion.partial the letters already there
+		 */
+		onTagCompleted({ tag, partial }) {
+			const missing = tag.slice(partial.length)
+			if (missing !== '') {
+				this.editor?.insertAtCursor?.(missing)
+			}
 		},
 
 		onEdit(noteData = {}) {
