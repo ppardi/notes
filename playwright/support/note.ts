@@ -146,6 +146,26 @@ export async function setNoteMode(request: APIRequestContext, mode: string): Pro
 	expect(response.ok(), `switching to the ${mode} editor`).toBeTruthy()
 }
 
+/**
+ * Store a set of smart categories, replacing whatever was there.
+ *
+ * Specs that are not about making one start from stored records, so that a
+ * fault in the dialog cannot turn every other spec red at once.
+ *
+ * @see onOwnContext for why these calls do not use the page's own context
+ * @param categories The records to store
+ */
+export async function setSmartCategories(categories: unknown[]): Promise<void> {
+	return onOwnContext(async (request) => {
+		const written = await request.put('/index.php/apps/notes/settings', {
+			// without this the settings route answers 412 and nothing changes
+			headers: { ...apiHeaders(), 'OCS-APIRequest': 'true' },
+			data: { smartCategories: categories },
+		})
+		expect(written.ok(), 'storing the smart categories').toBeTruthy()
+	})
+}
+
 export function currentNoteId(page: Page): number | null {
 	const match = page.url().match(/\/note\/(\d+)(?:\?.*)?$/)
 	return match ? Number(match[1]) : null

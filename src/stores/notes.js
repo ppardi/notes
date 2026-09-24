@@ -26,6 +26,7 @@ export const useNotesStore = defineStore('notes', {
 		   never combined: selecting one clears the other. */
 		selectedTags: [],
 		tagMode: 'any',
+		selectedSmart: null,
 		selectedNote: null,
 		filterString: '',
 	}),
@@ -178,7 +179,12 @@ export const useNotesStore = defineStore('notes', {
 				return a.title.localeCompare(b.title)
 			}
 
-			notes.sort(state.selectedCategory === null ? cmpRecent : cmpCategory)
+			/* A smart category has no category of its own, but it is a folder
+			   being opened rather than every note being listed - so its notes
+			   are ordered by where they are really filed, not by when they were
+			   last touched. */
+			const everything = state.selectedCategory === null && state.selectedSmart === null
+			notes.sort(everything ? cmpRecent : cmpCategory)
 
 			return notes
 		},
@@ -224,6 +230,10 @@ export const useNotesStore = defineStore('notes', {
 
 		getSelectedCategory: (state) => () => {
 			return state.selectedCategory
+		},
+
+		getSelectedSmart: (state) => () => {
+			return state.selectedSmart
 		},
 
 		getSelectedNote: (state) => () => {
@@ -323,12 +333,23 @@ export const useNotesStore = defineStore('notes', {
 		setSelectedCategory(category) {
 			this.selectedCategory = category
 			this.selectedTags = []
+			this.selectedSmart = null
 		},
 
-		setSelectedTags(tags, mode = 'any') {
+		/**
+		 * Show a set of tags.
+		 *
+		 * @param {string[]} tags the tags to show
+		 * @param {string} mode 'all' or 'any'
+		 * @param {string|null} smart the smart category they came from, when
+		 *                            they came from one rather than being
+		 *                            picked out of the tag list by hand
+		 */
+		setSelectedTags(tags, mode = 'any', smart = null) {
 			this.selectedTags = [...tags]
 			this.tagMode = mode === 'all' ? 'all' : 'any'
 			this.selectedCategory = null
+			this.selectedSmart = smart
 		},
 
 		setSelectedNote(note) {

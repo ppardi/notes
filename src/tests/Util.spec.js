@@ -24,6 +24,8 @@ import {
 	keepSelection,
 	noteAttributes,
 	routeIsNewNote,
+	smartFromQuery,
+	smartRoute,
 	tagModeFromQuery,
 	tagsFromQuery,
 	tagsMayHaveChanged,
@@ -234,6 +236,10 @@ describe('keepSelection', () => {
 	it('does not carry unrelated query fields across', () => {
 		expect(keepSelection({ query: { tags: 'a', new: null } }, {}))
 			.toEqual({ category: undefined, tags: 'a', mode: undefined })
+	})
+
+	it('carries a smart category through a navigation', () => {
+		expect(keepSelection({ query: { smart: 'abc123' } }).smart).toBe('abc123')
 	})
 })
 
@@ -464,6 +470,42 @@ describe('tag route queries', () => {
 
 		expect(tagsRoute(route, ['philosophy'], 'any')).toEqual({
 			query: { other: 'kept', category: undefined, tags: 'philosophy', mode: undefined },
+		})
+	})
+
+	it('each clears the smart category, which is the third alternative', () => {
+		const route = { query: { smart: 'abc123' } }
+
+		expect(categoryRoute(route, 'Work').query.smart).toBe(undefined)
+		expect(tagsRoute(route, ['philosophy'], 'any').query.smart).toBe(undefined)
+	})
+})
+
+describe('smartFromQuery', () => {
+	it('reads the id', () => {
+		expect(smartFromQuery({ smart: 'abc123' })).toBe('abc123')
+	})
+
+	it('reads nothing when there is none', () => {
+		expect(smartFromQuery({})).toBe(null)
+		expect(smartFromQuery({ smart: '' })).toBe(null)
+		expect(smartFromQuery(undefined)).toBe(null)
+	})
+
+	it('takes the first when the browser repeats it', () => {
+		expect(smartFromQuery({ smart: ['abc', 'def'] })).toBe('abc')
+	})
+})
+
+describe('smartRoute', () => {
+	it('selects a smart category and clears the other two selections', () => {
+		const route = { query: { category: 'Work', tags: 'philosophy', mode: 'all' } }
+
+		expect(smartRoute(route, 'abc123').query).toEqual({
+			category: undefined,
+			tags: undefined,
+			mode: undefined,
+			smart: 'abc123',
 		})
 	})
 })

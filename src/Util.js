@@ -140,6 +140,41 @@ export function tagsToQuery(tags, mode) {
 }
 
 /**
+ * The smart category a route query selects, if it selects one.
+ *
+ * @param {object} [query] the route query
+ * @return {string|null} the record's id, or null when the list is not showing
+ *                       a smart category
+ */
+export function smartFromQuery(query) {
+	const value = query?.smart
+	const id = Array.isArray(value) ? (value[0] ?? '') : (value ?? '')
+	return String(id) === '' ? null : String(id)
+}
+
+/**
+ * The route that selects a smart category, keeping the rest of the query.
+ *
+ * Only the id travels. The tags belong to the record, so carrying them here as
+ * well would let the URL and the record disagree - and then the row says one
+ * thing while the list shows another.
+ *
+ * @param {object} $route the current route
+ * @param {string} id the record's id
+ * @return {object} the route to navigate to
+ */
+export function smartRoute($route, id) {
+	return {
+		query: {
+			...$route?.query,
+			...categoryToQuery(null),
+			...tagsToQuery([], 'any'),
+			smart: id ?? undefined,
+		},
+	}
+}
+
+/**
  * The route that selects a set of tags, keeping the rest of the current query.
  *
  * A tag and a category are alternative answers to "where am I looking", never
@@ -156,6 +191,7 @@ export function tagsRoute($route, tags, mode) {
 			...$route?.query,
 			...categoryToQuery(null),
 			...tagsToQuery(tags, mode),
+			smart: undefined,
 		},
 	}
 }
@@ -175,6 +211,7 @@ export function categoryRoute($route, category) {
 			...$route?.query,
 			...categoryToQuery(category),
 			...tagsToQuery([], 'any'),
+			smart: undefined,
 		},
 	}
 }
@@ -214,6 +251,7 @@ export function keepSelection($route, query = {}) {
 		...query,
 		...categoryToQuery(categoryFromQuery($route?.query)),
 		...tagsToQuery(tagsFromQuery($route?.query), tagModeFromQuery($route?.query)),
+		smart: smartFromQuery($route?.query) ?? undefined,
 	}
 }
 

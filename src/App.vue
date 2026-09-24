@@ -102,7 +102,7 @@ import { config } from './config.js'
 import logger from './Logger.js'
 import { fetchNotes, noteExists, setSettings, undoDeleteNote } from './NotesService.js'
 import store from './store.js'
-import { categoryFromQuery, categoryFromSetting, categoryRoute, categoryToSetting, keepSelection, tagModeFromQuery, tagsFromQuery } from './Util.js'
+import { categoryFromQuery, categoryFromSetting, categoryRoute, categoryToSetting, keepSelection, smartFromQuery, tagModeFromQuery, tagsFromQuery } from './Util.js'
 
 import '@nextcloud/dialogs/style.css'
 
@@ -159,6 +159,13 @@ export default {
 	},
 
 	computed: {
+		/* Not defaulted to [] on purpose, unlike the one in CategoriesList: the
+		   difference between "no settings yet" and "settings, holding none" is
+		   what tells a link to a smart category to wait rather than give up. */
+		smartCategories() {
+			return store.app.settings?.smartCategories
+		},
+
 		numNotes() {
 			return store.notes.numNotes()
 		},
@@ -224,16 +231,31 @@ export default {
 
 		   Both halves are watched: how several tags are combined lives in its
 		   own parameter, and changing only that has to reach the list. */
+		'$route.query.smart': {
+			immediate: true,
+			handler() {
+				this.applySelectionFromRoute()
+			},
+		},
+
 		'$route.query.tags': {
 			immediate: true,
 			handler() {
-				this.applyTagsFromRoute()
+				this.applySelectionFromRoute()
 			},
 		},
 
 		'$route.query.mode': {
 			handler() {
-				this.applyTagsFromRoute()
+				this.applySelectionFromRoute()
+			},
+		},
+
+		/* The settings arrive after the first render, so a link straight to a
+		   smart category has nothing to resolve against until they land. */
+		smartCategories: {
+			handler() {
+				this.applySelectionFromRoute()
 			},
 		},
 	},
@@ -339,6 +361,16 @@ export default {
 			if (tagsFromQuery(this.$route.query).length > 0) {
 				return
 			}
+			/* A smart category is a deliberate choice as well, so it is left
+			   alone - but only when it still names something. An id whose
+			   record has gone is not a choice, it is a dead link, and falling
+			   through to the landing category is what clears it from the URL:
+			   categoryRoute() drops it, and this replace is awaited, so the
+			   note routing that follows cannot carry it back. */
+			const smartId = smartFromQuery(this.$route.query)
+			if (smartId !== null && this.smartCategories?.some((smart) => smart.id === smartId)) {
+				return
+			}
 			/* A link to one note — from the server-wide search, a share, the
 			   dashboard — says nothing about the list, but the note still has to
 			   open. Any other category would file it out of the list and hide
@@ -374,6 +406,44 @@ export default {
 				return null
 			}
 			return store.notes.getNote(noteId)?.category ?? null
+		},
+
+		/**
+		 * Show what the route asks for: a smart category, or tags chosen by hand.
+		 */
+		applySelectionFromRoute() {
+			const id = smartFromQuery(this.$route.query)
+			if (id === null) {
+				this.applyTagsFromRoute()
+				return
+			}
+			const stored = this.smartCategories
+			// nothing to resolve against yet; the watcher brings us back
+			if (!Array.isArray(stored)) {
+				return
+			}
+			const smart = stored.find((category) => category.id === id)
+			if (!smart) {
+				/* The record has gone - deleted here, or in another tab, or the
+				   link is old. Landing somewhere real is restoreCategory's job:
+				   it is awaited before the app routes to a note, and a
+				   replace() fired from here is not, so the note's own
+				   navigation would carry the dead id straight back in. */
+				return
+			}
+			/* Every settings write reaches this watcher - collapsing a category
+			   writes settings - so a selection that already matches is left
+			   alone rather than rebuilt, which would send the note list round
+			   again for nothing. */
+			const selected = store.notes.getSelectedTags()
+			if (smart.tags.join(',') === selected.join(',')
+				&& store.notes.getTagMode() === smart.mode
+				&& store.notes.getSelectedSmart() === smart.id) {
+				return
+			}
+			/* The record's own tags, never the URL's: one source, so the row and
+			   the list cannot disagree. */
+			store.notes.setSelectedTags(smart.tags, smart.mode, smart.id)
 		},
 
 		applyTagsFromRoute() {

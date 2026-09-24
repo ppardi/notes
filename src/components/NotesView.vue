@@ -133,6 +133,10 @@ export default {
 			return store.notes.getSelectedCategory()
 		},
 
+		smart() {
+			return store.notes.getSelectedSmart()
+		},
+
 		note() {
 			const noteId = Number.parseInt(this.noteId, 10)
 			return Number.isFinite(noteId) ? store.notes.getNote(noteId) : null
@@ -162,7 +166,7 @@ export default {
 			if (this.searching) {
 				return [{ notes: this.displayedNotes }]
 			}
-			if (this.category === null) {
+			if (this.category === null && this.smart === null) {
 				return this.displayedNotes.reduce((g, note) => {
 					const timeslot = this.getTimeslotFromNote(note)
 					if (g.length === 0 || g[g.length - 1].timeslot !== timeslot) {
