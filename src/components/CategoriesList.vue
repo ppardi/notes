@@ -4,20 +4,32 @@
 -->
 
 <template>
+	<!-- The plus stays a plus now that it opens a menu: without its own
+	     trigger icon the caption would fall back to an anonymous "..." -->
 	<NcAppNavigationCaption v-show="!loading"
 		:name="t('notes', 'Categories')"
-		:inline="1"
+		:inline="0"
+		:ariaLabel="t('notes', 'Add category')"
 		:class="{ 'drop-over-caption': dragOverNewCategory }"
 		@dragover="onNewCategoryDragOver($event)"
 		@dragleave="onNewCategoryDragLeave($event)"
 		@drop="onNewCategoryDrop($event)"
 	>
-		<template #actions>
-			<NcActionButton v-if="!hideNewCategoryAction" @click="startNewCategory()">
+		<template #actionsTriggerIcon>
+			<FolderPlusIcon :size="20" />
+		</template>
+		<template v-if="!hideNewCategoryAction" #actions>
+			<NcActionButton :closeAfterClick="true" @click="startNewCategory()">
 				<template #icon>
 					<FolderPlusIcon :size="20" />
 				</template>
 				{{ t('notes', 'New category') }}
+			</NcActionButton>
+			<NcActionButton :closeAfterClick="true" @click="startNewSmartCategory('')">
+				<template #icon>
+					<FolderPoundOutlineIcon :size="20" />
+				</template>
+				{{ t('notes', 'New smart category') }}
 			</NcActionButton>
 		</template>
 	</NcAppNavigationCaption>
@@ -60,6 +72,13 @@
 			:collapsedCategories="collapsedCategories"
 		/>
 	</template>
+
+	<SmartCategoryDialog :open="smartDialogOpen"
+		:smartCategory="smartDialogRecord"
+		:parent="smartDialogParent"
+		@update:open="smartDialogOpen = $event"
+		@save="onSaveSmart"
+	/>
 </template>
 
 <script>
@@ -71,7 +90,9 @@ import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
+import FolderPoundOutlineIcon from 'vue-material-design-icons/FolderPoundOutline.vue'
 import CategoryTreeItem from './CategoryTreeItem.vue'
+import SmartCategoryDialog from './SmartCategoryDialog.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
 import { categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
@@ -83,6 +104,7 @@ export default {
 
 	components: {
 		CategoryTreeItem,
+		SmartCategoryDialog,
 		SmartCategoryTreeItem,
 		NcActionButton,
 		NcAppNavigationItem,
@@ -90,6 +112,7 @@ export default {
 		NcCounterBubble,
 		FolderIcon,
 		FolderPlusIcon,
+		FolderPoundOutlineIcon,
 	},
 
 	provide() {
@@ -117,6 +140,7 @@ export default {
 				removeSmart: (id) => this.onRemoveSmart(id),
 				smartDragStart: (id, event) => this.onSmartDragStart(id, event),
 				clearDropMarks: () => this.clearCategoryDropMarks(),
+				startSubSmartCategory: (name) => this.startNewSmartCategory(name),
 			},
 		}
 	},
@@ -143,6 +167,9 @@ export default {
 			newCategoryDropNoteId: null,
 			categoryItems: {},
 			smartItems: {},
+			smartDialogOpen: false,
+			smartDialogRecord: null,
+			smartDialogParent: '',
 			collapsedCategories: [],
 			collapsedLoaded: false,
 		}
@@ -253,6 +280,40 @@ export default {
 
 		onSelectSmart(id) {
 			this.$router.push(smartRoute(this.$route, id)).catch(() => {})
+		},
+
+		startNewSmartCategory(parent) {
+			this.smartDialogRecord = null
+			this.smartDialogParent = parent ?? ''
+			this.smartDialogOpen = true
+		},
+
+		/**
+		 * Store a smart category, replacing the record with the same id.
+		 *
+		 * @param {object} smart the record from the dialog
+		 */
+		async onSaveSmart(smart) {
+			const existing = this.smartCategories.findIndex((entry) => entry.id === smart.id)
+			const smartCategories = existing < 0
+				? [...this.smartCategories, smart]
+				: this.smartCategories.map((entry, at) => (at === existing ? smart : entry))
+			let saved
+			try {
+				saved = await setSettings({ smartCategories })
+			} catch {
+				// NotesService already shows a toast on failure.
+				return
+			}
+			/* The server normalises what it is given and drops what it cannot
+			   use, so what came back is what exists - routing to an id it threw
+			   away would land on the "this has gone" path with no explanation. */
+			if (!(saved.smartCategories ?? []).some((entry) => entry.id === smart.id)) {
+				return
+			}
+			/* Made from what the dialog was showing, so it opens - a row that
+			   sat there unlit read as a save that had not taken. */
+			this.$router.push(smartRoute(this.$route, smart.id)).catch(() => {})
 		},
 
 		/* Filled in by Task 7. Declared without parameters so that the stub

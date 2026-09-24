@@ -11,12 +11,25 @@ import { createNote, currentNoteId, newNoteButton, noteRow, uniqueTitle, waitFor
 
 function appNavigation(page: Page): Locator {
 	return page.getByRole('navigation').filter({
-		has: page.getByRole('button', { name: 'New category', exact: true }),
+		has: addCategoryButton(page),
 	}).first()
 }
 
-function newCategoryButton(page: Page): Locator {
-	return page.getByRole('button', { name: 'New category', exact: true })
+function addCategoryButton(page: Page): Locator {
+	return page.getByRole('button', { name: 'Add category', exact: true })
+}
+
+/**
+ * Start a new category from the Categories heading.
+ *
+ * The heading's plus opens a menu now that there is more than one kind of
+ * category to make, so this is two clicks rather than one.
+ *
+ * @param page The page under test
+ */
+async function startNewCategory(page: Page): Promise<void> {
+	await addCategoryButton(page).click()
+	await page.getByRole('menuitem', { name: 'New category', exact: true }).click()
 }
 
 function notesSearchField(page: Page): Locator {
@@ -45,7 +58,7 @@ async function expectNavigationItemActive(page: Page, name: string): Promise<voi
 
 async function openNotesApp(page: Page): Promise<void> {
 	await page.goto('/index.php/apps/notes/')
-	await expect(newCategoryButton(page)).toBeVisible()
+	await expect(addCategoryButton(page)).toBeVisible()
 	await expect(newNoteButton(page)).toHaveCount(1)
 	await expect(newNoteButton(page)).toBeVisible()
 }
@@ -53,7 +66,7 @@ async function openNotesApp(page: Page): Promise<void> {
 async function createCategory(page: Page, name: string): Promise<void> {
 	const navigation = appNavigation(page)
 
-	await newCategoryButton(page).click()
+	await startNewCategory(page)
 
 	const input = navigation.getByPlaceholder('New category', { exact: true })
 	await expect(input).toBeVisible()
@@ -153,7 +166,7 @@ test.describe('Category actions', () => {
 		// rather than only assembled in the browser.
 		await createNoteInSelectedCategory(page, child)
 		await page.reload()
-		await expect(newCategoryButton(page)).toBeVisible()
+		await expect(addCategoryButton(page)).toBeVisible()
 		await expect(navigationRow(page, parent).locator('.app-navigation-entry__children').first())
 			.toContainText(child)
 	})
@@ -182,7 +195,7 @@ test.describe('Drag and drop', () => {
 	test.beforeEach(async ({ page }) => {
 		await login(page)
 		await page.goto('/index.php/apps/notes/')
-		await expect(newCategoryButton(page)).toBeVisible()
+		await expect(addCategoryButton(page)).toBeVisible()
 	})
 
 	test('moves a note into a category by dragging it', async ({ page }, testInfo: TestInfo) => {

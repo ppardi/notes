@@ -48,6 +48,15 @@
 			</NcActionButton>
 			<NcActionButton
 				:closeAfterClick="true"
+				@click="tree.startSubSmartCategory(node.name)"
+			>
+				<template #icon>
+					<FolderPoundOutlineIcon :size="20" />
+				</template>
+				{{ t('notes', 'New smart subcategory') }}
+			</NcActionButton>
+			<NcActionButton
+				:closeAfterClick="true"
 				@click="tree.startRename(node.name)"
 			>
 				<template #icon>
@@ -112,6 +121,7 @@ import DeleteIcon from 'vue-material-design-icons/DeleteOutline.vue'
 import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderOutlineIcon from 'vue-material-design-icons/FolderOutline.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
+import FolderPoundOutlineIcon from 'vue-material-design-icons/FolderPoundOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
 
@@ -123,6 +133,7 @@ export default {
 		FolderIcon,
 		FolderOutlineIcon,
 		FolderPlusIcon,
+		FolderPoundOutlineIcon,
 		NcActionButton,
 		NcAppNavigationItem,
 		NcCounterBubble,

@@ -38,6 +38,20 @@ async function indentOf(locator: Locator): Promise<number> {
 	return Math.round(box?.x ?? -1)
 }
 
+/**
+ * Tick a tag in the dialog.
+ *
+ * The switch hides its real input behind a label that takes the pointer
+ * events, so a person ticks it by clicking the label - and so does this.
+ *
+ * @param dialog the open dialog
+ * @param tag the tag to tick
+ */
+async function chooseTag(dialog: Locator, tag: string): Promise<void> {
+	await dialog.getByText(tag, { exact: true }).click()
+	await expect(dialog.getByRole('checkbox', { name: tag })).toBeChecked()
+}
+
 async function openNotesApp(page: Page): Promise<void> {
 	await page.goto('/index.php/apps/notes/')
 	await expect(page.locator('#app-navigation-vue')).toBeVisible()
@@ -171,5 +185,60 @@ test.describe('Smart categories', () => {
 		await expect(page.getByRole('link', { name: 'Shopping' })).toBeVisible()
 		await categoryLink(page, 'Work').click()
 		await expect(page.getByRole('link', { name: 'Shopping' })).toHaveCount(0)
+	})
+
+	test('makes one from the Categories menu', async ({ page }) => {
+		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy')
+		await createNoteViaRequest('', 'Shopping', 'Milk')
+
+		await openNotesApp(page)
+
+		await page.locator('.app-navigation-caption').filter({ hasText: 'Categories' })
+			.getByRole('button').first().click()
+		await page.getByRole('menuitem', { name: 'New smart category' }).click()
+
+		const dialog = page.getByRole('dialog')
+		await expect(dialog).toBeVisible()
+		await dialog.getByRole('textbox', { name: 'Name' }).fill('Reading')
+		await chooseTag(dialog, 'philosophy')
+		await expect(dialog).toContainText('1 note')
+		await dialog.getByRole('button', { name: 'Create' }).click()
+
+		await expect(smartLink(page, 'Reading')).toBeVisible()
+		await expect(smartRow(page, 'Reading').locator('.app-navigation-entry__counter-wrapper').first())
+			.toContainText('1')
+
+		/* Made from what the dialog was showing, so it opens: a row that sat
+		   there unlit read as a save that had not taken. */
+		await expect(page).toHaveURL(/smart=/)
+		await expect(page.getByRole('link', { name: 'Shopping' })).toHaveCount(0)
+	})
+
+	test('takes the tags as its name when none is typed', async ({ page }) => {
+		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy')
+
+		await openNotesApp(page)
+
+		await page.locator('.app-navigation-caption').filter({ hasText: 'Categories' })
+			.getByRole('button').first().click()
+		await page.getByRole('menuitem', { name: 'New smart category' }).click()
+
+		const dialog = page.getByRole('dialog')
+		await chooseTag(dialog, 'philosophy')
+		await dialog.getByRole('button', { name: 'Create' }).click()
+
+		await expect(smartLink(page, '#philosophy')).toBeVisible()
+	})
+
+	test('will not create one with no tags', async ({ page }) => {
+		await openNotesApp(page)
+
+		await page.locator('.app-navigation-caption').filter({ hasText: 'Categories' })
+			.getByRole('button').first().click()
+		await page.getByRole('menuitem', { name: 'New smart category' }).click()
+
+		const dialog = page.getByRole('dialog')
+		await dialog.getByRole('textbox', { name: 'Name' }).fill('Empty')
+		await expect(dialog.getByRole('button', { name: 'Create' })).toBeDisabled()
 	})
 })
