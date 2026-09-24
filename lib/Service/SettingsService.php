@@ -18,10 +18,12 @@ use OCP\IConfig;
 use OCP\IL10N;
 
 class SettingsService {
-	/** Caps on the saved tag queries, which are user-editable stored JSON. */
-	private const SMART_FOLDERS = 64;
-	private const SMART_FOLDER_NAME_LENGTH = 128;
-	private const SMART_FOLDER_TAGS = 32;
+	/** Caps on the stored smart categories, which are user-editable stored JSON. */
+	private const SMART_CATEGORIES = 64;
+	private const SMART_CATEGORY_NAME_LENGTH = 128;
+	private const SMART_CATEGORY_TAGS = 32;
+	private const SMART_CATEGORY_ID_LENGTH = 32;
+	private const SMART_CATEGORY_PARENT_LENGTH = 512;
 
 	private IConfig $config;
 	private IL10N $l10n;
@@ -110,36 +112,49 @@ class SettingsService {
 					return array_values(array_unique($names));
 				},
 			],
-			// Saved tag queries, shown in the navigation above the tags
-			// themselves. Settings are stored JSON and come back as untrusted
-			// input, so every field is capped and coerced on the way in rather
-			// than being trusted at the point of use.
-			'smartFolders' => [
+			// Categories whose contents are a tag query rather than a folder.
+			// Settings are stored JSON and come back as untrusted input, so
+			// every field is capped and coerced on the way in rather than being
+			// trusted at the point of use.
+			'smartCategories' => [
 				'default' => [],
 				'validate' => function (mixed $value) : array {
 					if (!is_array($value)) {
 						return [];
 					}
-					$folders = [];
-					foreach ($value as $folder) {
-						/* Settings are stored as one JSON blob and read back as
-						   objects, so a folder saved earlier arrives here in a
-						   different shape from one that has just come in on a
-						   request — and every write revalidates all of them. */
-						if ($folder instanceof \stdClass) {
-							$folder = (array)$folder;
+					$categories = [];
+					$seen = [];
+					foreach ($value as $entry) {
+						/* A record saved earlier arrives as an object, since the
+						   blob is decoded without assoc, while one that has just
+						   come in on a request arrives as an array. */
+						if ($entry instanceof \stdClass) {
+							$entry = (array)$entry;
 						}
-						if (!is_array($folder)) {
+						if (!is_array($entry)) {
 							continue;
 						}
-						$name = is_string($folder['name'] ?? null)
-							? mb_substr(trim($folder['name']), 0, self::SMART_FOLDER_NAME_LENGTH)
+						/* Identity is the id, so a record without one cannot be
+						   selected, renamed or deleted — there is nothing useful
+						   to keep. preg_replace answers null on failure, which
+						   mb_substr has refused to be handed since PHP 8.1. */
+						$cleaned = is_string($entry['id'] ?? null)
+							? preg_replace('/[^A-Za-z0-9_-]/', '', $entry['id'])
+							: null;
+						$id = is_string($cleaned)
+							? mb_substr($cleaned, 0, self::SMART_CATEGORY_ID_LENGTH)
+							: '';
+						if ($id === '' || isset($seen[$id])) {
+							continue;
+						}
+						$name = is_string($entry['name'] ?? null)
+							? mb_substr(trim($entry['name']), 0, self::SMART_CATEGORY_NAME_LENGTH)
 							: '';
 						if ($name === '') {
 							continue;
 						}
 						$tags = [];
-						$stored = $folder['tags'] ?? null;
+						$stored = $entry['tags'] ?? null;
 						foreach (is_array($stored) ? $stored : [] as $tag) {
 							if (!is_string($tag)) {
 								continue;
@@ -151,26 +166,29 @@ class SettingsService {
 							if ($parsed !== null && !in_array($parsed, $tags, true)) {
 								$tags[] = $parsed;
 							}
-							if (count($tags) >= self::SMART_FOLDER_TAGS) {
+							if (count($tags) >= self::SMART_CATEGORY_TAGS) {
 								break;
 							}
 						}
 						if ($tags === []) {
 							continue;
 						}
-						$folders[] = [
+						$seen[$id] = true;
+						$categories[] = [
+							'id' => $id,
 							'name' => $name,
 							'tags' => $tags,
 							/* Exactly 'all' or nothing: the filter then has only
 							   the two branches it is written for, however the
 							   setting was edited. */
-							'mode' => ($folder['mode'] ?? null) === 'all' ? 'all' : 'any',
+							'mode' => ($entry['mode'] ?? null) === 'all' ? 'all' : 'any',
+							'parent' => $this->normalizeCategoryPath($entry['parent'] ?? null),
 						];
-						if (count($folders) >= self::SMART_FOLDERS) {
+						if (count($categories) >= self::SMART_CATEGORIES) {
 							break;
 						}
 					}
-					return $folders;
+					return $categories;
 				},
 			],
 			// The category selected when the app was last used, so that opening
@@ -190,6 +208,27 @@ class SettingsService {
 				},
 			],
 		];
+	}
+
+	/**
+	 * A category path with its segments trimmed and its empty ones dropped.
+	 *
+	 * The parent is only ever compared against paths built from note folders,
+	 * so a stray slash or a padded segment would put a smart category under a
+	 * parent that can never match, and it would silently go missing.
+	 */
+	private function normalizeCategoryPath(mixed $value) : string {
+		if (!is_string($value)) {
+			return '';
+		}
+		$segments = [];
+		foreach (explode('/', $value) as $segment) {
+			$segment = trim($segment);
+			if ($segment !== '') {
+				$segments[] = $segment;
+			}
+		}
+		return mb_substr(implode('/', $segments), 0, self::SMART_CATEGORY_PARENT_LENGTH);
 	}
 
 	private function getListAttrs(string $attributeName, array $values) : array {
