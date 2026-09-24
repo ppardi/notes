@@ -18,6 +18,11 @@ function categoryLink(page: Page, name: string): Locator {
 	return page.getByTitle(name, { exact: true }).first()
 }
 
+function categoryRow(page: Page, name: string): Locator {
+	return categoryLink(page, name)
+		.locator('xpath=ancestor::div[contains(@class,"app-navigation-entry")][1]')
+}
+
 function smartRow(page: Page, name: string): Locator {
 	return page.locator('.smart-category-entry')
 		.filter({ has: page.getByRole('link', { name, exact: true }) })
@@ -347,5 +352,93 @@ test.describe('Smart categories', () => {
 		await expect(page).not.toHaveURL(/smart=/)
 		// the note it named is still there, wherever it is filed
 		await expect(page.getByRole('link', { name: 'Naming and Necessity' })).toBeVisible()
+	})
+
+	test('drags into a category, and back out to the top', async ({ page }) => {
+		await createNoteViaRequest('Work', 'Naming and Necessity', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' },
+		])
+
+		await openNotesApp(page)
+
+		const topLevel = await indentOf(categoryLink(page, 'Work'))
+
+		await smartLink(page, 'Reading').dragTo(categoryLink(page, 'Work'))
+		await expect.poll(() => indentOf(smartLink(page, 'Reading'))).toBeGreaterThan(topLevel)
+
+		/* Placement is filing, not filter: it still holds what it always held.
+		   Opened by URL rather than by clicking the row, because where the app
+		   lands on load depends on a setting earlier tests leave behind, and
+		   from the welcome screen the note list is not rendered at all - for a
+		   real category just as much as for a smart one. */
+		await page.goto('/index.php/apps/notes/?smart=reading')
+		await expect(page.getByRole('link', { name: 'Naming and Necessity' })).toBeVisible()
+
+		/* And back out. A row's top edge files it at that row's own level rather
+		   than inside it - the same rule a real category follows, and the only
+		   way back to the top. */
+		await smartLink(page, 'Reading').dragTo(categoryLink(page, 'Work'), {
+			targetPosition: { x: 20, y: 2 },
+		})
+		await expect.poll(() => indentOf(smartLink(page, 'Reading'))).toBe(topLevel)
+	})
+
+	test('follows the category it sits in when that is renamed', async ({ page }) => {
+		await createNoteViaRequest('Work', 'Naming and Necessity', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: 'Work' },
+		])
+
+		await openNotesApp(page)
+
+		await openMenu(categoryRow(page, 'Work'))
+		await page.getByRole('menuitem', { name: 'Rename category' }).click()
+		/* The edit field carries the current name as its placeholder, which is
+		   how the category specs find it - the row's own locator stops
+		   matching while the link is replaced by the input. */
+		const field = page.getByPlaceholder('Work', { exact: true })
+		await field.fill('Job')
+		await field.press('Enter')
+
+		await expect(smartLink(page, 'Reading')).toBeVisible()
+		expect(await indentOf(smartLink(page, 'Reading')))
+			.toBeGreaterThan(await indentOf(categoryLink(page, 'Job')))
+
+		/* Stored, not just redrawn: a reload reads it back from the settings. */
+		await page.reload()
+		expect(await indentOf(smartLink(page, 'Reading')))
+			.toBeGreaterThan(await indentOf(categoryLink(page, 'Job')))
+	})
+
+	test('moves up rather than going with a deleted category', async ({ page }) => {
+		await createNoteViaRequest('', 'Shopping', 'Milk')
+		await createNoteViaRequest('Work', 'Naming and Necessity', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: 'Work' },
+		])
+
+		await openNotesApp(page)
+
+		await openMenu(categoryRow(page, 'Work'))
+		await page.getByRole('menuitem', { name: 'Delete category' }).click()
+		await page.getByRole('button', { name: 'Delete' }).click()
+
+		/* It holds no notes of its own, so there is nothing about deleting a
+		   folder that should destroy it. */
+		await expect(smartLink(page, 'Reading')).toBeVisible()
+		await page.reload()
+		await expect(smartLink(page, 'Reading')).toBeVisible()
+
+		/* And the record itself was corrected, not merely rendered around: a
+		   category that still remembered the deleted path would jump back
+		   under a new category of the same name. Drawing an orphan at the top
+		   level would hide that, so this is what proves the stored parent
+		   moved. */
+		await createNoteViaRequest('Work', 'Word and Object', 'Quine')
+		await page.reload()
+		await expect(categoryLink(page, 'Work')).toBeVisible()
+		expect(await indentOf(smartLink(page, 'Reading')))
+			.toBe(await indentOf(categoryLink(page, 'Work')))
 	})
 })

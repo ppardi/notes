@@ -139,6 +139,31 @@ export function tagsToQuery(tags, mode) {
 	}
 }
 
+/* Its own type, so that a category drop can tell a smart category from a real
+   one without reading the data - which the browser withholds while a drag is
+   over a target. */
+export const SMART_DRAG_TYPE = 'application/x-nextcloud-notes-smart'
+
+/**
+ * Whether a drag is carrying a smart category.
+ *
+ * @param {DragEvent} event the drag event
+ * @return {boolean} whether it is
+ */
+export function isSmartDrag(event) {
+	return Array.from(event.dataTransfer?.types ?? []).includes(SMART_DRAG_TYPE)
+}
+
+/**
+ * The smart category a drag is carrying.
+ *
+ * @param {DragEvent} event the drop event
+ * @return {string} the record's id, or '' when the browser withheld it
+ */
+export function getDraggedSmart(event) {
+	return event.dataTransfer?.getData(SMART_DRAG_TYPE) ?? ''
+}
+
 /**
  * The smart category a route query selects, if it selects one.
  *

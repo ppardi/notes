@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { makeSmartCategoryId } from '../smartCategories.js'
+import { makeSmartCategoryId, reparentOnDelete, reparentOnRename } from '../smartCategories.js'
 
 describe('makeSmartCategoryId', () => {
 	it('makes an id the server will keep', () => {
@@ -26,5 +26,55 @@ describe('makeSmartCategoryId', () => {
 	it('does not repeat itself', () => {
 		const ids = new Set(Array.from({ length: 500 }, () => makeSmartCategoryId()))
 		expect(ids.size).toBe(500)
+	})
+})
+
+describe('reparentOnRename', () => {
+	const categories = [
+		{ id: 'a', name: 'A', tags: ['x'], mode: 'any', parent: 'Work' },
+		{ id: 'b', name: 'B', tags: ['x'], mode: 'any', parent: 'Work/Projects' },
+		{ id: 'c', name: 'C', tags: ['x'], mode: 'any', parent: 'Personal' },
+	]
+
+	it('carries the ones below the renamed category', () => {
+		const moved = reparentOnRename(categories, 'Work', 'Job')
+		expect(moved.map((entry) => entry.parent)).toEqual(['Job', 'Job/Projects', 'Personal'])
+	})
+
+	it('leaves a category whose name merely starts the same', () => {
+		expect(reparentOnRename(categories, 'Wor', 'Job')).toBe(null)
+	})
+
+	it('says nothing changed when nothing did', () => {
+		expect(reparentOnRename(categories, 'Nowhere', 'Elsewhere')).toBe(null)
+	})
+})
+
+describe('reparentOnDelete', () => {
+	const categories = [
+		{ id: 'a', name: 'A', tags: ['x'], mode: 'any', parent: 'Work/Projects' },
+		{ id: 'b', name: 'B', tags: ['x'], mode: 'any', parent: 'Personal' },
+	]
+
+	it('moves one up a level rather than destroying it', () => {
+		const moved = reparentOnDelete(categories, 'Work/Projects')
+		expect(moved.map((entry) => entry.parent)).toEqual(['Work', 'Personal'])
+	})
+
+	it('brings one to the top when a top-level category goes', () => {
+		const moved = reparentOnDelete(
+			[{ id: 'a', name: 'A', tags: ['x'], mode: 'any', parent: 'Work' }],
+			'Work',
+		)
+		expect(moved[0].parent).toBe('')
+	})
+
+	it('moves one out of a deleted category tree', () => {
+		const moved = reparentOnDelete(categories, 'Work')
+		expect(moved[0].parent).toBe('')
+	})
+
+	it('says nothing changed when nothing did', () => {
+		expect(reparentOnDelete(categories, 'Nowhere')).toBe(null)
 	})
 })

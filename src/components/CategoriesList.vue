@@ -96,8 +96,9 @@ import SmartCategoryDialog from './SmartCategoryDialog.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
 import { categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
+import { reparentOnDelete, reparentOnRename } from '../smartCategories.js'
 import store from '../store.js'
-import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, isCategoryDrag, isNoteDrag, keepSelection, smartFromQuery, smartRoute } from '../Util.js'
+import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, getDraggedSmart, isCategoryDrag, isNoteDrag, isSmartDrag, keepSelection, SMART_DRAG_TYPE, smartFromQuery, smartRoute } from '../Util.js'
 
 export default {
 	name: 'CategoriesList',
@@ -157,6 +158,7 @@ export default {
 			   the types can be read but the data cannot, so the category being
 			   dragged has to be remembered from the dragstart. */
 			draggedCategory: null,
+			draggedSmart: null,
 			dropBesideCategory: null,
 			dropBesideSide: 'before',
 			dragOverNewCategory: false,
@@ -362,8 +364,41 @@ export default {
 			}
 		},
 
-		// Filled in by Task 8.
-		onSmartDragStart() {},
+		onSmartDragStart(id, event) {
+			if (!event.dataTransfer) {
+				event.preventDefault()
+				return
+			}
+			event.stopPropagation()
+			event.dataTransfer.effectAllowed = 'move'
+			event.dataTransfer.setData(SMART_DRAG_TYPE, id)
+			this.draggedSmart = id
+		},
+
+		/**
+		 * File a smart category somewhere else.
+		 *
+		 * Nothing about what it holds changes - the tags decide that. This only
+		 * moves the row.
+		 *
+		 * @param {string} id the record being moved
+		 * @param {string} parent the category to file it under, '' for the top
+		 */
+		async moveSmart(id, parent) {
+			const smart = this.smartCategories.find((entry) => entry.id === id)
+			if (!smart || smart.parent === parent) {
+				return
+			}
+			try {
+				await setSettings({
+					smartCategories: this.smartCategories.map((entry) => (
+						entry.id === id ? { ...entry, parent } : entry
+					)),
+				})
+			} catch {
+				// NotesService already shows a toast on failure.
+			}
+		},
 
 		setCategoryItemRef(category, el) {
 			if (el) {
@@ -548,6 +583,7 @@ export default {
 
 		onCategoryDragEnd() {
 			this.draggedCategory = null
+			this.draggedSmart = null
 			this.clearCategoryDropMarks()
 		},
 
@@ -590,6 +626,10 @@ export default {
 				const newName = response?.newCategory || trimmed
 				this.updateNotesForCategoryRename(oldName, newName)
 				store.notes.renameLocalCategory({ oldCategory: oldName, newCategory: newName })
+				const followed = reparentOnRename(this.smartCategories, oldName, newName)
+				if (followed !== null) {
+					await setSettings({ smartCategories: followed })
+				}
 				this.updateSelectedCategoryForRename(oldName, newName)
 			} catch {
 				// NotesService already shows a toast on failure.
@@ -629,6 +669,12 @@ export default {
 				await this.closeOpenNoteBeforeDelete(deletedCategory)
 				this.removeNotesFromCategory(deletedCategory)
 				store.notes.removeLocalCategory(deletedCategory)
+				/* It holds no notes of its own, so deleting the folder it was
+				   filed in is no reason to destroy it. */
+				const moved = reparentOnDelete(this.smartCategories, deletedCategory)
+				if (moved !== null) {
+					await setSettings({ smartCategories: moved })
+				}
 				this.clearSelectedCategoryForDelete(deletedCategory)
 			} catch {
 				// NotesService already shows a toast on failure.
@@ -640,6 +686,18 @@ export default {
 			   actually under the pointer is the innermost, which is where the
 			   drop lands too. */
 			event.stopPropagation()
+			if (isSmartDrag(event)) {
+				/* The unfiled category is not a folder, so it takes no children
+				   - the same rule a real category follows. */
+				if (category === '') {
+					this.clearCategoryDropMarks()
+					return
+				}
+				event.preventDefault()
+				this.dropBesideCategory = null
+				this.dragOverCategory = category
+				return
+			}
 			if (isCategoryDrag(event)) {
 				const dragged = this.draggedCategory ?? getDraggedCategory(event)
 				const side = this.categoryDropSide(event)
@@ -688,6 +746,23 @@ export default {
 			event.stopPropagation()
 
 			this.clearCategoryDropMarks()
+
+			if (isSmartDrag(event)) {
+				const dragged = getDraggedSmart(event) || this.draggedSmart
+				this.draggedSmart = null
+				/* The same guard the dragover has: the unfiled category is not a
+				   folder, so it takes no children. Both branches carry it, or
+				   the one without it is the one that survives a later edit. */
+				if (dragged && category !== '') {
+					/* A row's middle files it inside; its edges file it at that
+					   row's own level, the same as a real category. */
+					const side = this.categoryDropSide(event)
+					const separator = category.lastIndexOf('/')
+					const beside = separator === -1 ? '' : category.slice(0, separator)
+					await this.moveSmart(dragged, side === 'into' ? category : beside)
+				}
+				return
+			}
 
 			if (isCategoryDrag(event)) {
 				// an empty answer means the browser withheld it, not the unfiled category
