@@ -9,6 +9,41 @@ import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
 import { createNoteViaApi, deleteAllNotes, newNoteButton, noteRow } from '../support/note.ts'
 
+function folderRow(page: Page, name: string): Locator {
+	return navigationRow(page, name).locator('xpath=ancestor::li[1]').first()
+}
+
+/**
+ * How many smart folder rows are painted as the current one.
+ *
+ * Read from what is painted rather than from a class: the class sits on an
+ * inner element, and a correct class has hidden an unlit row here before. The
+ * pointer is moved away first, since hovering paints a row too.
+ *
+ * @param page the page under test
+ */
+async function litFolders(page: Page): Promise<number> {
+	await page.mouse.move(0, 0)
+	return page.locator('.smart-folder-entry .app-navigation-entry').evaluateAll(
+		(rows) => rows.filter((row) => window.getComputedStyle(row).backgroundColor !== 'rgba(0, 0, 0, 0)').length,
+	)
+}
+
+/**
+ * Name the folder being saved, taking whatever the field suggests.
+ *
+ * @param page the page under test
+ * @param name the name to type, or '' to accept the suggestion
+ */
+async function nameTheFolder(page: Page, name: string): Promise<void> {
+	const field = page.locator('.smart-folder-entry input[type="text"]').first()
+	await expect(field).toBeVisible()
+	if (name !== '') {
+		await field.fill(name)
+	}
+	await field.press('Enter')
+}
+
 function navigationRow(page: Page, name: string): Locator {
 	return page.getByRole('link', { name, exact: true })
 }
@@ -198,6 +233,65 @@ test.describe('Smart folders', () => {
 		await expect(navigationRow(page, 'Second name')).toHaveCount(0)
 		// and the heading goes with the last one
 		await expect(page.locator('.app-navigation-caption').filter({ hasText: 'Smart folders' })).toHaveCount(0)
+	})
+
+	test('takes the tags as its name when none is typed', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationRow(page, 'philosophy').click()
+		await alsoSelect(page, 'kripke')
+
+		await fromTagsMenu(page, 'Save as smart folder')
+		// straight to Enter, as anyone expecting to type tags would
+		await nameTheFolder(page, '')
+
+		/* Something has to be left behind, and what it is called has to say
+		   what it holds. */
+		await expect(navigationRow(page, '#philosophy #kripke')).toBeVisible()
+		await expect(folderRow(page, '#philosophy #kripke')
+			.locator('.app-navigation-entry__counter-wrapper')).toContainText('1')
+	})
+
+	test('lights only the folder that was opened, not every one holding those tags', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationRow(page, 'philosophy').click()
+		await fromTagsMenu(page, 'Save as smart folder')
+		await nameTheFolder(page, 'First')
+		await expect(navigationRow(page, 'First')).toBeVisible()
+
+		// a second folder looking for exactly the same thing
+		await navigationRow(page, 'philosophy').click()
+		await fromTagsMenu(page, 'Save as smart folder')
+		await nameTheFolder(page, 'Second')
+		await expect(navigationRow(page, 'Second')).toBeVisible()
+
+		await navigationRow(page, 'First').click()
+
+		/* Both hold the same tags, so working the highlight out from the tags
+		   lights both — which reads as a fault. */
+		expect(await litFolders(page), 'only the folder that was clicked is lit').toBe(1)
+	})
+
+	test('takes the filter on screen as a folder’s new meaning', async ({ page }) => {
+		await openNotesApp(page)
+		await navigationRow(page, 'philosophy').click()
+		await fromTagsMenu(page, 'Save as smart folder')
+		await nameTheFolder(page, 'Reading')
+		await expect(navigationRow(page, 'Reading')).toBeVisible()
+
+		// open it, then change what is on screen
+		await navigationRow(page, 'Reading').click()
+		await alsoSelect(page, 'kripke')
+
+		await fromTagsMenu(page, 'Update “Reading”')
+
+		// it now means both tags, which its count says
+		await expect(folderRow(page, 'Reading')
+			.locator('.app-navigation-entry__counter-wrapper')).toContainText('1')
+
+		await navigationRow(page, 'Personal').click()
+		await navigationRow(page, 'Reading').click()
+		await expect(noteRow(page, both)).toBeVisible()
+		await expect(noteRow(page, onlyPhilosophy)).toBeHidden()
 	})
 
 	test('offers nothing to save until something is filtered', async ({ page }) => {

@@ -140,22 +140,41 @@ export function tagsToQuery(tags, mode) {
 }
 
 /**
+ * The smart folder a route query came from, if it came from one.
+ *
+ * @param {object} [query] the route query
+ * @return {string|null} the folder's name, or null when the tags were chosen
+ *                       by hand
+ */
+export function smartFolderFromQuery(query) {
+	const value = query?.folder
+	const name = Array.isArray(value) ? (value[0] ?? '') : (value ?? '')
+	return String(name) === '' ? null : String(name)
+}
+
+/**
  * The route that selects a set of tags, keeping the rest of the current query.
  *
  * A tag and a category are alternative answers to "where am I looking", never
  * combined, so this drops the category on the way.
  *
+ * The folder is carried as well, so that the URL says not just which tags are
+ * being shown but which saved query asked for them — which is what tells two
+ * folders holding the same tags apart, and what a reload restores.
+ *
  * @param {object} $route the current route
  * @param {string[]} tags the tags to select
  * @param {string} mode 'all' or 'any'
+ * @param {string|null} [folder] the smart folder these tags came from
  * @return {object} the route to navigate to
  */
-export function tagsRoute($route, tags, mode) {
+export function tagsRoute($route, tags, mode, folder = null) {
 	return {
 		query: {
 			...$route?.query,
 			...categoryToQuery(null),
 			...tagsToQuery(tags, mode),
+			folder: folder ?? undefined,
 		},
 	}
 }
@@ -175,6 +194,7 @@ export function categoryRoute($route, category) {
 			...$route?.query,
 			...categoryToQuery(category),
 			...tagsToQuery([], 'any'),
+			folder: undefined,
 		},
 	}
 }
@@ -214,6 +234,7 @@ export function keepSelection($route, query = {}) {
 		...query,
 		...categoryToQuery(categoryFromQuery($route?.query)),
 		...tagsToQuery(tagsFromQuery($route?.query), tagModeFromQuery($route?.query)),
+		folder: smartFolderFromQuery($route?.query) ?? undefined,
 	}
 }
 

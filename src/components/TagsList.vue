@@ -22,6 +22,15 @@
 					</template>
 					{{ t('notes', 'Save as smart folder') }}
 				</NcActionButton>
+				<NcActionButton v-if="folderHasChanged"
+					:closeAfterClick="true"
+					@click="onUpdateSmartFolder"
+				>
+					<template #icon>
+						<FolderCogOutlineIcon :size="20" />
+					</template>
+					{{ t('notes', 'Update “{folder}”', { folder: openFolder }) }}
+				</NcActionButton>
 				<NcActionButton v-if="selectedTags.length > 1"
 					:closeAfterClick="true"
 					@click="onToggleMode"
@@ -77,7 +86,7 @@ import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import PoundIcon from 'vue-material-design-icons/Pound.vue'
 import { fetchNotes, renameTag } from '../NotesService.js'
 import store from '../store.js'
-import { tagsRoute } from '../Util.js'
+import { smartFolderFromQuery, tagsRoute } from '../Util.js'
 
 /* Long enough for the lock to have gone, short enough not to be noticed. */
 const RENAME_RETRY_DELAY = 400
@@ -123,6 +132,27 @@ export default {
 
 		tagMode() {
 			return store.notes.getTagMode()
+		},
+
+		/* The smart folder these tags were opened from, if any. */
+		openFolder() {
+			return smartFolderFromQuery(this.$route.query)
+		},
+
+		/* Whether what is on screen has moved away from what that folder holds,
+		   which is when offering to update it means something. */
+		folderHasChanged() {
+			if (this.openFolder === null) {
+				return false
+			}
+			const folder = (store.app.settings?.smartFolders ?? [])
+				.find((saved) => saved.name === this.openFolder)
+			if (!folder) {
+				return false
+			}
+			return folder.tags.length !== this.selectedTags.length
+				|| !folder.tags.every((tag) => this.selectedTags.includes(tag))
+				|| (this.selectedTags.length > 1 && folder.mode !== this.tagMode)
 		},
 	},
 
@@ -297,6 +327,7 @@ export default {
 		 */
 		onSelect(tag, event) {
 			if (!(event?.metaKey || event?.ctrlKey)) {
+				// chosen by hand, so no longer what any saved query asked for
 				this.$router.push(tagsRoute(this.$route, [tag], 'any'))
 				return
 			}
@@ -309,7 +340,14 @@ export default {
 			   "and also this". Once that has been said, an explicit choice of
 			   mode is left alone. */
 			const mode = next.length > 1 && selected.length < 2 ? 'all' : this.tagMode
-			this.$router.push(tagsRoute(this.$route, next, next.length > 1 ? mode : 'any'))
+			/* The folder stays named while its filter is being changed, so that
+			   the menu can offer to save the change back to it. */
+			this.$router.push(tagsRoute(
+				this.$route,
+				next,
+				next.length > 1 ? mode : 'any',
+				next.length > 0 ? this.openFolder : null,
+			))
 		},
 
 		onToggleMode() {
@@ -317,7 +355,12 @@ export default {
 				this.$route,
 				this.selectedTags,
 				this.tagMode === 'all' ? 'any' : 'all',
+				this.openFolder,
 			))
+		},
+
+		onUpdateSmartFolder() {
+			emit('notes:smart-folder:update', { name: this.openFolder })
 		},
 
 		/* The list of saved queries owns the naming, the way the category list

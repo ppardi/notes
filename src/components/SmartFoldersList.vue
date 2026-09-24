@@ -77,7 +77,7 @@ import FolderCogOutlineIcon from 'vue-material-design-icons/FolderCogOutline.vue
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import { setSettings } from '../NotesService.js'
 import store from '../store.js'
-import { tagsRoute } from '../Util.js'
+import { smartFolderFromQuery, tagsRoute } from '../Util.js'
 
 export default {
 	name: 'SmartFoldersList',
@@ -118,17 +118,25 @@ export default {
 			return store.notes.getTagMode()
 		},
 
+		/* The tags it will hold, which is also the name it takes if none is
+		   typed — so a row says what it is looking for unless renamed. */
 		draftPlaceholder() {
 			return this.draft === null ? '' : this.draft.tags.map((tag) => `#${tag}`).join(' ')
+		},
+
+		openFolder() {
+			return smartFolderFromQuery(this.$route.query)
 		},
 	},
 
 	mounted() {
 		subscribe('notes:smart-folder:new', this.onNew)
+		subscribe('notes:smart-folder:update', this.onUpdate)
 	},
 
 	unmounted() {
 		unsubscribe('notes:smart-folder:new', this.onNew)
+		unsubscribe('notes:smart-folder:update', this.onUpdate)
 	},
 
 	methods: {
@@ -180,23 +188,62 @@ export default {
 				: tags
 		},
 
+		/**
+		 * Whether this is the folder the list is showing.
+		 *
+		 * The route says which folder was opened, rather than this being worked
+		 * out from the tags: two folders can hold the same tags, and lighting
+		 * both of them up reads as a fault. Changing the filter afterwards
+		 * leaves the row unlit, which is honest — what is on screen is no
+		 * longer what the folder holds.
+		 *
+		 * @param {object} folder the saved query
+		 * @return {boolean} whether to light its row
+		 */
 		isSelected(folder) {
-			return this.selectedTags.length === folder.tags.length
+			return this.openFolder === folder.name
+				&& this.selectedTags.length === folder.tags.length
 				&& folder.tags.every((tag) => this.selectedTags.includes(tag))
 				&& (folder.tags.length < 2 || this.tagMode === folder.mode)
 		},
 
 		onSelect(folder) {
-			this.$router.push(tagsRoute(this.$route, folder.tags, folder.mode))
+			this.$router.push(tagsRoute(this.$route, folder.tags, folder.mode, folder.name))
 		},
 
+		/* An empty name takes the tags as the name, so that pressing Enter
+		   always leaves something behind — and what it leaves says what it is
+		   looking for. */
 		async onCreate(name) {
 			const draft = this.draft
 			this.draft = null
-			if (draft === null || !name) {
+			if (draft === null) {
 				return
 			}
-			await this.save([...this.folders, { ...draft, name }])
+			const chosen = (name ?? '').trim() || draft.tags.map((tag) => `#${tag}`).join(' ')
+			await this.save([...this.folders, { ...draft, name: chosen }])
+		},
+
+		/**
+		 * Give a folder the tags that are on screen now.
+		 *
+		 * The same way one is made: filter to what you want, then say that is
+		 * what the folder means.
+		 *
+		 * @param {object} event the folder to update
+		 * @param {string} event.name which folder
+		 */
+		async onUpdate({ name }) {
+			const index = this.folders.findIndex((folder) => folder.name === name)
+			if (index < 0 || this.selectedTags.length === 0) {
+				return
+			}
+			const tags = [...this.selectedTags]
+			const mode = tags.length > 1 ? this.tagMode : 'any'
+			const folders = this.folders.map((existing, at) => (
+				at === index ? { ...existing, tags, mode } : existing
+			))
+			await this.save(folders)
 		},
 
 		async onRename(index, name) {
