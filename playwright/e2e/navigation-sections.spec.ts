@@ -125,4 +125,48 @@ test.describe('Collapsing the navigation sections', () => {
 		await expect(page.getByRole('menuitem', { name: 'New category' })).toBeVisible()
 		await expect(categoryLink(page, 'Work')).toBeVisible()
 	})
+
+	test('gives each heading one properly named control', async ({ page }) => {
+		/* The heading used to carry role="button" on the row itself, which held
+		   the actions button inside it: one control containing another, named
+		   by everything in it, and no longer a list item. */
+		await openNotesApp(page)
+
+		const heading = caption(page, 'Categories')
+		const toggle = heading.getByRole('button', { name: 'Categories', exact: true })
+
+		await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+		await expect(heading).not.toHaveAttribute('role', 'button')
+
+		/* The menu is a control of its own, beside the heading rather than
+		   inside it, so it keeps its own name. */
+		await expect(heading.getByRole('button', { name: 'Add category', exact: true }))
+			.toBeVisible()
+
+		/* And the chevron says nothing, because the button already does. */
+		await expect(heading.locator('.app-navigation-caption__chevron'))
+			.toHaveAttribute('aria-hidden', 'true')
+
+		await toggle.click()
+		await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+		await expect(categoryLink(page, 'Work')).toBeHidden()
+	})
+
+	test('collapses from the keyboard, and leaves the menu its own keys', async ({ page }) => {
+		await openNotesApp(page)
+		const heading = caption(page, 'Categories')
+
+		await heading.getByRole('button', { name: 'Categories', exact: true }).focus()
+		await page.keyboard.press('Enter')
+		await expect(categoryLink(page, 'Work')).toBeHidden()
+
+		await page.keyboard.press('Enter')
+		await expect(categoryLink(page, 'Work')).toBeVisible()
+
+		/* Enter on the menu opens the menu - it is not the heading's key. */
+		await heading.getByRole('button', { name: 'Add category', exact: true }).focus()
+		await page.keyboard.press('Enter')
+		await expect(page.getByRole('menuitem', { name: 'New category' })).toBeVisible()
+		await expect(categoryLink(page, 'Work')).toBeVisible()
+	})
 })

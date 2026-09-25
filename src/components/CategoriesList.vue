@@ -5,18 +5,13 @@
 
 <template>
 	<!-- The plus stays a plus now that it opens a menu: without its own
-	     trigger icon the caption would fall back to an anonymous "..." -->
-	<NcAppNavigationCaption v-show="!loading"
+	     trigger icon it would fall back to an anonymous "..." -->
+	<NavigationSectionHeading v-show="!loading"
 		:name="t('notes', 'Categories')"
-		:inline="0"
-		:ariaLabel="t('notes', 'Add category')"
-		role="button"
-		tabindex="0"
-		:aria-expanded="!collapsed"
-		:class="{ 'drop-over-caption': dragOverNewCategory, 'section-collapsed': collapsed }"
-		@click="onCaptionClick"
-		@keydown.enter="onCaptionKey"
-		@keydown.space="onCaptionKey"
+		:collapsed="collapsed"
+		:actionsAriaLabel="t('notes', 'Add category')"
+		:class="{ 'drop-over-caption': dragOverNewCategory }"
+		@toggle="toggleSection"
 		@dragover="onNewCategoryDragOver($event)"
 		@dragleave="onNewCategoryDragLeave($event)"
 		@drop="onNewCategoryDrop($event)"
@@ -38,7 +33,7 @@
 				{{ t('notes', 'New smart category') }}
 			</NcActionButton>
 		</template>
-	</NcAppNavigationCaption>
+	</NavigationSectionHeading>
 
 	<template v-if="!collapsed">
 		<NcAppNavigationItem
@@ -93,13 +88,13 @@
 import { showConfirmation } from '@nextcloud/dialogs'
 import { subscribe, unsubscribe } from '@nextcloud/event-bus'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
-import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import FolderIcon from 'vue-material-design-icons/Folder.vue'
 import FolderPlusIcon from 'vue-material-design-icons/FolderPlusOutline.vue'
 import FolderPoundOutlineIcon from 'vue-material-design-icons/FolderPoundOutline.vue'
 import CategoryTreeItem from './CategoryTreeItem.vue'
+import NavigationSectionHeading from './NavigationSectionHeading.vue'
 import SmartCategoryDialog from './SmartCategoryDialog.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
 import { categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
@@ -114,11 +109,11 @@ export default {
 
 	components: {
 		CategoryTreeItem,
+		NavigationSectionHeading,
 		SmartCategoryDialog,
 		SmartCategoryTreeItem,
 		NcActionButton,
 		NcAppNavigationItem,
-		NcAppNavigationCaption,
 		NcCounterBubble,
 		FolderIcon,
 		FolderPlusIcon,
@@ -259,26 +254,6 @@ export default {
 	},
 
 	methods: {
-		/* The heading also carries the add-category menu: a click that landed in
-		   it is a click on the menu, not on the heading. */
-		onCaptionClick(event) {
-			if (event.target?.closest?.('.app-navigation-caption__actions')) {
-				return
-			}
-			this.toggleSection()
-		},
-
-		/* Enter and Space on the heading collapse it; on the button inside the
-		   heading they belong to the button. Without this the heading swallows
-		   the key, folds away, and the menu never opens. */
-		onCaptionKey(event) {
-			if (event.target !== event.currentTarget) {
-				return
-			}
-			event.preventDefault()
-			this.toggleSection()
-		},
-
 		toggleSection() {
 			this.setSectionCollapsed(!this.collapsed)
 		},
@@ -894,29 +869,6 @@ export default {
 
 <style lang="scss" scoped>
 @use './navigationEntry.scss';
-
-/* The heading is the control that opens and closes its section, so it reads
-   as one: a turning chevron, and a pointer over the whole row. */
-.app-navigation-caption {
-	cursor: pointer;
-
-	:deep(.app-navigation-caption__name)::before {
-		content: '';
-		display: inline-block;
-		width: 0;
-		height: 0;
-		margin-inline-end: calc(var(--default-grid-baseline) * 2);
-		border-block: 4px solid transparent;
-		border-inline-start: 6px solid currentColor;
-		vertical-align: middle;
-		transform: rotate(90deg);
-		transition: transform 100ms ease-in-out;
-	}
-
-	&.section-collapsed :deep(.app-navigation-caption__name)::before {
-		transform: none;
-	}
-}
 
 .app-navigation-caption.drop-over-caption {
 	background-color: var(--color-primary-element-light) !important;

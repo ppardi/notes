@@ -7,7 +7,7 @@ import type { Locator, Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { createNoteViaRequest, deleteAllNotesVia, setSmartCategories } from '../support/note.ts'
+import { createNoteViaRequest, deleteAllNotesVia, setCollapsedSections, setSmartCategories } from '../support/note.ts'
 
 /* Real category rows are found by their title, the way every other category
    spec finds them. A smart category's title carries its tags instead - a
@@ -83,6 +83,9 @@ test.describe('Smart categories', () => {
 		await login(page)
 		await deleteAllNotesVia()
 		await setSmartCategories([])
+		/* Collapsing is stored, so a section left shut by another spec would
+		   hide the rows these tests look for. */
+		await setCollapsedSections([])
 	})
 
 	test('lands somewhere real when the record has gone', async ({ page }) => {
@@ -215,7 +218,7 @@ test.describe('Smart categories', () => {
 		await openNotesApp(page)
 
 		await page.locator('.app-navigation-caption').filter({ hasText: 'Categories' })
-			.getByRole('button').first().click()
+			.getByRole('button', { name: 'Add category', exact: true }).click()
 		await page.getByRole('menuitem', { name: 'New smart category' }).click()
 
 		const dialog = page.getByRole('dialog')
@@ -241,7 +244,7 @@ test.describe('Smart categories', () => {
 		await openNotesApp(page)
 
 		await page.locator('.app-navigation-caption').filter({ hasText: 'Categories' })
-			.getByRole('button').first().click()
+			.getByRole('button', { name: 'Add category', exact: true }).click()
 		await page.getByRole('menuitem', { name: 'New smart category' }).click()
 
 		const dialog = page.getByRole('dialog')
@@ -255,7 +258,7 @@ test.describe('Smart categories', () => {
 		await openNotesApp(page)
 
 		await page.locator('.app-navigation-caption').filter({ hasText: 'Categories' })
-			.getByRole('button').first().click()
+			.getByRole('button', { name: 'Add category', exact: true }).click()
 		await page.getByRole('menuitem', { name: 'New smart category' }).click()
 
 		const dialog = page.getByRole('dialog')

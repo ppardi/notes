@@ -9,16 +9,11 @@
 	<template v-if="tags.length > 0">
 		<!-- Nothing inline: everything about the current filter lives in the one
 		     menu, rather than a button beside a menu holding the rest. -->
-		<NcAppNavigationCaption v-show="!loading"
+		<NavigationSectionHeading v-show="!loading"
 			:name="t('notes', 'Tags')"
-			:inline="0"
-			role="button"
-			tabindex="0"
-			:aria-expanded="!collapsed"
-			:class="{ 'section-collapsed': collapsed }"
-			@click="onCaptionClick"
-			@keydown.enter="onCaptionKey"
-			@keydown.space="onCaptionKey"
+			:collapsed="collapsed"
+			:actionsAriaLabel="t('notes', 'Tag options')"
+			@toggle="toggleSection"
 		>
 			<!-- Only while more than one tag is filtered: with a single tag
 			     there is nothing for "all" and "any" to differ about. -->
@@ -30,7 +25,7 @@
 					{{ tagMode === 'all' ? t('notes', 'Match any tag') : t('notes', 'Match all tags') }}
 				</NcActionButton>
 			</template>
-		</NcAppNavigationCaption>
+		</NavigationSectionHeading>
 
 		<NcAppNavigationItem v-for="tag in tags"
 			v-show="!loading && !collapsed"
@@ -66,12 +61,12 @@
 import { showWarning } from '@nextcloud/dialogs'
 import { emit, subscribe, unsubscribe } from '@nextcloud/event-bus'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
-import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import FilterOutlineIcon from 'vue-material-design-icons/FilterOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import PoundIcon from 'vue-material-design-icons/Pound.vue'
+import NavigationSectionHeading from './NavigationSectionHeading.vue'
 import { SECTION_TAGS, withSectionCollapsed } from '../navigationSections.js'
 import { fetchNotes, renameTag, setSettings } from '../NotesService.js'
 import store from '../store.js'
@@ -89,8 +84,8 @@ export default {
 
 	components: {
 		NcActionButton,
-		NcAppNavigationCaption,
 		NcAppNavigationItem,
+		NavigationSectionHeading,
 		NcCounterBubble,
 		FilterOutlineIcon,
 		PencilOutlineIcon,
@@ -137,26 +132,6 @@ export default {
 	},
 
 	methods: {
-		/* The heading also carries the match-mode menu while tags are filtered:
-		   a click that landed in it is a click on the menu, not the heading. */
-		onCaptionClick(event) {
-			if (event.target?.closest?.('.app-navigation-caption__actions')) {
-				return
-			}
-			this.toggleSection()
-		},
-
-		/* Enter and Space on the heading collapse it; on the button inside the
-		   heading they belong to the button. Without this the heading swallows
-		   the key, folds away, and the menu never opens. */
-		onCaptionKey(event) {
-			if (event.target !== event.currentTarget) {
-				return
-			}
-			event.preventDefault()
-			this.toggleSection()
-		},
-
 		toggleSection() {
 			const collapsed = store.app.settings?.collapsedSections ?? []
 			setSettings({
@@ -363,26 +338,4 @@ export default {
 <style lang="scss" scoped>
 @use './navigationEntry.scss';
 
-/* The heading is the control that opens and closes its section, so it reads
-   as one: a turning chevron, and a pointer over the whole row. */
-.app-navigation-caption {
-	cursor: pointer;
-
-	:deep(.app-navigation-caption__name)::before {
-		content: '';
-		display: inline-block;
-		width: 0;
-		height: 0;
-		margin-inline-end: calc(var(--default-grid-baseline) * 2);
-		border-block: 4px solid transparent;
-		border-inline-start: 6px solid currentColor;
-		vertical-align: middle;
-		transform: rotate(90deg);
-		transition: transform 100ms ease-in-out;
-	}
-
-	&.section-collapsed :deep(.app-navigation-caption__name)::before {
-		transform: none;
-	}
-}
 </style>
