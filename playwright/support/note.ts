@@ -166,6 +166,26 @@ export async function setSmartCategories(categories: unknown[]): Promise<void> {
 	})
 }
 
+/**
+ * Set which navigation sections are collapsed, replacing whatever was there.
+ *
+ * Collapsing is stored in the settings, so it outlives a test unless it is put
+ * back - one spec collapsing a section would otherwise hide rows a later one
+ * expects to see.
+ *
+ * @see onOwnContext for why these calls do not use the page's own context
+ * @param sections The sections to store as collapsed
+ */
+export async function setCollapsedSections(sections: string[]): Promise<void> {
+	return onOwnContext(async (request) => {
+		const written = await request.put('/index.php/apps/notes/settings', {
+			headers: { ...apiHeaders(), 'OCS-APIRequest': 'true' },
+			data: { collapsedSections: sections },
+		})
+		expect(written.ok(), 'storing the collapsed sections').toBeTruthy()
+	})
+}
+
 export function currentNoteId(page: Page): number | null {
 	const match = page.url().match(/\/note\/(\d+)(?:\?.*)?$/)
 	return match ? Number(match[1]) : null

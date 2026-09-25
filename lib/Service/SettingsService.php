@@ -18,6 +18,9 @@ use OCP\IConfig;
 use OCP\IL10N;
 
 class SettingsService {
+	/** The navigation sections that can be collapsed. */
+	private const SECTIONS = ['categories', 'tags'];
+
 	/** Caps on the stored smart categories, which are user-editable stored JSON. */
 	private const SMART_CATEGORIES = 64;
 	private const SMART_CATEGORY_NAME_LENGTH = 128;
@@ -110,6 +113,27 @@ class SettingsService {
 						}
 					}
 					return array_values(array_unique($names));
+				},
+			],
+			// Which navigation sections are collapsed. Only the collapsed ones
+			// are stored: a section nobody has closed needs no entry. The names
+			// are an allowlist rather than free text, because nothing else can
+			// ever be a section and a typo would otherwise be stored forever.
+			'collapsedSections' => [
+				'default' => [],
+				'validate' => function (mixed $value) : array {
+					if (!is_array($value)) {
+						return [];
+					}
+					$sections = [];
+					foreach ($value as $name) {
+						if (is_string($name)
+							&& in_array($name, self::SECTIONS, true)
+							&& !in_array($name, $sections, true)) {
+							$sections[] = $name;
+						}
+					}
+					return $sections;
 				},
 			],
 			// Categories whose contents are a tag query rather than a folder.

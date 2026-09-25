@@ -10,7 +10,13 @@
 		:name="t('notes', 'Categories')"
 		:inline="0"
 		:ariaLabel="t('notes', 'Add category')"
-		:class="{ 'drop-over-caption': dragOverNewCategory }"
+		role="button"
+		tabindex="0"
+		:aria-expanded="!collapsed"
+		:class="{ 'drop-over-caption': dragOverNewCategory, 'section-collapsed': collapsed }"
+		@click="onCaptionClick"
+		@keydown.enter.prevent="toggleSection"
+		@keydown.space.prevent="toggleSection"
 		@dragover="onNewCategoryDragOver($event)"
 		@dragleave="onNewCategoryDragLeave($event)"
 		@drop="onNewCategoryDrop($event)"
@@ -34,43 +40,45 @@
 		</template>
 	</NcAppNavigationCaption>
 
-	<NcAppNavigationItem
-		v-if="newCategoryDraft && newCategoryParent === null"
-		v-show="!loading"
-		:ref="(el) => setDraftRef(el)"
-		name=""
-		:draggable="false"
-		:editPlaceholder="t('notes', 'New category')"
-		class="category-draft"
-		@click.prevent.stop
-		@dragstart="onCategoryDragStart"
-		@update:name="onCreateCategory"
-	>
-		<template #icon>
-			<FolderIcon :size="20" />
-		</template>
-		<template #counter>
-			<NcCounterBubble :count="0" />
-		</template>
-	</NcAppNavigationItem>
+	<template v-if="!collapsed">
+		<NcAppNavigationItem
+			v-if="newCategoryDraft && newCategoryParent === null"
+			v-show="!loading"
+			:ref="(el) => setDraftRef(el)"
+			name=""
+			:draggable="false"
+			:editPlaceholder="t('notes', 'New category')"
+			class="category-draft"
+			@click.prevent.stop
+			@dragstart="onCategoryDragStart"
+			@update:name="onCreateCategory"
+		>
+			<template #icon>
+				<FolderIcon :size="20" />
+			</template>
+			<template #counter>
+				<NcCounterBubble :count="0" />
+			</template>
+		</NcAppNavigationItem>
 
-	<template v-for="node in categoryTree" :key="node.smart ? `smart:${node.id}` : node.name">
-		<SmartCategoryTreeItem v-if="node.smart"
-			:node="node"
-			:loading="loading"
-			:selectedSmartId="selectedSmartId"
-		/>
-		<CategoryTreeItem v-else
-			:node="node"
-			:loading="loading"
-			:selectedCategory="selectedCategory"
-			:selectedSmartId="selectedSmartId"
-			:dragOverCategory="dragOverCategory"
-			:dropBesideCategory="dropBesideCategory"
-			:dropBesideSide="dropBesideSide"
-			:draftParent="newCategoryParent"
-			:collapsedCategories="collapsedCategories"
-		/>
+		<template v-for="node in categoryTree" :key="node.smart ? `smart:${node.id}` : node.name">
+			<SmartCategoryTreeItem v-if="node.smart"
+				:node="node"
+				:loading="loading"
+				:selectedSmartId="selectedSmartId"
+			/>
+			<CategoryTreeItem v-else
+				:node="node"
+				:loading="loading"
+				:selectedCategory="selectedCategory"
+				:selectedSmartId="selectedSmartId"
+				:dragOverCategory="dragOverCategory"
+				:dropBesideCategory="dropBesideCategory"
+				:dropBesideSide="dropBesideSide"
+				:draftParent="newCategoryParent"
+				:collapsedCategories="collapsedCategories"
+			/>
+		</template>
 	</template>
 
 	<SmartCategoryDialog :open="smartDialogOpen"
@@ -95,6 +103,7 @@ import CategoryTreeItem from './CategoryTreeItem.vue'
 import SmartCategoryDialog from './SmartCategoryDialog.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
 import { categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
+import { SECTION_CATEGORIES, withSectionCollapsed } from '../navigationSections.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import { reparentOnDelete, reparentOnRename } from '../smartCategories.js'
 import store from '../store.js'
@@ -206,6 +215,10 @@ export default {
 			return smartFromQuery(this.$route.query)
 		},
 
+		collapsed() {
+			return (store.app.settings?.collapsedSections ?? []).includes(SECTION_CATEGORIES)
+		},
+
 		storedCollapsed() {
 			return store.app.settings?.collapsedCategories
 		},
@@ -246,6 +259,22 @@ export default {
 	},
 
 	methods: {
+		/* The heading also carries the add-category menu: a click that landed in
+		   it is a click on the menu, not on the heading. */
+		onCaptionClick(event) {
+			if (event.target?.closest?.('.app-navigation-caption__actions')) {
+				return
+			}
+			this.toggleSection()
+		},
+
+		toggleSection() {
+			const collapsed = store.app.settings?.collapsedSections ?? []
+			setSettings({
+				collapsedSections: withSectionCollapsed(collapsed, SECTION_CATEGORIES, !this.collapsed),
+			})
+		},
+
 		setCategoryOpen(category, open) {
 			this.applyCollapsed(withCategoryCollapsed(this.collapsedCategories, category, !open))
 		},
@@ -839,6 +868,29 @@ export default {
 
 <style lang="scss" scoped>
 @use './navigationEntry.scss';
+
+/* The heading is the control that opens and closes its section, so it reads
+   as one: a turning chevron, and a pointer over the whole row. */
+.app-navigation-caption {
+	cursor: pointer;
+
+	:deep(.app-navigation-caption__name)::before {
+		content: '';
+		display: inline-block;
+		width: 0;
+		height: 0;
+		margin-inline-end: calc(var(--default-grid-baseline) * 2);
+		border-block: 4px solid transparent;
+		border-inline-start: 6px solid currentColor;
+		vertical-align: middle;
+		transform: rotate(90deg);
+		transition: transform 100ms ease-in-out;
+	}
+
+	&.section-collapsed :deep(.app-navigation-caption__name)::before {
+		transform: none;
+	}
+}
 
 .app-navigation-caption.drop-over-caption {
 	background-color: var(--color-primary-element-light) !important;
