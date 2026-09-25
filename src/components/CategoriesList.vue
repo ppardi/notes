@@ -15,8 +15,8 @@
 		:aria-expanded="!collapsed"
 		:class="{ 'drop-over-caption': dragOverNewCategory, 'section-collapsed': collapsed }"
 		@click="onCaptionClick"
-		@keydown.enter.prevent="toggleSection"
-		@keydown.space.prevent="toggleSection"
+		@keydown.enter="onCaptionKey"
+		@keydown.space="onCaptionKey"
 		@dragover="onNewCategoryDragOver($event)"
 		@dragleave="onNewCategoryDragLeave($event)"
 		@drop="onNewCategoryDrop($event)"
@@ -268,10 +268,25 @@ export default {
 			this.toggleSection()
 		},
 
+		/* Enter and Space on the heading collapse it; on the button inside the
+		   heading they belong to the button. Without this the heading swallows
+		   the key, folds away, and the menu never opens. */
+		onCaptionKey(event) {
+			if (event.target !== event.currentTarget) {
+				return
+			}
+			event.preventDefault()
+			this.toggleSection()
+		},
+
 		toggleSection() {
+			this.setSectionCollapsed(!this.collapsed)
+		},
+
+		setSectionCollapsed(isCollapsed) {
 			const collapsed = store.app.settings?.collapsedSections ?? []
-			setSettings({
-				collapsedSections: withSectionCollapsed(collapsed, SECTION_CATEGORIES, !this.collapsed),
+			return setSettings({
+				collapsedSections: withSectionCollapsed(collapsed, SECTION_CATEGORIES, isCollapsed),
 			})
 		},
 
@@ -449,9 +464,20 @@ export default {
 			this.newCategoryItem = el ?? null
 		},
 
-		startNewCategory(payload = {}) {
+		async startNewCategory(payload = {}) {
 			if (this.newCategoryDraft) {
 				return
+			}
+			/* The draft row lives inside the section. With the section shut it
+			   is never rendered, so the editing monitor waits on a row that
+			   cannot arrive and every later attempt is refused by the guard
+			   above - making a category dead for the rest of the session, and
+			   losing a note dropped on the heading along the way.
+
+			   Awaited, because the row can only be reached for editing once the
+			   stored setting has come back and the section has drawn itself. */
+			if (this.collapsed) {
+				await this.setSectionCollapsed(false)
 			}
 			const parent = payload?.parent ?? null
 			this.newCategoryDropNoteId = payload?.noteId ?? null

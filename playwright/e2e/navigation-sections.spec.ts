@@ -36,6 +36,13 @@ test.describe('Collapsing the navigation sections', () => {
 		await createNoteViaRequest('Work', 'Naming and Necessity', 'On #philosophy')
 	})
 
+	/* Not only at the start: a section left collapsed here hides rows that
+	   every other spec expects to see, and the failure surfaces in whichever
+	   file happens to run next. */
+	test.afterEach(async () => {
+		await setCollapsedSections([])
+	})
+
 	test('collapses the categories away, and remembers it', async ({ page }) => {
 		/* Both sections share one scroll area, so a long category list pushes
 		   the tags out of sight entirely. Collapsing is what gets them back. */
@@ -78,6 +85,44 @@ test.describe('Collapsing the navigation sections', () => {
 		await expect(page.getByRole('menuitem', { name: 'New category' })).toBeVisible()
 		await page.keyboard.press('Escape')
 
+		await expect(categoryLink(page, 'Work')).toBeVisible()
+	})
+
+	test('still makes a category while the section is collapsed', async ({ page }) => {
+		/* The draft row lives inside the section, so with the section shut it is
+		   never rendered - the editing monitor then waits for a row that cannot
+		   arrive, and every later attempt is refused by the "already drafting"
+		   guard. The action has to open the section it needs. */
+		await openNotesApp(page)
+		await caption(page, 'Categories').click()
+		await expect(categoryLink(page, 'Work')).toBeHidden()
+
+		await caption(page, 'Categories')
+			.getByRole('button', { name: 'Add category', exact: true }).click()
+		await page.getByRole('menuitem', { name: 'New category' }).click()
+
+		const field = page.getByPlaceholder('New category', { exact: true })
+		await expect(field).toBeVisible()
+		await field.fill('Ideas')
+		await field.press('Enter')
+
+		await expect(categoryLink(page, 'Ideas')).toBeVisible()
+		/* And the section it opened stays open, rather than snapping shut over
+		   what was just made. */
+		await expect(categoryLink(page, 'Work')).toBeVisible()
+	})
+
+	test('opens the heading menu from the keyboard without collapsing', async ({ page }) => {
+		/* The heading answers Enter and Space so it can be collapsed without a
+		   mouse. A key pressed on the button inside it is meant for the button:
+		   the heading must not swallow it and fold away instead. */
+		await openNotesApp(page)
+
+		await caption(page, 'Categories')
+			.getByRole('button', { name: 'Add category', exact: true }).focus()
+		await page.keyboard.press('Enter')
+
+		await expect(page.getByRole('menuitem', { name: 'New category' })).toBeVisible()
 		await expect(categoryLink(page, 'Work')).toBeVisible()
 	})
 })

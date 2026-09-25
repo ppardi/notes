@@ -17,8 +17,8 @@
 			:aria-expanded="!collapsed"
 			:class="{ 'section-collapsed': collapsed }"
 			@click="onCaptionClick"
-			@keydown.enter.prevent="toggleSection"
-			@keydown.space.prevent="toggleSection"
+			@keydown.enter="onCaptionKey"
+			@keydown.space="onCaptionKey"
 		>
 			<!-- Only while more than one tag is filtered: with a single tag
 			     there is nothing for "all" and "any" to differ about. -->
@@ -143,6 +143,17 @@ export default {
 			if (event.target?.closest?.('.app-navigation-caption__actions')) {
 				return
 			}
+			this.toggleSection()
+		},
+
+		/* Enter and Space on the heading collapse it; on the button inside the
+		   heading they belong to the button. Without this the heading swallows
+		   the key, folds away, and the menu never opens. */
+		onCaptionKey(event) {
+			if (event.target !== event.currentTarget) {
+				return
+			}
+			event.preventDefault()
 			this.toggleSection()
 		},
 

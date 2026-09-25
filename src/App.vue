@@ -425,11 +425,23 @@ export default {
 			}
 			const smart = stored.find((category) => category.id === id)
 			if (!smart) {
-				/* The record has gone - deleted here, or in another tab, or the
-				   link is old. Landing somewhere real is restoreCategory's job:
-				   it is awaited before the app routes to a note, and a
+				/* The record has gone - deleted here, in another tab, or the
+				   link is old.
+
+				   On the way up, landing somewhere real is restoreCategory's
+				   job: it is awaited before the app routes to a note, while a
 				   replace() fired from here is not, so the note's own
-				   navigation would carry the dead id straight back in. */
+				   navigation would carry the dead id straight back in.
+
+				   Afterwards there is no such race, and something has to act:
+				   the settings come back with every poll, so a record deleted
+				   elsewhere reaches this page on its own, and without this the
+				   list keeps the old tags with nothing highlighting them. */
+				if (!this.categoryRestored) {
+					return
+				}
+				const category = landingCategory(store.notes.getCategories(0, true))
+				this.$router.replace(categoryRoute(this.$route, category)).catch(() => {})
 				return
 			}
 			/* Every settings write reaches this watcher - collapsing a category

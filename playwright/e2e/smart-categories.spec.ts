@@ -438,8 +438,13 @@ test.describe('Smart categories', () => {
 		await createNoteViaRequest('Work', 'Word and Object', 'Quine')
 		await page.reload()
 		await expect(categoryLink(page, 'Work')).toBeVisible()
-		expect(await indentOf(smartLink(page, 'Reading')))
-			.toBe(await indentOf(categoryLink(page, 'Work')))
+
+		/* Polled, because correcting the stored parent is a settings write that
+		   was still in flight when the category came back: a single read here
+		   races it, and loses under load. */
+		const topLevel = await indentOf(categoryLink(page, 'Work'))
+		await expect.poll(() => indentOf(smartLink(page, 'Reading')), { timeout: 15000 })
+			.toBe(topLevel)
 	})
 
 	test('leaves the tag rows dark while a smart category is driving', async ({ page }) => {
@@ -487,5 +492,37 @@ test.describe('Smart categories', () => {
 
 		await expect(page).not.toHaveURL(/welcome/)
 		await expect(page.getByRole('link', { name: 'Naming and Necessity' })).toBeVisible()
+	})
+
+	test('lets go of a smart category deleted somewhere else', async ({ page }) => {
+		// a poll has to elapse, and that is 25 seconds
+		test.setTimeout(90000)
+		/* Deleted in another tab, or on another device. The row goes on the next
+		   poll, but the URL still names it and the list still shows its tags -
+		   so without this the app sits on a selection nothing is highlighting. */
+		await createNoteViaRequest('Work', 'Naming and Necessity', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' },
+		])
+
+		await openNotesApp(page)
+		await page.goto('/index.php/apps/notes/?smart=reading')
+		await expect(smartLink(page, 'Reading')).toBeVisible()
+
+		/* Straight through the API, so this page never learns of it by acting. */
+		await setSmartCategories([])
+
+		/* Settings ride along with the notes, and a poll that finds nothing
+		   changed answers 304 and carries none - so the page learns of this the
+		   moment anything touches a note, which in another tab it would. The
+		   note list refreshes every 25 seconds
+		   (config.interval.notes.refresh), hence the long waits below. */
+		await createNoteViaRequest('', 'Word and Object', 'Quine')
+		await expect(page.locator('.smart-category-entry')).toHaveCount(0, { timeout: 45000 })
+		await expect(page).not.toHaveURL(/smart=/, { timeout: 45000 })
+		/* Somewhere real, rather than an empty list with nothing selected. Not
+		   any particular note: the landing category is whichever one the app
+		   would have opened anyway, and the notes are spread across several. */
+		await expect(page.locator('.notes-list a').first()).toBeVisible()
 	})
 })
