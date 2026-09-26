@@ -13,7 +13,9 @@
 import { generateUrl } from '@nextcloud/router'
 import MarkdownIt from 'markdown-it'
 import markdownItBidi from 'markdown-it-bidi'
+import markdownItFootnote from 'markdown-it-footnote'
 import markdownItTaskCheckbox from 'markdown-it-task-checkbox'
+import markdownItComments from '../markdownItComments.js'
 import { escapeHtml } from '../Util.js'
 
 export default {
@@ -52,6 +54,13 @@ export default {
 		})
 
 		md.use(markdownItBidi)
+
+		/* Text 35 stores an annotation as a footnote labelled `comment-<n>`, so
+		   footnote support is what stops a commented note previewing as raw
+		   syntax; markdownItComments then draws the comments as comments rather
+		   than leaving them numbered in among any real footnotes. */
+		md.use(markdownItFootnote)
+		md.use(markdownItComments, { heading: t('notes', 'Comments') })
 
 		return {
 			html: '',
@@ -328,6 +337,66 @@ export default {
 		padding: 3px 8px;
 		background: var(--color-background-dark);
 		font-size: 85%;
+	}
+
+	/* Footnotes and comments both end up below the note, so each says what it is
+	   rather than relying on where it sits. */
+	.footnote-ref a,
+	.footnotes-list a.footnote-backref,
+	.note-comments a.note-comments__backref {
+		text-decoration: none;
+	}
+
+	.footnotes-sep {
+		margin-top: 3ex;
+		border: none;
+		border-top: 1px solid var(--color-border);
+	}
+
+	/* A comment is a chip rather than a bracketed number, so it cannot be read
+	   as a footnote at a glance. */
+	.comment-ref a {
+		display: inline-block;
+		min-width: 1.4em;
+		padding: 0 0.3em;
+		border-radius: var(--border-radius-pill, 1em);
+		background-color: var(--color-primary-element-light);
+		color: var(--color-primary-element-light-text, var(--color-main-text));
+		font-size: 90%;
+		text-align: center;
+		text-decoration: none;
+	}
+
+	.note-comments {
+		margin-top: 3ex;
+		padding-top: 1ex;
+		border-top: 1px solid var(--color-border);
+
+		&__heading {
+			margin-top: 0;
+			font-size: 110%;
+			color: var(--color-text-maxcontrast);
+		}
+
+		&__item {
+			margin: 1.5ex 0;
+		}
+
+		&__meta {
+			margin: 0;
+			font-size: 90%;
+			color: var(--color-text-maxcontrast);
+		}
+
+		&__author {
+			font-weight: bold;
+		}
+
+		/* The body reads as prose, so it sits tight under the line naming who
+		   wrote it rather than a paragraph's distance away. */
+		&__item > p:not(.note-comments__meta) {
+			margin: 0.5ex 0;
+		}
 	}
 }
 </style>
