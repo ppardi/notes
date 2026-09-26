@@ -60,9 +60,26 @@ async function waitOnNotesApi(ip) {
 	process.stdout.write('└─ Notes API is ready 🎉\n')
 }
 
+/**
+ * Leave the container up when a local run ends.
+ *
+ * stopNextcloud() removes the container rather than stopping it, so every
+ * graceful teardown threw away a working instance and the next run paid twenty
+ * minutes to pull the image, install Nextcloud and reinstall Text and Files
+ * Lock. startNextcloud() already reuses a running container, and replaces one
+ * whose image has gone out of date, so keeping it is what makes Playwright's
+ * reuseExistingServer worth having.
+ *
+ * CI still removes it: there nothing should outlive the job. Set
+ * NOTES_E2E_REMOVE_CONTAINER=1 to ask for the same thing by hand.
+ */
 async function stop() {
-	process.stderr.write('Stopping Nextcloud server…\n')
-	await stopNextcloud()
+	if (process.env.CI || process.env.NOTES_E2E_REMOVE_CONTAINER === '1') {
+		process.stderr.write('Stopping Nextcloud server…\n')
+		await stopNextcloud()
+	} else {
+		process.stderr.write('Leaving the Nextcloud container up for the next run…\n')
+	}
 	process.exit(0)
 }
 
