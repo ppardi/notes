@@ -16,7 +16,9 @@ import { emit, subscribe, unsubscribe } from '@nextcloud/event-bus'
 import { useIsMobile } from '@nextcloud/vue/composables/useIsMobile'
 import { markRaw } from 'vue'
 import TagCompletion from './TagCompletion.vue'
+import logger from '../Logger.js'
 import { queueCommand, refreshNote } from '../NotesService.js'
+import { borrowProseMirror, hasTopLevelHeading, headingFoldPlugin } from '../proseMirrorHeadingFold.js'
 import store from '../store.js'
 import { routeIsNewNote, tagsMayHaveChanged } from '../Util.js'
 
@@ -135,6 +137,7 @@ export default {
 				onLoaded: () => {
 					this.loading = false
 					this.editorElement = this.$refs.editor
+					this.installHeadingFold()
 				},
 				onUpdate: ({ markdown }) => {
 					if (this.note) {
@@ -148,6 +151,65 @@ export default {
 					}
 				},
 			}))
+		},
+
+		/**
+		 * Let the reader fold the note's sections under their headings.
+		 *
+		 * Text keeps its editor to itself: the handle it hands back holds the
+		 * ProseMirror instance in a private field, and the only way to reach it
+		 * is the element tiptap marks with itself. That is not a promise Text has
+		 * made, so this asks rather than insists — without it the note is still
+		 * perfectly readable and editable, only unfoldable.
+		 *
+		 * The fold is drawn with decorations, which are the view's own layer and
+		 * never reach the file, and nothing about it is written down: it lasts
+		 * while the note is open and starts again from nothing.
+		 */
+		async installHeadingFold() {
+			await this.$nextTick()
+			const editor = this.$refs?.editor?.querySelector('.ProseMirror')?.editor
+			if (typeof editor?.registerPlugin !== 'function') {
+				logger.debug('Text exposes no editor to fold headings with')
+				return
+			}
+
+			const install = () => {
+				const prosemirror = borrowProseMirror(editor)
+				if (!prosemirror) {
+					return false
+				}
+				try {
+					editor.registerPlugin(headingFoldPlugin(prosemirror, {
+						collapseLabel: t('notes', 'Collapse section'),
+						expandLabel: t('notes', 'Expand section'),
+						formatHidden: (count) => this.n('notes', '%n block hidden', '%n blocks hidden', count),
+					}))
+				} catch (error) {
+					logger.warn('Could not fold headings in this note', { error })
+				}
+				return true
+			}
+
+			if (install() || typeof editor.on !== 'function') {
+				return
+			}
+
+			/* A note with no headings lends nothing to borrow from, and wants no
+			   folding either. Rather than leave the controls missing for as long
+			   as the note stays open, wait for its first heading — but ask the
+			   cheap question on every keystroke and the expensive one only once
+			   there is something to fold. Borrowing walks every plugin the
+			   editor holds, which is not a thing to do while someone types. */
+			const retry = () => {
+				if (!hasTopLevelHeading(editor.state?.doc)) {
+					return
+				}
+				if (install()) {
+					editor.off('update', retry)
+				}
+			}
+			editor.on('update', retry)
 		},
 
 		/**
@@ -419,6 +481,71 @@ export default {
    the text has to follow the body, which takes the dark theme to 9.36:1. */
 .text-editor:deep(.ProseMirror mark) {
 	color: inherit;
+}
+
+/* Folding is a reading convenience drawn over the editor rather than written
+   into the note, so its control sits in the margin and leaves the heading's
+   own text exactly where it was. */
+.text-editor:deep(button.note-fold__toggle) {
+	display: inline-block;
+	width: 18px;
+	/* In the line rather than out in the margin. The margin beside a heading
+	 * is already Text's: it draws its "link to this section" anchor there,
+	 * absolutely placed, and a control sitting on top of it is one the pointer
+	 * never reaches. The gutter past that anchor is about a control wide on a
+	 * roomy window and gone altogether on a narrow one, so this takes the
+	 * space it needs from the line instead of fighting for the margin.
+	 *
+	 * Important, and named by its tag, reluctantly: ProseMirror marks every
+	 * widget `contenteditable="false"`, and Text zeroes the margin of anything
+	 * matching `[contenteditable]` with an `!important` of its own, at the
+	 * same specificity as this rule and from a stylesheet that loads later.
+	 * Naming the element is the one point of specificity that settles it. */
+	margin: 0 !important;
+	margin-inline-end: 4px !important;
+	min-width: 0;
+	min-height: 0;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--color-text-maxcontrast);
+	/* Fixed rather than relative to the heading it sits in, so that every
+	   heading gives up the same width to it and they keep a common left edge
+	   instead of stepping in further at each level. */
+	font-size: 16px;
+	line-height: inherit;
+	text-align: center;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity var(--animation-quick);
+}
+
+/* A folded section always shows its control: it is the only way back to what
+   it is hiding, and a section that cannot be reopened has gone missing. */
+.text-editor:deep(.note-fold__toggle[aria-expanded='false']),
+.text-editor:deep(.note-fold__toggle:focus-visible),
+.text-editor:deep(h1:hover > .note-fold__toggle),
+.text-editor:deep(h2:hover > .note-fold__toggle),
+.text-editor:deep(h3:hover > .note-fold__toggle),
+.text-editor:deep(h4:hover > .note-fold__toggle),
+.text-editor:deep(h5:hover > .note-fold__toggle),
+.text-editor:deep(h6:hover > .note-fold__toggle) {
+	opacity: 1;
+}
+
+.text-editor:deep(.note-fold__hidden) {
+	display: none;
+}
+
+/* Says how much is out of sight, so a folded section reads as folded rather
+   than as a heading someone forgot to write under. */
+.text-editor:deep(span.note-fold__badge) {
+	/* Important, and named by its tag, for the same reason as the control. */
+	margin-inline-start: 0.75em !important;
+	color: var(--color-text-maxcontrast);
+	font-size: 0.6em;
+	font-weight: normal;
+	vertical-align: middle;
 }
 
 .is-mobile:deep(.text-menubar) {

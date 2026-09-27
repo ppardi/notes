@@ -53,6 +53,9 @@
 		"@playwright/test": "^1.63.0",
 		"@vitest/coverage-v8": "^5.0.0",
 		"jsdom": "^30.0.1",
+		"prosemirror-model": "^1.25.12",
+		"prosemirror-state": "^1.4.4",
+		"prosemirror-view": "^1.42.6",
 		"terser-webpack-plugin": "^5.6.1",
 		"vitest": "^5.0.0",
 		"vue-loader": "^17.3.1"
