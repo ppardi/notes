@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A problem with the official Nextcloud Notes app
+    url: https://github.com/nextcloud/notes/issues
+    about: If it reproduces on the app from the app store, it belongs upstream rather than with this fork.
+  - name: A problem with the editor, comments or the outline
+    url: https://github.com/nextcloud/text/issues
+    about: Those are Nextcloud's Text app, which this fork only builds on.
+  - name: A problem with the Notes app on Android or iOS
+    url: https://github.com/nextcloud/notes-android/issues
+    about: The mobile clients are separate projects (iOS is at nextcloud/notes-ios).

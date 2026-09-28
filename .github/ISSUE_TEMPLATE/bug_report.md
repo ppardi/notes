@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Something wrong with this fork of Notes
 title: ''
 labels: bug, need to reproduce
 assignees: ''
@@ -11,11 +11,18 @@ Please make a clear and concise description of what the bug is.
 
 <!--
 
-Please note, that
+This is a personal fork of Nextcloud Notes, not the official app. If you can
+reproduce the problem on the app from the Nextcloud app store, it belongs
+upstream at https://github.com/nextcloud/notes/issues rather than here.
+
+Please note also that
 
 - issues with the Android app have to be reported under https://github.com/nextcloud/notes-android/issues/new/choose
 - issues with the iOS app have to be reported under https://github.com/nextcloud/notes-ios/issues/new and
 - issues with Nextcloud's Text app have to be reported under https://github.com/nextcloud/text/issues
+
+The rich text editor, comments and the outline panel are Text's, so a problem
+with one of those may belong there instead.
 
 -->
 
@@ -37,8 +44,9 @@ If applicable, add screenshots to help explain your problem.
 ## Server
 Please complete the following information.
 
-- Notes app version: 
+- This build's version (e.g. 6.99.8, from Apps or appinfo/info.xml): 
 - Nextcloud version: 
+- Text app version (if the problem involves the editor): 
 - OS: 
 - Web server: 
 - PHP version: 

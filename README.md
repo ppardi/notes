@@ -1,5 +1,6 @@
 <!--
   - SPDX-FileCopyrightText: 2019-2024 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-FileCopyrightText: 2026 ppardi <6176270+ppardi@users.noreply.github.com>
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 # Notes — ppardi's build
