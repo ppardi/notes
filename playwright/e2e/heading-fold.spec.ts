@@ -45,16 +45,39 @@ function travelLine(page: Page): Locator {
 }
 
 /**
- * The control that folds the section under the named heading.
+ * The heading that folds a section: the heading is the control.
+ *
+ * @param page the page under test
+ * @param heading the heading's text
+ */
+function headingNamed(page: Page, heading: string): Locator {
+	return surface(page)
+		.locator(`h1:has-text("${heading}"), h2:has-text("${heading}"), h3:has-text("${heading}")`)
+		.first()
+}
+
+/**
+ * The control left for people not using a mouse.
  *
  * @param page the page under test
  * @param heading the heading's text
  */
 function foldControl(page: Page, heading: string): Locator {
-	return surface(page)
-		.locator(`h1:has-text("${heading}"), h2:has-text("${heading}"), h3:has-text("${heading}")`)
-		.first()
-		.locator('.note-fold__toggle')
+	return headingNamed(page, heading).locator('.note-fold__toggle')
+}
+
+/**
+ * Click a heading as a person would, one separate click at a time.
+ *
+ * Two clicks in quick succession at the same spot are a double click, which
+ * the editor routes elsewhere, so these are deliberately spaced.
+ *
+ * @param page the page under test
+ * @param heading the heading's text
+ */
+async function clickHeading(page: Page, heading: string): Promise<void> {
+	await headingNamed(page, heading).click()
+	await page.waitForTimeout(500)
 }
 
 /**
@@ -67,7 +90,7 @@ async function openNote(page: Page, noteId: number): Promise<void> {
 	await page.goto(`/index.php/apps/notes/note/${noteId}`)
 	await expect(newNoteButton(page).first()).toBeVisible()
 	await expect(surface(page)).toBeVisible()
-	// The controls are added once Text has handed over its editor.
+	// Folding is live once Text has handed over its editor.
 	await expect(foldControl(page, 'Groceries')).toBeAttached()
 }
 
@@ -83,7 +106,7 @@ test.describe('Folding sections under their headings', () => {
 		await openNote(page, noteId)
 
 		await expect(groceriesList(page)).toBeVisible()
-		await foldControl(page, 'Groceries').click()
+		await clickHeading(page, 'Groceries')
 
 		// The section and the subsection inside it both go out of sight.
 		await expect(groceriesList(page)).toBeHidden()
@@ -93,7 +116,7 @@ test.describe('Folding sections under their headings', () => {
 		// And it says what it is holding back.
 		await expect(surface(page).locator('.note-fold__badge')).toHaveText('3 blocks hidden')
 
-		await foldControl(page, 'Groceries').click()
+		await clickHeading(page, 'Groceries')
 		await expect(groceriesList(page)).toBeVisible()
 		await expect(dairyHeading(page)).toBeVisible()
 	})
@@ -102,7 +125,7 @@ test.describe('Folding sections under their headings', () => {
 		const noteId = await createNoteViaRequest('', uniqueTitle('fold-file', testInfo), BODY)
 		await openNote(page, noteId)
 
-		await foldControl(page, 'Groceries').click()
+		await clickHeading(page, 'Groceries')
 		await expect(groceriesList(page)).toBeHidden()
 
 		// Type into a section that is still open, so the note is written out
@@ -135,11 +158,49 @@ test.describe('Folding sections under their headings', () => {
 		await expect(foldControl(page, 'Groceries')).toHaveAttribute('aria-expanded', 'false')
 	})
 
+	test('does not fold when a word in the heading is double clicked', async ({ page }, testInfo) => {
+		const noteId = await createNoteViaRequest('', uniqueTitle('fold-dblclick', testInfo), BODY)
+		await openNote(page, noteId)
+
+		/* Double clicking is how a word gets selected. The editor sends the
+		   opening click through as an ordinary one, so without care that
+		   gesture would take the section away while it was being edited. */
+		await headingNamed(page, 'Groceries').dblclick()
+		await page.waitForTimeout(500)
+
+		await expect(groceriesList(page)).toBeVisible()
+		await expect(surface(page).locator('.note-fold__badge')).toHaveCount(0)
+	})
+
+	test('keeps every heading level on the same edge as the prose', async ({ page }, testInfo) => {
+		const noteId = await createNoteViaRequest('', uniqueTitle('fold-align', testInfo), BODY)
+		await openNote(page, noteId)
+
+		/* Nothing is drawn beside a heading to fold it, so nothing pushes one
+		   in from the text below it. A control set in the line would indent
+		   every heading, and by a different amount at each level. */
+		const edges = await surface(page).evaluate((root: Element) => [...root.children]
+			.filter((el) => (el as HTMLElement).offsetParent !== null)
+			.map((el) => ({ tag: el.tagName, left: Math.round(el.getBoundingClientRect().left) })))
+		const prose = edges.find((e) => e.tag === 'P')!.left
+		for (const edge of edges.filter((e) => /^H[1-6]$/.test(e.tag))) {
+			expect(edge.left, `${edge.tag} should start where the prose does`).toBe(prose)
+		}
+		// And the text inside them, not merely the boxes.
+		const textStart = await headingNamed(page, 'Travel').evaluate((el: Element) => {
+			const range = document.createRange()
+			const text = [...el.childNodes].find((n) => n.nodeType === Node.TEXT_NODE)!
+			range.selectNodeContents(text)
+			return Math.round(range.getBoundingClientRect().left)
+		})
+		expect(textStart).toBe(prose)
+	})
+
 	test('opens every section again when the note is reopened', async ({ page }, testInfo) => {
 		const noteId = await createNoteViaRequest('', uniqueTitle('fold-fresh', testInfo), BODY)
 		await openNote(page, noteId)
 
-		await foldControl(page, 'Groceries').click()
+		await clickHeading(page, 'Groceries')
 		await expect(groceriesList(page)).toBeHidden()
 
 		// What is folded is never written down, so it does not come back.

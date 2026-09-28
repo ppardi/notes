@@ -486,50 +486,46 @@ export default {
 /* Folding is a reading convenience drawn over the editor rather than written
    into the note, so its control sits in the margin and leaves the heading's
    own text exactly where it was. */
+/* The heading itself is the control: clicking it folds its section. This
+ * button is what is left for anyone not using a mouse — reachable by Tab and
+ * announced by a screen reader, but given no width, so that no heading is
+ * pushed in from the prose to make room for it.
+ *
+ * Important, and named by its tag, reluctantly: ProseMirror marks every widget
+ * `contenteditable="false"`, and Text zeroes the margin of anything matching
+ * `[contenteditable]` with an `!important` of its own, at the same specificity
+ * as this rule and from a stylesheet that loads later. Naming the element is
+ * the one point of specificity that settles it. */
 .text-editor:deep(button.note-fold__toggle) {
-	display: inline-block;
-	width: 18px;
-	/* In the line rather than out in the margin. The margin beside a heading
-	 * is already Text's: it draws its "link to this section" anchor there,
-	 * absolutely placed, and a control sitting on top of it is one the pointer
-	 * never reaches. The gutter past that anchor is about a control wide on a
-	 * roomy window and gone altogether on a narrow one, so this takes the
-	 * space it needs from the line instead of fighting for the margin.
-	 *
-	 * Important, and named by its tag, reluctantly: ProseMirror marks every
-	 * widget `contenteditable="false"`, and Text zeroes the margin of anything
-	 * matching `[contenteditable]` with an `!important` of its own, at the
-	 * same specificity as this rule and from a stylesheet that loads later.
-	 * Naming the element is the one point of specificity that settles it. */
+	position: absolute;
+	width: 1px;
+	height: 1px;
 	margin: 0 !important;
-	margin-inline-end: 4px !important;
-	min-width: 0;
-	min-height: 0;
 	padding: 0;
 	border: none;
 	background: none;
-	color: var(--color-text-maxcontrast);
-	/* Fixed rather than relative to the heading it sits in, so that every
-	   heading gives up the same width to it and they keep a common left edge
-	   instead of stepping in further at each level. */
-	font-size: 16px;
-	line-height: inherit;
-	text-align: center;
-	cursor: pointer;
+	overflow: hidden;
+	clip-path: inset(50%);
 	opacity: 0;
-	transition: opacity var(--animation-quick);
 }
 
-/* A folded section always shows its control: it is the only way back to what
-   it is hiding, and a section that cannot be reopened has gone missing. */
-.text-editor:deep(.note-fold__toggle[aria-expanded='false']),
-.text-editor:deep(.note-fold__toggle:focus-visible),
-.text-editor:deep(h1:hover > .note-fold__toggle),
-.text-editor:deep(h2:hover > .note-fold__toggle),
-.text-editor:deep(h3:hover > .note-fold__toggle),
-.text-editor:deep(h4:hover > .note-fold__toggle),
-.text-editor:deep(h5:hover > .note-fold__toggle),
-.text-editor:deep(h6:hover > .note-fold__toggle) {
+/* Tabbed to, it has to be seen and hit. Still positioned rather than set in
+   the line, so arriving at it does not shunt the heading sideways. */
+.text-editor:deep(button.note-fold__toggle:focus-visible) {
+	inset-inline-end: 100%;
+	width: auto;
+	height: auto;
+	padding: 0 4px;
+	overflow: visible;
+	clip-path: none;
+	border-radius: var(--border-radius, 4px);
+	outline: 2px solid var(--color-primary-element);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	font-size: 14px;
+	line-height: 1.4;
+	white-space: nowrap;
+	cursor: pointer;
 	opacity: 1;
 }
 

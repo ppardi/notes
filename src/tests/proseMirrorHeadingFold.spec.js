@@ -7,7 +7,7 @@ import { Schema } from 'prosemirror-model'
 import { EditorState, Plugin } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { describe, expect, it } from 'vitest'
-import { borrowProseMirror, foldToggleButton, hasTopLevelHeading, headingFoldPlugin } from '../proseMirrorHeadingFold.js'
+import { borrowProseMirror, foldToggleButton, hasTopLevelHeading, headingAt, headingFoldPlugin } from '../proseMirrorHeadingFold.js'
 
 /* The classes the plugin would borrow from a running Text editor. */
 const pm = { Plugin, Decoration, DecorationSet }
@@ -304,6 +304,34 @@ describe('headingFoldPlugin', () => {
 		expect(hasTopLevelHeading(docOf(['h2:Groceries', 'p:milk']))).toBe(true)
 		expect(hasTopLevelHeading(docOf(['p:Just prose.', 'ul:milk|bread']))).toBe(false)
 		expect(hasTopLevelHeading(undefined)).toBe(false)
+	})
+
+	it('finds the heading a click landed in', () => {
+		// Folding is reached by clicking the heading itself, so the plugin has
+		// to answer which section a document position belongs to.
+		const doc = docOf(['h2:Groceries', 'p:milk', 'ul:bread|jam'])
+		const [groceries] = headingPositions(doc)
+
+		expect(headingAt(doc, groceries + 1).pos).toBe(groceries)
+		expect(headingAt(doc, groceries + 'Groceries'.length).pos).toBe(groceries)
+	})
+
+	it('leaves everything that is not a heading alone', () => {
+		const doc = docOf(['h2:Groceries', 'p:milk', 'ul:bread|jam'])
+
+		// Prose, and a paragraph nested inside a list item: neither starts a
+		// section, so neither folds when it is clicked.
+		const paragraph = doc.child(0).nodeSize + 1
+		expect(headingAt(doc, paragraph)).toBeNull()
+		const insideList = doc.child(0).nodeSize + doc.child(1).nodeSize + 3
+		expect(headingAt(doc, insideList)).toBeNull()
+	})
+
+	it('survives a position that is not in the document', () => {
+		const doc = docOf(['h2:Groceries', 'p:milk'])
+
+		expect(headingAt(doc, -50)).not.toBeUndefined()
+		expect(headingAt(doc, 99999)).not.toBeUndefined()
 	})
 
 	it('borrows ProseMirror from an editor that is already running', () => {

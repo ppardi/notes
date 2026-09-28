@@ -140,6 +140,25 @@ export function hasTopLevelHeading(doc) {
 }
 
 /**
+ * The section heading a document position falls inside, if any.
+ *
+ * A section is started by a top-level heading, so a heading tucked inside a
+ * quote or a list item is not one: those are part of the section around them.
+ *
+ * @param {object} doc the document
+ * @param {number} pos a position in it, which need not be a valid one
+ * @return {object|null} `{ pos, node }` for the heading, or null
+ */
+export function headingAt(doc, pos) {
+	const resolved = doc.resolve(Math.max(0, Math.min(pos, doc.content.size)))
+	if (resolved.depth < 1) {
+		return null
+	}
+	const node = resolved.node(1)
+	return node.type.name === 'heading' ? { pos: resolved.before(1), node } : null
+}
+
+/**
  * The top-level blocks a section covers, not counting its own heading.
  *
  * A section runs until the next heading at the same depth or shallower, so a
@@ -303,6 +322,53 @@ export function headingFoldPlugin({ Plugin, Decoration, DecorationSet }, options
 		props: {
 			decorations(state) {
 				return this.getState(state).decorations
+			},
+
+			/**
+			 * Fold the section whose heading was clicked.
+			 *
+			 * The heading is the control. There is no chevron beside it: the
+			 * margin there already carries Text's own handles, and a third
+			 * thing in that rail is one too many — while a control drawn in
+			 * the line pushes every heading in from the prose, which reads as
+			 * a mistake.
+			 *
+			 * False rather than true, so that the click still does what a
+			 * click in an editor does and puts the caret where it landed. A
+			 * heading that folded but could not be typed into would be a
+			 * heading the mouse had taken away.
+			 *
+			 * @param {object} view the editor view
+			 * @param {number} pos where the click landed
+			 * @return {boolean} false, always: the click is not consumed
+			 */
+			handleClick(view, pos) {
+				const heading = headingAt(view.state.doc, pos)
+				if (heading) {
+					view.dispatch(view.state.tr.setMeta(self, { toggle: heading.pos }))
+				}
+				return false
+			},
+
+			/**
+			 * Put back what the first click of a double click folded.
+			 *
+			 * Double clicking a word is how a heading gets selected, and
+			 * ProseMirror has already sent the opening click through
+			 * handleClick by the time it knows a second one is coming. Undoing
+			 * it here is what stops reaching for a word in a heading from
+			 * taking its section away.
+			 *
+			 * @param {object} view the editor view
+			 * @param {number} pos where the click landed
+			 * @return {boolean} false, always: the click is not consumed
+			 */
+			handleDoubleClick(view, pos) {
+				const heading = headingAt(view.state.doc, pos)
+				if (heading) {
+					view.dispatch(view.state.tr.setMeta(self, { toggle: heading.pos }))
+				}
+				return false
 			},
 		},
 	})
