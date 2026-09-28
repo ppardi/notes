@@ -78,8 +78,9 @@ supported product. **Back your notes up before trying them.** Since notes are pl
 in your Nextcloud, that is the same backup you already have.
 
 None of this has gone upstream. Some of it may be proposed one day; treat it as a fork
-until then. Anything wrong with it is this fork's problem, not the Nextcloud project's,
-so please do not take it to their issue tracker.
+until then — so anything wrong with it belongs
+[here](https://github.com/ppardi/notes/issues) rather than on the Nextcloud project's
+tracker, unless you can reproduce it on the official app too.
 
 ---
 
@@ -87,8 +88,8 @@ so please do not take it to their issue tracker.
 
 What follows is upstream's own README, kept as it is, for what the Notes app is and how
 to work on it. **Its installation and bug-reporting sections are about the official
-app**, not this build — install this one from the releases above, and do not report
-problems with it to the Nextcloud project.
+app**, not this build — install this one from the releases above, and report problems
+with it on [this fork's tracker](https://github.com/ppardi/notes/issues).
 
 [![REUSE status](https://api.reuse.software/badge/github.com/nextcloud/notes)](https://api.reuse.software/info/github.com/nextcloud/notes)
 
