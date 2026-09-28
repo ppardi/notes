@@ -227,13 +227,32 @@ export function headingFoldPlugin({ Plugin, Decoration, DecorationSet }, options
 	 *
 	 * @param {object} doc the document
 	 * @param {Set<number>} collapsed positions of the folded headings
+	 * @param {number|null} editing the heading the caret is in, if any
 	 * @return {object} a DecorationSet
 	 */
-	function build(doc, collapsed) {
+	function build(doc, collapsed, editing) {
 		const decorations = []
 
 		headings(doc).forEach(({ pos, node, level }) => {
 			const isCollapsed = collapsed.has(pos)
+
+			/* The margin beside a heading holds one control at a time, and it
+			   was Text's before it was ours: it draws a link to the section
+			   there. Folding wants that spot nearly always, but while a heading
+			   is being written the link is the one worth reaching, so the spot
+			   goes back.
+
+			   Not while the section is folded, though. The control is then the
+			   only way back to what it is hiding, and a fold with nothing to
+			   undo it is a section that has gone missing. */
+			if (pos === editing && !isCollapsed) {
+				decorations.push(Decoration.node(
+					pos,
+					pos + node.nodeSize,
+					{ class: 'note-fold__editing' },
+					{ notesFold: 'editing' },
+				))
+			}
 
 			decorations.push(Decoration.widget(pos + 1, (view, getPos) => foldToggleButton(settings, {
 				collapsed: isCollapsed,
@@ -281,12 +300,18 @@ export function headingFoldPlugin({ Plugin, Decoration, DecorationSet }, options
 	self = new Plugin({
 		state: {
 			init(_, state) {
-				return { collapsed: new Set(), decorations: build(state.doc, new Set()) }
+				const editing = headingAt(state.doc, state.selection.from)?.pos ?? null
+				return {
+					collapsed: new Set(),
+					editing,
+					decorations: build(state.doc, new Set(), editing),
+				}
 			},
 
 			apply(tr, value, oldState, newState) {
 				const meta = tr.getMeta(self)
-				if (!tr.docChanged && !meta) {
+				const editing = headingAt(newState.doc, newState.selection.from)?.pos ?? null
+				if (!tr.docChanged && !meta && editing === value.editing) {
 					return value
 				}
 
@@ -315,60 +340,13 @@ export function headingFoldPlugin({ Plugin, Decoration, DecorationSet }, options
 					}
 				}
 
-				return { collapsed, decorations: build(newState.doc, collapsed) }
+				return { collapsed, editing, decorations: build(newState.doc, collapsed, editing) }
 			},
 		},
 
 		props: {
 			decorations(state) {
 				return this.getState(state).decorations
-			},
-
-			/**
-			 * Fold the section whose heading was clicked.
-			 *
-			 * The heading is the control. There is no chevron beside it: the
-			 * margin there already carries Text's own handles, and a third
-			 * thing in that rail is one too many — while a control drawn in
-			 * the line pushes every heading in from the prose, which reads as
-			 * a mistake.
-			 *
-			 * False rather than true, so that the click still does what a
-			 * click in an editor does and puts the caret where it landed. A
-			 * heading that folded but could not be typed into would be a
-			 * heading the mouse had taken away.
-			 *
-			 * @param {object} view the editor view
-			 * @param {number} pos where the click landed
-			 * @return {boolean} false, always: the click is not consumed
-			 */
-			handleClick(view, pos) {
-				const heading = headingAt(view.state.doc, pos)
-				if (heading) {
-					view.dispatch(view.state.tr.setMeta(self, { toggle: heading.pos }))
-				}
-				return false
-			},
-
-			/**
-			 * Put back what the first click of a double click folded.
-			 *
-			 * Double clicking a word is how a heading gets selected, and
-			 * ProseMirror has already sent the opening click through
-			 * handleClick by the time it knows a second one is coming. Undoing
-			 * it here is what stops reaching for a word in a heading from
-			 * taking its section away.
-			 *
-			 * @param {object} view the editor view
-			 * @param {number} pos where the click landed
-			 * @return {boolean} false, always: the click is not consumed
-			 */
-			handleDoubleClick(view, pos) {
-				const heading = headingAt(view.state.doc, pos)
-				if (heading) {
-					view.dispatch(view.state.tr.setMeta(self, { toggle: heading.pos }))
-				}
-				return false
 			},
 		},
 	})

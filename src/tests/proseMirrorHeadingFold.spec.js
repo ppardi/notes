@@ -4,7 +4,7 @@
  */
 
 import { Schema } from 'prosemirror-model'
-import { EditorState, Plugin } from 'prosemirror-state'
+import { EditorState, Plugin, TextSelection } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { describe, expect, it } from 'vitest'
 import { borrowProseMirror, foldToggleButton, hasTopLevelHeading, headingAt, headingFoldPlugin } from '../proseMirrorHeadingFold.js'
@@ -304,6 +304,59 @@ describe('headingFoldPlugin', () => {
 		expect(hasTopLevelHeading(docOf(['h2:Groceries', 'p:milk']))).toBe(true)
 		expect(hasTopLevelHeading(docOf(['p:Just prose.', 'ul:milk|bread']))).toBe(false)
 		expect(hasTopLevelHeading(undefined)).toBe(false)
+	})
+
+	/**
+	 * Put the caret somewhere.
+	 *
+	 * @param {object} state the editor state
+	 * @param {number} pos where the caret should go
+	 * @return {object} the state with the caret there
+	 */
+	function caretAt(state, pos) {
+		return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)))
+	}
+
+	it('marks the heading being written in, so the margin can be handed back', () => {
+		// Text draws its own control in that margin. While a heading is being
+		// written, that control is the one worth having there.
+		const state = stateOf(['h2:Groceries', 'p:milk', 'h2:Travel'])
+		const [groceries] = headingPositions(state.doc)
+
+		const editing = decorations(caretAt(state, groceries + 2), 'editing')
+
+		expect(editing).toHaveLength(1)
+		expect(editing[0].from).toBe(groceries)
+	})
+
+	it('marks nothing while the caret is in the prose', () => {
+		const state = stateOf(['h2:Groceries', 'p:milk', 'h2:Travel'])
+		const paragraph = state.doc.child(0).nodeSize + 2
+
+		expect(decorations(caretAt(state, paragraph), 'editing')).toHaveLength(0)
+	})
+
+	it('moves the mark as the caret moves between headings', () => {
+		const state = stateOf(['h2:Groceries', 'p:milk', 'h2:Travel'])
+		const [groceries, travel] = headingPositions(state.doc)
+
+		const moved = caretAt(caretAt(state, groceries + 2), travel + 2)
+		const editing = decorations(moved, 'editing')
+
+		expect(editing).toHaveLength(1)
+		expect(editing[0].from).toBe(travel)
+	})
+
+	it('keeps the control on a folded heading being written in', () => {
+		// Handing the margin back here would take away the only way to unfold
+		// what is hidden, which is a section gone missing.
+		const state = stateOf(['h2:Groceries', 'p:milk', 'h2:Travel'])
+		const [groceries] = headingPositions(state.doc)
+
+		const folded = toggle(state, groceries)
+		expect(hiddenText(folded)).toEqual(['milk'])
+
+		expect(decorations(caretAt(folded, groceries + 2), 'editing')).toHaveLength(0)
 	})
 
 	it('finds the heading a click landed in', () => {

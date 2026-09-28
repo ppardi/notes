@@ -496,37 +496,62 @@ export default {
  * `[contenteditable]` with an `!important` of its own, at the same specificity
  * as this rule and from a stylesheet that loads later. Naming the element is
  * the one point of specificity that settles it. */
+/* The control sits in the margin beside the heading, anchored to the heading's
+ * leading edge rather than sized from its text — so every heading offers it in
+ * the same place whatever its level, however long it runs, and whether or not
+ * it wraps. A control that moves is a control you have to look for.
+ *
+ * Important, and named by its tag, reluctantly: ProseMirror marks every widget
+ * `contenteditable="false"`, and Text zeroes the margin of anything matching
+ * `[contenteditable]` with an `!important` of its own, at the same specificity
+ * as this rule and from a stylesheet that loads later. Naming the element is
+ * the one point of specificity that settles it. */
 .text-editor:deep(button.note-fold__toggle) {
 	position: absolute;
-	width: 1px;
-	height: 1px;
+	inset-inline-end: 100%;
+	width: 20px;
 	margin: 0 !important;
+	margin-inline-end: 4px !important;
+	min-width: 0;
+	min-height: 0;
 	padding: 0;
 	border: none;
 	background: none;
-	overflow: hidden;
-	clip-path: inset(50%);
-	opacity: 0;
+	color: var(--color-text-maxcontrast);
+	font-size: 15px;
+	line-height: inherit;
+	text-align: center;
+	cursor: pointer;
+	opacity: 0.55;
 }
 
-/* Tabbed to, it has to be seen and hit. Still positioned rather than set in
-   the line, so arriving at it does not shunt the heading sideways. */
-.text-editor:deep(button.note-fold__toggle:focus-visible) {
-	inset-inline-end: 100%;
-	width: auto;
-	height: auto;
-	padding: 0 4px;
-	overflow: visible;
-	clip-path: none;
-	border-radius: var(--border-radius, 4px);
-	outline: 2px solid var(--color-primary-element);
-	background: var(--color-main-background);
-	color: var(--color-main-text);
-	font-size: 14px;
-	line-height: 1.4;
-	white-space: nowrap;
-	cursor: pointer;
+.text-editor:deep(button.note-fold__toggle:hover),
+.text-editor:deep(button.note-fold__toggle:focus-visible),
+.text-editor:deep(button.note-fold__toggle[aria-expanded='false']) {
 	opacity: 1;
+}
+
+/* That margin was Text's before it was ours: it draws a link to the section
+ * there. Only one of the two can have it, so folding keeps it while the note
+ * is being read and hands it back while a heading is being written — which is
+ * the only time a link to that one section is worth reaching for. Text reveals
+ * its own control on hover, exactly as it always did; this only stops
+ * competing for the space. */
+.text-editor:deep(h1 .heading-anchor),
+.text-editor:deep(h2 .heading-anchor),
+.text-editor:deep(h3 .heading-anchor),
+.text-editor:deep(h4 .heading-anchor),
+.text-editor:deep(h5 .heading-anchor),
+.text-editor:deep(h6 .heading-anchor) {
+	display: none;
+}
+
+.text-editor:deep(.note-fold__editing .heading-anchor) {
+	display: revert;
+}
+
+.text-editor:deep(.note-fold__editing .note-fold__toggle) {
+	display: none;
 }
 
 .text-editor:deep(.note-fold__hidden) {
