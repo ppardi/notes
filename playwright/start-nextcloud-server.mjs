@@ -18,8 +18,14 @@ async function start() {
 	const appinfo = readFileSync('appinfo/info.xml').toString()
 	const maxVersion = appinfo.match(/<nextcloud min-version="\d+" max-version="(\d\d+)" \/>/)?.[1]
 
-	let branch = 'master'
-	if (maxVersion) {
+	/* NEXTCLOUD_BRANCH first, because what follows cannot answer the question
+	   it looks like it answers: it asks THIS repository whether it has a
+	   stableNN branch, which is not the same as asking whether Nextcloud has
+	   one. Ours never will, so it always falls through to master — and master
+	   is a different server, with a different Text, from the one a build is
+	   deployed on. See dev/README.md. */
+	let branch = process.env.NEXTCLOUD_BRANCH ?? 'stable35'
+	if (!process.env.NEXTCLOUD_BRANCH && maxVersion) {
 		const refs = execSync('git ls-remote --refs').toString('utf-8')
 		branch = refs.includes(`refs/heads/stable${maxVersion}`)
 			? `stable${maxVersion}`

@@ -31,3 +31,4 @@
 /src/
 /playwright/
 /playwright.config.ts
+/dev/
