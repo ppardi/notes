@@ -525,7 +525,7 @@ export default {
 	align-items: center;
 	justify-content: center;
 	width: 28px;
-	height: 38px;
+	height: 28px;
 	margin: 0 !important;
 	min-width: 0;
 	min-height: 0;
@@ -533,7 +533,7 @@ export default {
 	border: none;
 	background: none;
 	color: var(--color-text-maxcontrast);
-	font-size: 17px;
+	font-size: 22px;
 	line-height: 1;
 	border-radius: var(--border-radius, 4px);
 	cursor: pointer;
