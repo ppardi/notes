@@ -50,8 +50,9 @@ Requires Nextcloud **33–36** and PHP **8.2–8.5**. Section folding happens in
 editor, so it needs the [Text](https://github.com/nextcloud/text) app. Comments are
 written in Text but drawn by the preview, which works whether or not it is installed.
 
-1. Download `notes-<version>.tar.gz` and `SHA256SUMS` from the
-   [latest release](https://github.com/ppardi/notes/releases/latest).
+1. Download `notes-<version>.tar.gz` and `SHA256SUMS` from the newest entry on the
+   [releases page](https://github.com/ppardi/notes/releases). Every build here is marked
+   pre-release, so `releases/latest` does not resolve to one — take the topmost.
 2. Check the download:
    ```
    shasum -a 256 -c SHA256SUMS
