@@ -212,6 +212,31 @@ test.describe('Folding sections under their headings', () => {
 		await expect(groceriesList(page)).toBeVisible()
 	})
 
+	test('offers a control big enough to hit', async ({ page }, testInfo) => {
+		const noteId = await createNoteViaRequest('', uniqueTitle('fold-target', testInfo), BODY)
+		await openNote(page, noteId)
+
+		/* 24x24 CSS pixels is the floor WCAG sets for a pointer target, and a
+		   fold control is small by nature: it carries one glyph and lives in a
+		   margin. Sized from the glyph it comes out under that at every heading
+		   level, which is the difference between aiming and just clicking. */
+		const controls = surface(page).locator('.note-fold__toggle')
+		const count = await controls.count()
+		expect(count).toBeGreaterThan(1)
+
+		let measured = 0
+		for (let i = 0; i < count; i++) {
+			const box = await controls.nth(i).boundingBox()
+			if (box === null || box.width === 0) {
+				continue // the heading being written in has handed its margin back
+			}
+			measured++
+			expect(Math.round(box.width), `control ${i} width`).toBeGreaterThanOrEqual(24)
+			expect(Math.round(box.height), `control ${i} height`).toBeGreaterThanOrEqual(24)
+		}
+		expect(measured).toBeGreaterThan(1)
+	})
+
 	test('keeps every heading level on the same edge as the prose', async ({ page }, testInfo) => {
 		const noteId = await createNoteViaRequest('', uniqueTitle('fold-align', testInfo), BODY)
 		await openNote(page, noteId)

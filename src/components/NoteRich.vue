@@ -509,20 +509,42 @@ export default {
 .text-editor:deep(button.note-fold__toggle) {
 	position: absolute;
 	inset-inline-end: 100%;
-	width: 20px;
+	/* Sized to be hit rather than to fit its glyph. A chevron wants about
+	   fifteen pixels and the margin it sits in is narrow, so left alone the
+	   control comes out smaller than anything should be that a person has to
+	   aim at — smaller at a level-three heading than a level-two one, since
+	   the line it sits on is shorter. These hold it at the smallest size worth
+	   aiming at, and the box is transparent, so the extra reach costs nothing
+	   on screen.
+
+	   It grows towards the text rather than away from it. The margin further
+	   out belongs to Text's own insert and drag handles, which appear under
+	   the pointer — exactly when this control is about to be clicked — and
+	   take the click if they are underneath it. */
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 38px;
 	margin: 0 !important;
-	margin-inline-end: 4px !important;
 	min-width: 0;
 	min-height: 0;
 	padding: 0;
 	border: none;
 	background: none;
 	color: var(--color-text-maxcontrast);
-	font-size: 15px;
-	line-height: inherit;
-	text-align: center;
+	font-size: 17px;
+	line-height: 1;
+	border-radius: var(--border-radius, 4px);
 	cursor: pointer;
-	opacity: 0.55;
+	opacity: 0.6;
+}
+
+/* Under the pointer the box shows itself. Half of what makes a small control
+   hard to hit is not knowing where it ends. */
+.text-editor:deep(button.note-fold__toggle:hover),
+.text-editor:deep(button.note-fold__toggle:focus-visible) {
+	background: var(--color-background-hover);
 }
 
 .text-editor:deep(button.note-fold__toggle:hover),
