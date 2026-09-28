@@ -558,18 +558,24 @@ export default {
  * is being read and hands it back while a heading is being written — which is
  * the only time a link to that one section is worth reaching for. Text reveals
  * its own control on hover, exactly as it always did; this only stops
- * competing for the space. */
+ * competing for the space.
+ *
+ * Hidden, not removed. That anchor carries the id every entry in Text's
+ * outline points at, and an element with `display: none` draws no box, so
+ * there is nothing left for the outline to scroll to and the whole panel stops
+ * navigating. Kept hidden it still has a box to land on, and still takes no
+ * clicks away from the control in front of it. */
 .text-editor:deep(h1 .heading-anchor),
 .text-editor:deep(h2 .heading-anchor),
 .text-editor:deep(h3 .heading-anchor),
 .text-editor:deep(h4 .heading-anchor),
 .text-editor:deep(h5 .heading-anchor),
 .text-editor:deep(h6 .heading-anchor) {
-	display: none;
+	visibility: hidden;
 }
 
 .text-editor:deep(.note-fold__editing .heading-anchor) {
-	display: revert;
+	visibility: visible;
 }
 
 .text-editor:deep(.note-fold__editing .note-fold__toggle) {

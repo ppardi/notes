@@ -261,6 +261,41 @@ test.describe('Folding sections under their headings', () => {
 		expect(textStart).toBe(prose)
 	})
 
+	test('leaves the outline something to navigate to', async ({ page }, testInfo) => {
+		/* Every entry in Text's outline points at the id on the heading anchor
+		   that folding hides, and scrolls to it. Hidden the wrong way that anchor
+		   draws no box, so there is nothing to scroll to and the whole panel
+		   stops working, with no error anywhere to say so.
+
+		   This drives the scroll itself rather than Text's panel: the panel
+		   re-renders under the pointer, and what actually broke was the target,
+		   not the list. */
+		const long = Array.from({ length: 10 }, (unused, i) => `Padding paragraph ${i} to make the note scroll.`).join('\n\n')
+		const body = `# Top\n\n${long}\n\n## Groceries\n\n${long}\n\n## Travel\n\nFlight at 6am.\n\n${long}\n`
+		const noteId = await createNoteViaRequest('', uniqueTitle('fold-outline', testInfo), body)
+		await openNote(page, noteId)
+
+		const anchor = surface(page).locator('h2:has-text("Travel") .heading-anchor').first()
+		await expect(anchor).toBeAttached()
+		// Out of sight, and taking no clicks from the control in front of it.
+		await expect(anchor).toBeHidden()
+
+		const scrolledToIt = await anchor.evaluate((el: Element) => {
+			const scroller = el.closest('.app-content-details') as HTMLElement | null
+				?? document.querySelector('.app-content-details') as HTMLElement | null
+			if (!scroller || el.getClientRects().length === 0) {
+				return { box: el.getClientRects().length > 0, before: 0, after: 0 }
+			}
+			scroller.scrollTop = 0
+			const before = scroller.scrollTop
+			el.scrollIntoView({ block: 'start' })
+			return { box: true, before, after: scroller.scrollTop }
+		})
+
+		expect(scrolledToIt.box, 'the anchor must still draw a box to scroll to').toBe(true)
+		expect(scrolledToIt.after).toBeGreaterThan(scrolledToIt.before)
+	})
+
 	test('opens every section again when the note is reopened', async ({ page }, testInfo) => {
 		const noteId = await createNoteViaRequest('', uniqueTitle('fold-fresh', testInfo), BODY)
 		await openNote(page, noteId)
