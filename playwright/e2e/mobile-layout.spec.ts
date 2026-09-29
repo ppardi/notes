@@ -6,6 +6,7 @@
 import type { Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
+import { layoutProblems } from '../support/layout.ts'
 import { login } from '../support/login.ts'
 import { createNoteViaRequest, deleteAllNotesVia, setNoteMode } from '../support/note.ts'
 
@@ -55,6 +56,50 @@ test.describe('The note pane on a touch screen', () => {
 	for (const [label, width, height] of SIZES) {
 		test.describe(label, () => {
 			test.use({ viewport: { width, height } })
+
+			test('lays every state out inside the window', async ({ page, request }) => {
+				/* The named tests below pin the two faults that reached a
+				   release. This one is for the next one of its kind: it walks
+				   the states a person passes through and asks the same
+				   questions of each. */
+				await login(page)
+				await deleteAllNotesVia()
+				await setNoteMode(request, 'rich')
+				const noteId = await createNoteViaRequest('', 'Drift', BODY)
+				const found: string[] = []
+
+				const check = async (state: string) => {
+					const problems = await layoutProblems(page)
+					found.push(...problems.map((p) => `${state}: ${p}`))
+				}
+
+				await page.goto('/index.php/apps/notes/')
+				await expect(page.locator('#app-navigation-vue')).toBeAttached()
+				await page.waitForTimeout(1200)
+				await check('the note list')
+
+				await openNote(page, noteId)
+				await page.waitForTimeout(1200)
+				await check('a note in the rich editor')
+
+				/* Driven by the setting rather than by the per-note action,
+				   which on a phone can only be reached by going back to the
+				   list first - that path has tests of its own. */
+				await setNoteMode(request, 'edit')
+				await page.goto(`/index.php/apps/notes/note/${noteId}`)
+				await expect(page.locator('.note-editor')).toContainText('Drift')
+				await page.waitForTimeout(1200)
+				await check('a note in the markdown editor')
+
+				await page.locator('.action-buttons .action-item__menutoggle').first().click()
+				await page.getByRole('menuitem', { name: 'Open sidebar' }).click()
+				await expect(page.locator('[data-cy-notes-sidebar]')).toBeVisible()
+				await page.waitForTimeout(1200)
+				await check('a note with the sidebar open')
+
+				await setNoteMode(request, 'rich')
+				expect(found, found.join('\n')).toEqual([])
+			})
 
 			test('keeps the editor toolbar within the window', async ({ page, request }) => {
 				/* The toolbar sits at the bottom of the note pane, so a pane that
