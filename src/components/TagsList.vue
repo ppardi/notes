@@ -70,7 +70,6 @@
 
 <script>
 import { showWarning } from '@nextcloud/dialogs'
-import { emit, subscribe, unsubscribe } from '@nextcloud/event-bus'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
@@ -78,6 +77,7 @@ import FilterOutlineIcon from 'vue-material-design-icons/FilterOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import PoundIcon from 'vue-material-design-icons/Pound.vue'
 import NavigationSectionHeading from './NavigationSectionHeading.vue'
+import { closeEditor, reopenEditor } from '../editorHandoff.js'
 import { SECTION_TAGS } from '../navigationSections.js'
 import { fetchNotes, renameTag } from '../NotesService.js'
 import { sectionCollapse } from '../sectionCollapse.js'
@@ -89,7 +89,6 @@ const RENAME_RETRY_DELAY = 400
 const RENAME_ATTEMPTS = 4
 
 /* If no editor answers, the rename goes ahead rather than hanging on it. */
-const CLOSE_TIMEOUT = 5000
 
 export default {
 	name: 'TagsList',
@@ -215,7 +214,7 @@ export default {
 		 * @return {Promise<object>} what the last attempt answered
 		 */
 		async renameWithEditorClosed(noteId, from, to) {
-			await this.closeEditor(noteId)
+			await closeEditor(noteId)
 			try {
 				let result
 				for (let attempt = 0; attempt < RENAME_ATTEMPTS; attempt++) {
@@ -229,41 +228,8 @@ export default {
 				}
 				return result
 			} finally {
-				emit('notes:editor:reopen', { noteId })
+				reopenEditor(noteId)
 			}
-		},
-
-		/**
-		 * Ask the editor to let go of a note, and wait until it has.
-		 *
-		 * Resolves anyway if nothing answers, so a rename is never left waiting
-		 * on an editor that is not there.
-		 *
-		 * @param {number} noteId the note to close
-		 * @return {Promise<void>} once the editor has closed, or given up on
-		 */
-		closeEditor(noteId) {
-			return new Promise((resolve) => {
-				let timer = null
-				const onClosed = (event) => {
-					if (event?.noteId !== noteId) {
-						return
-					}
-					if (timer !== null) {
-						clearTimeout(timer)
-						timer = null
-					}
-					unsubscribe('notes:editor:closed', onClosed)
-					resolve()
-				}
-				subscribe('notes:editor:closed', onClosed)
-				timer = setTimeout(() => {
-					timer = null
-					unsubscribe('notes:editor:closed', onClosed)
-					resolve()
-				}, CLOSE_TIMEOUT)
-				emit('notes:editor:close', { noteId })
-			})
 		},
 
 		/**
