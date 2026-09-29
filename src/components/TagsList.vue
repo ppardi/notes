@@ -16,8 +16,13 @@
 			@toggle="toggleSection"
 		>
 			<!-- Only while more than one tag is filtered: with a single tag
-			     there is nothing for "all" and "any" to differ about. -->
-			<template v-if="selectedTags.length > 1" #actions>
+			     there is nothing for "all" and "any" to differ about.
+			     And not at all while a smart category is driving: its tags are
+			     its own, and changing the match here would quietly swap the
+			     smart category for a hand-picked selection that happens to
+			     hold the same tags. Its match is edited where it is stored,
+			     through Edit tags on its own row. -->
+			<template v-if="selectedSmart === null && selectedTags.length > 1" #actions>
 				<NcActionButton :closeAfterClick="true" @click="onToggleMode">
 					<template #icon>
 						<FilterOutlineIcon :size="20" />

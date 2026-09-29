@@ -29,6 +29,16 @@ function smartRow(page: Page, name: string): Locator {
 		.first()
 }
 
+/* The Tags section's own heading, not the Categories one beside it. */
+function tagsCaption(page: Page): Locator {
+	return page.locator('li.app-navigation-caption')
+		.filter({ has: page.locator('.app-navigation-caption__name', { hasText: /^Tags$/ }) })
+}
+
+function matchAction(page: Page): Locator {
+	return tagsCaption(page).getByRole('button', { name: /^Match (any|all) tags?$/ })
+}
+
 function smartLink(page: Page, name: string): Locator {
 	return smartRow(page, name).getByRole('link', { name, exact: true }).first()
 }
@@ -448,6 +458,28 @@ test.describe('Smart categories', () => {
 		const topLevel = await indentOf(categoryLink(page, 'Work'))
 		await expect.poll(() => indentOf(smartLink(page, 'Reading')), { timeout: 15000 })
 			.toBe(topLevel)
+	})
+
+	test('offers no way to change the match while a smart category is driving', async ({ page }) => {
+		/* The control called tagsRoute, which drops `smart`: one click and the
+		   smart category was silently swapped for a hand-picked selection that
+		   happened to hold the same tags, with nothing to say so. Its match
+		   belongs to it and is edited through Edit tags on its own row. */
+		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy and #reading')
+		await createNoteViaRequest('', 'Word and Object', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy', 'reading'], mode: 'any', parent: '' },
+		])
+
+		await openNotesApp(page)
+		await page.goto('/index.php/apps/notes/?smart=reading')
+		await expect(smartLink(page, 'Reading')).toBeVisible()
+		await expect(matchAction(page)).toHaveCount(0)
+
+		/* Choosing the same two tags by hand is a different thing to have
+		   done, and that selection is the Tags section's to change. */
+		await page.goto('/index.php/apps/notes/?tags=philosophy,reading&mode=any')
+		await expect(matchAction(page)).toBeVisible()
 	})
 
 	test('leaves the tag rows dark while a smart category is driving', async ({ page }) => {
