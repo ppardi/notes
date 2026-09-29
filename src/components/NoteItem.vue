@@ -46,6 +46,16 @@
 				{{ t('notes', 'Versions') }}
 			</NcActionButton>
 
+			<!-- Only on the note being read: the markdown editor lasts as long
+			     as the note is open, so turning it on for a note you are not
+			     looking at would be forgotten before you got there. -->
+			<NcActionButton v-if="canToggleRaw" :closeAfterClick="true" @click="onToggleRaw">
+				<template #icon>
+					<CodeTagsIcon :size="20" />
+				</template>
+				{{ isRawNote ? t('notes', 'Rich text') : t('notes', 'Edit markdown') }}
+			</NcActionButton>
+
 			<NcActionButton :closeAfterClick="true" @click="openSidebar('notes-info')">
 				<template #icon>
 					<InformationOutlineIcon :size="20" />
@@ -119,6 +129,7 @@ import NcActionSeparator from '@nextcloud/vue/components/NcActionSeparator'
 import NcListItem from '@nextcloud/vue/components/NcListItem'
 import AlertOctagonOutlineIcon from 'vue-material-design-icons/AlertOctagonOutline.vue'
 import BackupRestoreIcon from 'vue-material-design-icons/BackupRestore.vue'
+import CodeTagsIcon from 'vue-material-design-icons/CodeTags.vue'
 import FolderOutlineIcon from 'vue-material-design-icons/FolderOutline.vue'
 import InformationOutlineIcon from 'vue-material-design-icons/InformationOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
@@ -126,6 +137,7 @@ import ShareVariantOutlineIcon from 'vue-material-design-icons/ShareVariantOutli
 import StarOutlineIcon from 'vue-material-design-icons/StarOutline.vue'
 import logger from '../Logger.js'
 import { deleteNote, fetchNote, setCategory, setFavorite, setTitle } from '../NotesService.js'
+import { canShowRaw, isRawNote, showRawMarkdown, showRichText } from '../rawNote.js'
 import store from '../store.js'
 import { categoryLabel, keepSelection, routeIsNewNote } from '../Util.js'
 
@@ -135,6 +147,7 @@ export default {
 	components: {
 		AlertOctagonOutlineIcon,
 		BackupRestoreIcon,
+		CodeTagsIcon,
 		FolderOutlineIcon,
 		InformationOutlineIcon,
 		NcActionButton,
@@ -187,6 +200,14 @@ export default {
 
 		isSelected() {
 			return store.notes.getSelectedNote() === this.note.id
+		},
+
+		isRawNote() {
+			return isRawNote(this.note.id)
+		},
+
+		canToggleRaw() {
+			return this.isSelected && canShowRaw()
 		},
 
 		isShared() {
@@ -254,6 +275,14 @@ export default {
 	},
 
 	methods: {
+		onToggleRaw() {
+			if (this.isRawNote) {
+				showRichText(this.note.id)
+				return
+			}
+			showRawMarkdown(this.note.id)
+		},
+
 		onDragStart(event) {
 			if (!this.isDraggable) {
 				event.preventDefault()

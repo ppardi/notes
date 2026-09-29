@@ -73,6 +73,16 @@
 						</template>
 						{{ fullscreen ? t('notes', 'Exit full screen') : t('notes', 'Full screen') }}
 					</NcActionButton>
+					<!-- Only when this note is the one dropped out of rich text:
+					     the way back belongs on the note being read, not over in
+					     the list. With the app itself set to plain text there is
+					     nothing to go back to. -->
+					<NcActionButton v-if="isRawNote" @click="onShowRichText">
+						<template #icon>
+							<NewspaperVariantOutlineIcon :size="20" />
+						</template>
+						{{ t('notes', 'Rich text') }}
+					</NcActionButton>
 					<NcActionButton @click="onOpenSidebar">
 						<template #icon>
 							<DockRightIcon :size="20" />
@@ -121,6 +131,7 @@ import NcModal from '@nextcloud/vue/components/NcModal'
 import DockRightIcon from 'vue-material-design-icons/DockRight.vue'
 import EyeOutlineIcon from 'vue-material-design-icons/EyeOutline.vue'
 import FullscreenIcon from 'vue-material-design-icons/Fullscreen.vue'
+import NewspaperVariantOutlineIcon from 'vue-material-design-icons/NewspaperVariantOutline.vue'
 import PencilOffOutlineIcon from 'vue-material-design-icons/PencilOffOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import SyncAlertIcon from 'vue-material-design-icons/SyncAlert.vue'
@@ -130,6 +141,7 @@ import ThePreview from './EditorMarkdownIt.vue'
 import { config } from '../config.js'
 import logger from '../Logger.js'
 import { conflictSolutionLocal, conflictSolutionRemote, fetchNote, queueCommand, refreshNote, saveNoteManually } from '../NotesService.js'
+import { isRawNote, showRichText } from '../rawNote.js'
 import store from '../store.js'
 import { routeIsNewNote } from '../Util.js'
 
@@ -141,6 +153,7 @@ export default {
 		DockRightIcon,
 		PencilOutlineIcon,
 		EyeOutlineIcon,
+		NewspaperVariantOutlineIcon,
 		FullscreenIcon,
 		NcActions,
 		NcActionButton,
@@ -180,6 +193,10 @@ export default {
 	},
 
 	computed: {
+		isRawNote() {
+			return isRawNote(Number(this.noteId))
+		},
+
 		note() {
 			return store.notes.getNote(parseInt(this.noteId))
 		},
@@ -238,6 +255,11 @@ export default {
 	},
 
 	methods: {
+		onShowRichText() {
+			this.actionsOpen = false
+			showRichText(Number(this.noteId))
+		},
+
 		fetchData() {
 			this.etag = null
 			this.stopRefreshTimer()

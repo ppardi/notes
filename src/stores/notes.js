@@ -28,6 +28,10 @@ export const useNotesStore = defineStore('notes', {
 		tagMode: 'any',
 		selectedSmart: null,
 		selectedNote: null,
+		/* The one note being shown as raw markdown, when the app is otherwise
+		   in rich text. Held here rather than stored: it lasts as long as that
+		   note is open and no longer. */
+		rawNoteId: null,
 		filterString: '',
 	}),
 
@@ -38,6 +42,10 @@ export const useNotesStore = defineStore('notes', {
 
 		noteExists: (state) => (id) => {
 			return state.notesIds[id] !== undefined
+		},
+
+		getRawNoteId: (state) => () => {
+			return state.rawNoteId
 		},
 
 		getNote: (state) => (id) => {
@@ -350,6 +358,14 @@ export const useNotesStore = defineStore('notes', {
 			this.tagMode = mode === 'all' ? 'all' : 'any'
 			this.selectedCategory = null
 			this.selectedSmart = smart
+		},
+
+		setRawNote(noteId) {
+			this.rawNoteId = noteId
+		},
+
+		clearRawNote() {
+			this.rawNoteId = null
 		},
 
 		setSelectedNote(note) {
