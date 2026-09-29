@@ -433,9 +433,22 @@ test.describe('Smart categories', () => {
 
 		await openNotesApp(page)
 
+		/* Clicking Delete returns when the click lands, not when the work it
+		   starts has finished: correcting the stored parent is a settings write
+		   that comes after the delete request. Reloading into that write throws
+		   it away, which is how this test used to fail under load. So wait for
+		   the write rather than for the redraw it causes. */
+		const parentCorrected = page.waitForResponse((response) => {
+			const request = response.request()
+			return request.method() === 'PUT'
+				&& response.url().endsWith('/apps/notes/settings')
+				&& request.postDataJSON()?.smartCategories !== undefined
+		})
+
 		await openMenu(categoryRow(page, 'Work'))
 		await page.getByRole('menuitem', { name: 'Delete category' }).click()
 		await page.getByRole('button', { name: 'Delete' }).click()
+		await parentCorrected
 
 		/* It holds no notes of its own, so there is nothing about deleting a
 		   folder that should destroy it. */
@@ -452,12 +465,8 @@ test.describe('Smart categories', () => {
 		await page.reload()
 		await expect(categoryLink(page, 'Work')).toBeVisible()
 
-		/* Polled, because correcting the stored parent is a settings write that
-		   was still in flight when the category came back: a single read here
-		   races it, and loses under load. */
 		const topLevel = await indentOf(categoryLink(page, 'Work'))
-		await expect.poll(() => indentOf(smartLink(page, 'Reading')), { timeout: 15000 })
-			.toBe(topLevel)
+		expect(await indentOf(smartLink(page, 'Reading'))).toBe(topLevel)
 	})
 
 	test('offers no way to change the match while a smart category is driving', async ({ page }) => {
