@@ -98,8 +98,9 @@ import NavigationSectionHeading from './NavigationSectionHeading.vue'
 import SmartCategoryDialog from './SmartCategoryDialog.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
 import { categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
-import { SECTION_CATEGORIES, withSectionCollapsed } from '../navigationSections.js'
+import { SECTION_CATEGORIES } from '../navigationSections.js'
 import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
+import { sectionCollapse } from '../sectionCollapse.js'
 import { reparentOnDelete, reparentOnRename } from '../smartCategories.js'
 import store from '../store.js'
 import { CATEGORY_DRAG_TYPE, categoryLabel, categoryRoute, getDraggedCategory, getDraggedNoteId, getDraggedSmart, isCategoryDrag, isNoteDrag, isSmartDrag, keepSelection, SMART_DRAG_TYPE, smartFromQuery, smartRoute } from '../Util.js'
@@ -119,6 +120,8 @@ export default {
 		FolderPlusIcon,
 		FolderPoundOutlineIcon,
 	},
+
+	mixins: [sectionCollapse(SECTION_CATEGORIES)],
 
 	provide() {
 		return {
@@ -210,10 +213,6 @@ export default {
 			return smartFromQuery(this.$route.query)
 		},
 
-		collapsed() {
-			return (store.app.settings?.collapsedSections ?? []).includes(SECTION_CATEGORIES)
-		},
-
 		storedCollapsed() {
 			return store.app.settings?.collapsedCategories
 		},
@@ -254,17 +253,6 @@ export default {
 	},
 
 	methods: {
-		toggleSection() {
-			this.setSectionCollapsed(!this.collapsed)
-		},
-
-		setSectionCollapsed(isCollapsed) {
-			const collapsed = store.app.settings?.collapsedSections ?? []
-			return setSettings({
-				collapsedSections: withSectionCollapsed(collapsed, SECTION_CATEGORIES, isCollapsed),
-			})
-		},
-
 		setCategoryOpen(category, open) {
 			this.applyCollapsed(withCategoryCollapsed(this.collapsedCategories, category, !open))
 		},

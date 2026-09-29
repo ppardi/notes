@@ -32,33 +32,39 @@
 			</template>
 		</NavigationSectionHeading>
 
-		<NcAppNavigationItem v-for="tag in tags"
-			v-show="!loading && !collapsed"
-			:key="tag.name"
-			:ref="(el) => setTagRef(tag.name, el)"
-			:name="tag.name"
-			:active="selectedSmart === null && selectedTags.includes(tag.name)"
-			:editPlaceholder="tag.name"
-			forceMenu
-			class="tag-entry"
-			@click.prevent.stop="onSelect(tag.name, $event)"
-			@update:name="onRename(tag.name, $event)"
-		>
-			<template #icon>
-				<PoundIcon :size="20" />
-			</template>
-			<template #counter>
-				<NcCounterBubble :count="tag.count" />
-			</template>
-			<template #actions>
-				<NcActionButton :closeAfterClick="true" @click="startRename(tag.name)">
-					<template #icon>
-						<PencilOutlineIcon :size="20" />
-					</template>
-					{{ t('notes', 'Rename tag') }}
-				</NcActionButton>
-			</template>
-		</NcAppNavigationItem>
+		<!-- Collapsed rows go, rather than being hidden where they still count
+		     against every render: the Categories section has always done it
+		     this way, and the only thing holding a row's ref is its own rename
+		     action, which is unreachable while the section is shut. -->
+		<template v-if="!collapsed">
+			<NcAppNavigationItem v-for="tag in tags"
+				v-show="!loading"
+				:key="tag.name"
+				:ref="(el) => setTagRef(tag.name, el)"
+				:name="tag.name"
+				:active="selectedSmart === null && selectedTags.includes(tag.name)"
+				:editPlaceholder="tag.name"
+				forceMenu
+				class="tag-entry"
+				@click.prevent.stop="onSelect(tag.name, $event)"
+				@update:name="onRename(tag.name, $event)"
+			>
+				<template #icon>
+					<PoundIcon :size="20" />
+				</template>
+				<template #counter>
+					<NcCounterBubble :count="tag.count" />
+				</template>
+				<template #actions>
+					<NcActionButton :closeAfterClick="true" @click="startRename(tag.name)">
+						<template #icon>
+							<PencilOutlineIcon :size="20" />
+						</template>
+						{{ t('notes', 'Rename tag') }}
+					</NcActionButton>
+				</template>
+			</NcAppNavigationItem>
+		</template>
 	</template>
 </template>
 
@@ -72,8 +78,9 @@ import FilterOutlineIcon from 'vue-material-design-icons/FilterOutline.vue'
 import PencilOutlineIcon from 'vue-material-design-icons/PencilOutline.vue'
 import PoundIcon from 'vue-material-design-icons/Pound.vue'
 import NavigationSectionHeading from './NavigationSectionHeading.vue'
-import { SECTION_TAGS, withSectionCollapsed } from '../navigationSections.js'
-import { fetchNotes, renameTag, setSettings } from '../NotesService.js'
+import { SECTION_TAGS } from '../navigationSections.js'
+import { fetchNotes, renameTag } from '../NotesService.js'
+import { sectionCollapse } from '../sectionCollapse.js'
 import store from '../store.js'
 import { tagsRoute } from '../Util.js'
 
@@ -96,6 +103,8 @@ export default {
 		PencilOutlineIcon,
 		PoundIcon,
 	},
+
+	mixins: [sectionCollapse(SECTION_TAGS)],
 
 	props: {
 		loading: Boolean,
@@ -130,20 +139,9 @@ export default {
 			return store.notes.getSelectedSmart()
 		},
 
-		collapsed() {
-			return (store.app.settings?.collapsedSections ?? []).includes(SECTION_TAGS)
-		},
-
 	},
 
 	methods: {
-		toggleSection() {
-			const collapsed = store.app.settings?.collapsedSections ?? []
-			setSettings({
-				collapsedSections: withSectionCollapsed(collapsed, SECTION_TAGS, !this.collapsed),
-			})
-		},
-
 		setTagRef(tag, el) {
 			if (el) {
 				this.tagItems[tag] = el
