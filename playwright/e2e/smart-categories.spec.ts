@@ -325,6 +325,39 @@ test.describe('Smart categories', () => {
 		await expect(page.getByRole('dialog').getByRole('checkbox', { name: 'retired' })).toBeChecked()
 	})
 
+	test('stays where you were when an edit is saved from somewhere else', async ({ page }) => {
+		/* Saving the dialog opens the category, which is right for a new one: a
+		   row that sat there unlit read as a save that had not taken. An edit is
+		   not a new one, and a smart row's menu is reachable from wherever you
+		   happen to be - so opening it yanks the note list away from what you
+		   were reading and leaves a history entry behind you. */
+		await createNoteViaRequest('Work', 'Word and Object', 'On #quine')
+		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy')
+		await setSmartCategories([
+			{ id: 'reading', name: 'Reading', tags: ['philosophy'], mode: 'any', parent: '' },
+		])
+
+		await openNotesApp(page)
+		await categoryLink(page, 'Work').click()
+		await expect(page.getByRole('link', { name: 'Word and Object' })).toBeVisible()
+		const where = page.url()
+
+		await openMenu(smartRow(page, 'Reading'))
+		await page.getByRole('menuitem', { name: 'Edit tags' }).click()
+
+		const dialog = page.getByRole('dialog')
+		await chooseTag(dialog, 'quine')
+		await dialog.getByRole('button', { name: 'Save' }).click()
+
+		/* The counter is what says the save landed and has been drawn, so the
+		   check below is not reading the URL before anything happened. */
+		await expect(smartRow(page, 'Reading')
+			.locator('.app-navigation-entry__counter-wrapper').first()).toContainText('2')
+
+		expect(page.url()).toBe(where)
+		await expect(page.getByRole('link', { name: 'Word and Object' })).toBeVisible()
+	})
+
 	test('renames one without changing what it holds', async ({ page }) => {
 		await createNoteViaRequest('', 'Naming and Necessity', 'On #philosophy')
 		await setSmartCategories([

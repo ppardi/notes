@@ -316,7 +316,8 @@ export default {
 		 */
 		async onSaveSmart(smart) {
 			const existing = this.smartCategories.findIndex((entry) => entry.id === smart.id)
-			const smartCategories = existing < 0
+			const isNew = existing < 0
+			const smartCategories = isNew
 				? [...this.smartCategories, smart]
 				: this.smartCategories.map((entry, at) => (at === existing ? smart : entry))
 			let saved
@@ -326,14 +327,20 @@ export default {
 				// NotesService already shows a toast on failure.
 				return
 			}
+			/* Only a new one opens. It was made from what the dialog was
+			   showing, so a row that sat there unlit read as a save that had
+			   not taken. An edit is not new: its row is reachable from wherever
+			   you happen to be, so opening it would yank the note list away
+			   from what was being read and leave a history entry behind. */
+			if (!isNew) {
+				return
+			}
 			/* The server normalises what it is given and drops what it cannot
 			   use, so what came back is what exists - routing to an id it threw
 			   away would land on the "this has gone" path with no explanation. */
 			if (!(saved.smartCategories ?? []).some((entry) => entry.id === smart.id)) {
 				return
 			}
-			/* Made from what the dialog was showing, so it opens - a row that
-			   sat there unlit read as a save that had not taken. */
 			this.$router.push(smartRoute(this.$route, smart.id)).catch(() => {})
 		},
 
