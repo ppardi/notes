@@ -9,15 +9,6 @@
    tree and silently miss every category below it. Each component compiles its
    own scoped copy of these. */
 
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry) {
-	background-color: var(--color-primary-element) !important;
-}
-
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry:hover),
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry:focus-within) {
-	background-color: var(--color-primary-element-hover) !important;
-}
-
 .app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry) {
 	background-color: var(--color-primary-element) !important;
 	border-radius: var(--border-radius-element, var(--border-radius-large));
@@ -49,9 +40,8 @@
 	bottom: 0;
 }
 
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry-link),
-.app-navigation-entry-wrapper.active:deep(.app-navigation-entry-button),
-.app-navigation-entry-wrapper.active:deep(.material-design-icon),
+/* Only while a category is being dragged over: a selected row is marked by
+   NcAppNavigationItem itself and needs nothing from here. */
 .app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry .app-navigation-entry-link),
 .app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry .app-navigation-entry-button),
 .app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry .material-design-icon) {
