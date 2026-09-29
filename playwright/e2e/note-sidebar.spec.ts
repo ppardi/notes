@@ -7,7 +7,7 @@ import type { Locator, Page, TestInfo } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { createNote, createNoteRevisions, createNoteViaRequest, deleteAllNotesVia, newNoteButton, noteRow, openNoteActions, setNoteMode, uniqueTitle } from '../support/note.ts'
+import { createNote, createNoteRevisions, createNoteViaRequest, deleteAllNotesVia, newNoteButton, noteContent, noteRow, openNoteActions, setNoteMode, uniqueTitle } from '../support/note.ts'
 import { NoteEditor } from '../support/sections/NoteEditor.ts'
 
 interface EventBusWindow extends Window {
@@ -140,6 +140,113 @@ test.describe('Note sidebar', () => {
 		await expect.poll(() => reloads, { timeout: 15000 }).toBeGreaterThan(0)
 	})
 
+	test('restores a version of the note the editor is holding', async ({ page }) => {
+		/* The Text app locks a note for as long as its editor has it open, and a
+		   restore is a DAV MOVE from outside that lock: it came back 423 and the
+		   note kept the version it had, with the failure showing only as a toast. */
+		const noteId = await createNoteRevisions([
+			'Restore content\n\nrevision one',
+			'Restore content\n\nrevision two',
+		])
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+		await openSidebarFromActions(page, noteId, 'Versions')
+
+		const entries = versionEntries(page)
+		await expect(entries.nth(1)).toBeVisible({ timeout: 15000 })
+
+		await entries.last().hover()
+		await entries.last().locator('.action-item__menutoggle').first().click()
+		await page.getByRole('menuitem', { name: 'Restore version' }).click()
+
+		await expect.poll(() => noteContent(noteId), { timeout: 30000 }).toContain('revision one')
+	})
+
+	test('shows the restored version in the editor, not only in the file', async ({ page }) => {
+		/* The file being right is not the same as the note being right: the
+		   editor is reopened against it, and a reopen that comes back holding
+		   what was there before leaves the toast saying one thing and the screen
+		   another. */
+		const noteId = await createNoteRevisions([
+			'Restore on screen\n\nrevision one',
+			'Restore on screen\n\nrevision two',
+		])
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+
+		const editor = page.locator('.ProseMirror').first()
+		await expect(editor).toContainText('revision two')
+
+		await openSidebarFromActions(page, noteId, 'Versions')
+		const entries = versionEntries(page)
+		await expect(entries.nth(1)).toBeVisible({ timeout: 15000 })
+
+		await entries.last().hover()
+		await entries.last().locator('.action-item__menutoggle').first().click()
+		await page.getByRole('menuitem', { name: 'Restore version' }).click()
+
+		await expect(editor).toContainText('revision one', { timeout: 30000 })
+		await expect(editor).not.toContainText('revision two')
+	})
+
+	test('shows the restored version in the markdown editor too', async ({ page }) => {
+		/* No Text session holds a note shown as raw markdown, so the restore was
+		   never refused here - but being allowed to write the file is not the
+		   same as the screen following it. */
+		const noteId = await createNoteRevisions([
+			'Restore in markdown\n\nrevision one',
+			'Restore in markdown\n\nrevision two',
+		])
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+		await openNoteActions(page, noteId)
+		await page.getByRole('menuitem', { name: 'Edit markdown' }).click()
+
+		const editor = page.locator('.note-editor')
+		await expect(editor).toContainText('revision two')
+
+		await openSidebarFromActions(page, noteId, 'Versions')
+		const entries = versionEntries(page)
+		await expect(entries.nth(1)).toBeVisible({ timeout: 15000 })
+
+		await entries.last().hover()
+		await entries.last().locator('.action-item__menutoggle').first().click()
+		await page.getByRole('menuitem', { name: 'Restore version' }).click()
+
+		await expect(editor).toContainText('revision one', { timeout: 30000 })
+		await expect(editor).not.toContainText('revision two')
+	})
+
+	test('retries a restore the lock is still refusing', async ({ page }) => {
+		/* Closing the editor drops the lock, but the server is not always done
+		   with the session by the time the move goes out - the tag rename needs
+		   the same retry for the same reason. Locally the first attempt always
+		   wins, so the refusal is staged here rather than waited for. */
+		const noteId = await createNoteRevisions([
+			'Restore retry\n\nrevision one',
+			'Restore retry\n\nrevision two',
+		])
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+
+		let refused = 0
+		await page.route('**/remote.php/dav/versions/**', async (route) => {
+			if (route.request().method() === 'MOVE' && refused === 0) {
+				refused++
+				await route.fulfill({ status: 423 })
+				return
+			}
+			await route.continue()
+		})
+
+		await openSidebarFromActions(page, noteId, 'Versions')
+		const entries = versionEntries(page)
+		await expect(entries.nth(1)).toBeVisible({ timeout: 15000 })
+
+		await entries.last().hover()
+		await entries.last().locator('.action-item__menutoggle').first().click()
+		await page.getByRole('menuitem', { name: 'Restore version' }).click()
+
+		await expect.poll(() => noteContent(noteId), { timeout: 30000 }).toContain('revision one')
+		expect(refused, 'the staged refusal was used').toBe(1)
+	})
+
 	test('keeps the editor behind a spinner while a restored version loads', async ({ page }) => {
 		const noteId = await createNoteRevisions([
 			'Restore spinner\n\nrevision one',
@@ -176,11 +283,8 @@ test.describe('Note sidebar', () => {
 
 		await expect(editor).toBeVisible({ timeout: 20000 })
 
-		/* What the note ends up holding is deliberately not asserted here. The
-		   Text app locks a note it has open, and a restore is a write from
-		   outside that lock: it comes back as 423 and the note keeps the version
-		   it had. This is about the editor not being left behind the spinner,
-		   which is what happens either way. */
+		/* What the note ends up holding is asserted by the test above; this one
+		   is only about the editor not being left behind the spinner. */
 	})
 
 	test('gives the editor back when a restore fails', async ({ page }) => {

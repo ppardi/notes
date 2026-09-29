@@ -12,15 +12,18 @@
 
 <script>
 
+import { showError } from '@nextcloud/dialogs'
 import { emit, subscribe, unsubscribe } from '@nextcloud/event-bus'
 import { useIsMobile } from '@nextcloud/vue/composables/useIsMobile'
 import { markRaw } from 'vue'
 import TagCompletion from './TagCompletion.vue'
+import { closeEditor, reopenEditor } from '../editorHandoff.js'
 import logger from '../Logger.js'
 import { queueCommand, refreshNote } from '../NotesService.js'
 import { borrowProseMirror, hasTopLevelHeading, headingFoldPlugin } from '../proseMirrorHeadingFold.js'
 import store from '../store.js'
 import { routeIsNewNote, tagsMayHaveChanged } from '../Util.js'
+import { restoreVersion } from '../versionRestore.js'
 
 /* Anything shaped like a tag. Deliberately looser than the server's parser:
    this only has to notice that the hashes in the text changed, and a false
@@ -416,12 +419,53 @@ export default {
 			return this.note && Number(fileId) === this.note.id
 		},
 
-		onFileRestoreRequested({ node }) {
-			if (!this.isCurrentNote(node?.fileid)) {
+		/**
+		 * Take the restore over while this note is open in the editor.
+		 *
+		 * Text holds a lock on a note for as long as its editor has it, and the
+		 * restore is a DAV MOVE from outside that lock: it came back 423 and the
+		 * note kept the version it had. The sidebar lets a listener take the
+		 * restore on instead, so close the editor - which drops the lock - and
+		 * make the move ourselves.
+		 *
+		 * @param {object} event the sidebar's event, whose preventDefault is a
+		 *                       field it reads back rather than a method
+		 */
+		onFileRestoreRequested(event) {
+			if (!this.isCurrentNote(event?.node?.fileid)) {
 				return
 			}
 
 			this.loading = true
+			/* Read synchronously the moment this returns, so it cannot wait for
+			   the editor to close - hence doing the whole restore here. */
+			event.preventDefault = true
+			this.restoreWithEditorClosed(event)
+		},
+
+		/**
+		 * Close the editor, restore the version, and open it again.
+		 *
+		 * @param {object} event the sidebar's event
+		 * @param {object} event.node the node as it will be once restored
+		 * @param {object} event.version the version to restore
+		 */
+		async restoreWithEditorClosed({ node, version }) {
+			const noteId = this.note.id
+			try {
+				await closeEditor(noteId)
+				await restoreVersion(version)
+				/* What the sidebar would have emitted, so the versions list and
+				   everything else watching hear about it as they always did. */
+				emit('files:node:updated', node)
+				emit('files_versions:restore:restored', { node, version })
+			} catch (error) {
+				logger.error('Could not restore this version', { error })
+				showError(t('notes', 'Could not restore this version.'))
+				emit('files_versions:restore:failed', version)
+			} finally {
+				reopenEditor(noteId)
+			}
 		},
 
 		onFileRestoreFailed(version) {
