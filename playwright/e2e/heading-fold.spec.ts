@@ -90,12 +90,65 @@ async function openNote(page: Page, noteId: number): Promise<void> {
 	await expect(foldControl(page, 'Groceries')).toBeAttached()
 }
 
+/**
+ * Open a note at phone width, where the navigation is collapsed away.
+ *
+ * @param page the page under test
+ * @param noteId the note to open
+ */
+async function openNoteOnPhone(page: Page, noteId: number): Promise<void> {
+	await page.goto(`/index.php/apps/notes/note/${noteId}`)
+	await expect(surface(page)).toBeVisible()
+	await expect(foldControl(page, 'Groceries')).toBeAttached()
+}
+
 test.describe('Folding sections under their headings', () => {
 	test.beforeEach(async ({ page, request }) => {
 		await login(page)
 		await deleteAllNotesVia()
 		await setNoteMode(request, 'rich')
 	})
+
+	/* Both widths, because the fix leans on the editor's mobile margin being
+	   the same at each - which it is, and this is what says so. */
+	for (const width of [320, 390]) {
+		test.describe(`on a phone ${width}px wide`, () => {
+			test.use({ viewport: { width, height: 844 } })
+
+			test('keeps the fold control on screen', async ({ page }, testInfo) => {
+				const noteId = await createNoteViaRequest('', uniqueTitle('fold-phone', testInfo), BODY)
+				await openNoteOnPhone(page, noteId)
+
+				const box = await foldControl(page, 'Groceries').boundingBox()
+				expect(box, 'the fold control has a box').not.toBeNull()
+				expect(box!.x, 'its leading edge is on screen').toBeGreaterThanOrEqual(0)
+				expect(box!.x + box!.width, 'its trailing edge is on screen')
+					.toBeLessThanOrEqual(width)
+			})
+
+			test('gives the note nothing to slide sideways on', async ({ page }, testInfo) => {
+				/* Anything reaching past the leading edge makes the note pannable
+				   sideways, and then a thumb going down the page drags it left and
+				   right as well. Measured as the leftmost edge in the editor rather
+				   than as the document's scroll width, which only ever grows to the
+				   right and so says nothing about the side this happens on. */
+				const noteId = await createNoteViaRequest('', uniqueTitle('fold-drift', testInfo), BODY)
+				await openNoteOnPhone(page, noteId)
+
+				const leftmost = await page.evaluate(() => {
+					let min = 0
+					document.querySelectorAll('.text-editor *').forEach((el) => {
+						const box = el.getBoundingClientRect()
+						if (box.width > 0 && box.height > 0 && box.left < min) {
+							min = box.left
+						}
+					})
+					return min
+				})
+				expect(leftmost, 'nothing hangs off the leading edge').toBe(0)
+			})
+		})
+	}
 
 	test('folds a section away and brings it back', async ({ page }, testInfo) => {
 		const noteId = await createNoteViaRequest('', uniqueTitle('fold', testInfo), BODY)

@@ -584,6 +584,32 @@ export default {
 	opacity: 0.6;
 }
 
+/* On a phone the editor leaves a 22px margin - the same at 320px wide as at
+   390 - and both this control and Text's own anchor are wider than that, so
+   hung outside the heading they reach past the side of the screen. Clipped,
+   and far enough out to make the note pannable sideways, which reads as text
+   that will not hold still while you scroll.
+
+   Both are pulled in until they are flush with the edge. The glyph is centred
+   in a box wider than itself, so it still clears the heading; only the
+   transparent part of the target laps over the first few pixels of the text,
+   where a tap folds the section rather than placing the cursor.
+
+   Text's anchor is moved rather than taken out of the layout: it is what the
+   outline panel scrolls to, and a box that is not drawn is still a box to
+   scroll to. Removing it is what broke the outline once already. */
+.is-mobile .text-editor {
+	--note-fold-margin: 22px;
+}
+
+.is-mobile .text-editor:deep(button.note-fold__toggle) {
+	inset-inline-end: calc(100% - (28px - var(--note-fold-margin)));
+}
+
+.is-mobile .text-editor:deep(.heading-anchor) {
+	inset-inline-start: calc(-1 * var(--note-fold-margin));
+}
+
 /* Under the pointer the box shows itself. Half of what makes a small control
    hard to hit is not knowing where it ends. */
 .text-editor:deep(button.note-fold__toggle:hover),
