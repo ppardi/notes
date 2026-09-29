@@ -670,6 +670,13 @@ export default {
 .is-mobile:deep(.text-menubar) {
 	// Avoid overlapping the navigation toggle
 	margin-inline-start: var(--default-clickable-area);
+	/* And give back what that margin takes. The bar is as wide as the pane
+	   already, so starting it a toggle's width in makes the pane wider than
+	   itself - and a pane a little wider than itself is something a thumb can
+	   drag sideways while its owner is only trying to scroll down. A pointing
+	   device never finds it, which is why this showed on a phone and a tablet
+	   held upright but never on a desk or a tablet turned over. */
+	max-width: calc(100% - var(--default-clickable-area));
 	z-index: 1;
 }
 </style>
