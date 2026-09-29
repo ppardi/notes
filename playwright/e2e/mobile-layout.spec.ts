@@ -125,6 +125,27 @@ test.describe('The note pane on a touch screen', () => {
 				expect(fit.barBelow, 'so does the toolbar').toBeLessThanOrEqual(0)
 			})
 
+			test('puts the editor toolbar above the note, not below it', async ({ page, request }) => {
+				/* Text flips the toolbar under the note below 1024px, where a
+				   keyboard would otherwise cover it. iOS Safari never resizes for
+				   its keyboard, so the bar is simply hidden while you type - the
+				   placement costs what it was meant to buy. We keep it on top at
+				   every width, the way a tablet turned sideways already has it. */
+				await login(page)
+				await deleteAllNotesVia()
+				await setNoteMode(request, 'rich')
+				const noteId = await createNoteViaRequest('', 'Drift', BODY)
+				await openNote(page, noteId)
+
+				const order = await page.evaluate(() => {
+					const bar = document.querySelector('.text-menubar') as HTMLElement
+					const body = document.querySelector('.editor__content-wrapper') as HTMLElement
+					return Math.round(bar.getBoundingClientRect().bottom - body.getBoundingClientRect().top)
+				})
+				expect(order, 'the toolbar ends where the note begins, or above it')
+					.toBeLessThanOrEqual(0)
+			})
+
 			test('does not slide sideways', async ({ page, request }) => {
 				await login(page)
 				await deleteAllNotesVia()

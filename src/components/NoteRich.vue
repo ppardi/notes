@@ -679,4 +679,19 @@ export default {
 	max-width: calc(100% - var(--default-clickable-area));
 	z-index: 1;
 }
+
+/* Below Nextcloud's mobile breakpoint Text turns this row around, putting the
+   toolbar under the note. That is the right call on a platform whose layout
+   shrinks when the keyboard opens: the bar lands just above the keys, next to
+   the line being typed. iOS Safari never shrinks - only the visual viewport
+   does - so the keyboard simply covers the bar, and the placement costs its
+   own reason for existing. Kept the way round a tablet held sideways already
+   has it, which is also the way the desktop has it.
+
+   Matching their two classes and beating them by one: the scoped attribute
+   only ties this rule, so without the repeat the two carry equal weight and
+   the winner is whichever stylesheet loaded last. */
+.is-mobile:deep(.text-editor__main.is-mobile) {
+	flex-direction: column;
+}
 </style>
