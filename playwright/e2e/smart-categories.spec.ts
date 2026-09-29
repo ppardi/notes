@@ -543,15 +543,24 @@ test.describe('Smart categories', () => {
 		const paint = (row: Locator) => row.locator('.app-navigation-entry').first()
 			.evaluate((el) => window.getComputedStyle(el).backgroundColor)
 
-		/* The smart row is painted as current; the tag it holds is not. */
-		expect(await paint(smartRow(page, 'Reading'))).not.toBe(await paint(tagRow))
+		/* Both colours are read here, while the smart category is the thing
+		   chosen, so what follows can say which row carries the highlight. The
+		   pair of "these two differ" assertions this replaces said the same
+		   thing twice and never named the lit one. */
+		const lit = await paint(smartRow(page, 'Reading'))
+		const dark = await paint(tagRow)
+		expect(lit).not.toBe(dark)
 
-		/* Chosen by hand, the same tag does light up - the rule is about which
-		   thing was selected, not about hiding the tag list. */
+		/* Chosen by hand, the same tag takes the highlight and the smart row
+		   gives it up - the rule is about which thing was selected, not about
+		   hiding the tag list. Polled because the tint is transitioned, and
+		   reading it before it has settled is how two earlier versions of this
+		   check drew the wrong conclusion. */
 		await page.getByRole('link', { name: 'philosophy', exact: true }).click()
 		await expect(page).toHaveURL(/tags=philosophy/)
 		await page.mouse.move(600, 600)
-		expect(await paint(tagRow)).not.toBe(await paint(smartRow(page, 'Reading')))
+		await expect.poll(() => paint(tagRow)).toBe(lit)
+		expect(await paint(smartRow(page, 'Reading'))).toBe(dark)
 	})
 
 	test('leaves the welcome screen when a selection has something to show', async ({ page }) => {

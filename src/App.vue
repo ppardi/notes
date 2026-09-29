@@ -487,7 +487,16 @@ export default {
 			const tags = tagsFromQuery(this.$route.query)
 			const mode = tagModeFromQuery(this.$route.query)
 			const selected = store.notes.getSelectedTags()
-			if (tags.join(',') === selected.join(',') && store.notes.getTagMode() === mode) {
+			/* The smart category has to be part of this, not just the tags. The
+			   URL names tags rather than a record, so a record left in the store
+			   is stale however well the tags match - and picking a tag out of a
+			   smart category's own tags lands exactly there: same tags, same
+			   mode, so this returned early and left the record in place. The
+			   tag rows stay dark while one is set, so the click changed the list
+			   and lit nothing, and only a reload put it right. */
+			if (tags.join(',') === selected.join(',')
+				&& store.notes.getTagMode() === mode
+				&& store.notes.getSelectedSmart() === null) {
 				return
 			}
 			if (tags.length > 0) {
