@@ -420,6 +420,22 @@ export default {
 	overflow: auto;
 }
 
+/* In the mobile layout a navigation toggle is laid out above this pane as an
+   ordinary block, so a pane told to be the full height of its parent ends up
+   exactly that button's height below the bottom of the window - and the
+   editor's toolbar, which sits at the bottom of the pane, goes with it. It can
+   then only be brought into view by overscrolling, and springs back the moment
+   you let go.
+
+   The breakpoint is Nextcloud's own: above it there is no toggle in the flow
+   and the pane is right as it stands, which is why a tablet turned on its side
+   never showed this. */
+@media (max-width: 1024px) {
+	.app-content-details {
+		height: calc(100% - var(--default-clickable-area));
+	}
+}
+
 .loading-label {
 	color: var(--color-text-lighter);
 	text-align: center;

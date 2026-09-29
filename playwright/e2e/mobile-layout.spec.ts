@@ -56,6 +56,30 @@ test.describe('The note pane on a touch screen', () => {
 		test.describe(label, () => {
 			test.use({ viewport: { width, height } })
 
+			test('keeps the editor toolbar within the window', async ({ page, request }) => {
+				/* The toolbar sits at the bottom of the note pane, so a pane that
+				   runs past the bottom of the window takes the toolbar with it.
+				   It can then only be seen by overscrolling, and springs back the
+				   moment you let go. */
+				await login(page)
+				await deleteAllNotesVia()
+				await setNoteMode(request, 'rich')
+				const noteId = await createNoteViaRequest('', 'Drift', BODY)
+				await openNote(page, noteId)
+
+				const fit = await page.evaluate(() => {
+					const pane = document.querySelector('.app-content-details') as HTMLElement
+					const bar = document.querySelector('.text-menubar') as HTMLElement
+					return {
+						paneBelow: Math.round(pane.getBoundingClientRect().bottom - window.innerHeight),
+						barBelow: Math.round(bar.getBoundingClientRect().bottom - window.innerHeight),
+					}
+				})
+				expect(fit.paneBelow, 'the pane ends at or above the bottom of the window')
+					.toBeLessThanOrEqual(0)
+				expect(fit.barBelow, 'so does the toolbar').toBeLessThanOrEqual(0)
+			})
+
 			test('does not slide sideways', async ({ page, request }) => {
 				await login(page)
 				await deleteAllNotesVia()
