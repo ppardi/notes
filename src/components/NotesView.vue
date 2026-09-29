@@ -158,7 +158,7 @@ export default {
 			}
 		},
 
-		// group notes by time ("All notes") or by category (if category chosen)
+		// group notes by time (when nothing is selected) or by category
 		groupedNotes() {
 			/* Search results come from everywhere, so a heading for when a note
 			   was last touched says nothing useful about why it is in the list.
