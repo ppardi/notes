@@ -46,7 +46,14 @@ export function canShowRaw() {
  * @param {number} noteId the note to show
  */
 export async function showRawMarkdown(noteId) {
-	await closeEditor(noteId)
+	/* Only a note that is actually open has an editor to ask. Asking about one
+	   that is not would wait out the whole timeout for an answer that is never
+	   coming, which on a phone is every time: the list and the note are never
+	   both on screen, so this is nearly always reached from a row rather than
+	   from the note being read. */
+	if (store.notes.getSelectedNote() === noteId) {
+		await closeEditor(noteId)
+	}
 	store.notes.setRawNote(noteId)
 }
 

@@ -46,9 +46,10 @@
 				{{ t('notes', 'Versions') }}
 			</NcActionButton>
 
-			<!-- Only on the note being read: the markdown editor lasts as long
-			     as the note is open, so turning it on for a note you are not
-			     looking at would be forgotten before you got there. -->
+			<!-- Opens the note it is on, rather than toggling the note being
+			     read: on a phone the list and the note are never both on screen,
+			     so by the time a row can be reached it is not the note being
+			     read any more. -->
 			<NcActionButton v-if="canToggleRaw" :closeAfterClick="true" @click="onToggleRaw">
 				<template #icon>
 					<CodeTagsIcon :size="20" />
@@ -207,7 +208,7 @@ export default {
 		},
 
 		canToggleRaw() {
-			return this.isSelected && canShowRaw()
+			return canShowRaw()
 		},
 
 		isShared() {
@@ -275,12 +276,19 @@ export default {
 	},
 
 	methods: {
-		onToggleRaw() {
+		async onToggleRaw() {
 			if (this.isRawNote) {
 				showRichText(this.note.id)
 				return
 			}
-			showRawMarkdown(this.note.id)
+			await showRawMarkdown(this.note.id)
+			/* On a phone the row can only be reached from the list, so the note
+			   this was asked for is not the one on screen - open it, the same
+			   way tapping the row does. The route may already be this note, the
+			   list having been shown by going back rather than by navigating,
+			   so the router alone would decline and leave the list up. */
+			this.onNoteSelected(this.note.id)
+			this.$router.push(this.noteRoute).catch(() => {})
 		},
 
 		onDragStart(event) {

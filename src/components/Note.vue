@@ -52,9 +52,13 @@ export default {
 	},
 
 	watch: {
-		noteId() {
-			/* Reading a different note is leaving the one that was turned raw. */
-			store.notes.clearRawNote()
+		noteId(id) {
+			/* Reading a different note is leaving the one that was turned raw -
+			   unless the note being opened is that one, which is how the action
+			   works where the list and the note are never both on screen. */
+			if (store.notes.getRawNoteId() !== Number(id)) {
+				store.notes.clearRawNote()
+			}
 		},
 	},
 }
