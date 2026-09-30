@@ -548,4 +548,29 @@ describe('the stats readout', () => {
 			vi.useRealTimers()
 		}
 	})
+
+	it('holds the last second that had writing in it', async () => {
+		/* The numbers are read after the pen lifts. Wiping them on the first
+		   idle second would leave zeros on screen exactly when someone looks. */
+		vi.stubGlobal('location', { search: '?inkstats=1' })
+		vi.useFakeTimers()
+		try {
+			const wrapper = await open({ png: new Blob(), strokes: [] })
+			await pointer(wrapper, 'pointerdown')
+			await pointer(wrapper, 'pointermove', { offsetX: 40 })
+			runFrame()
+			vi.advanceTimersByTime(1000)
+			await wrapper.vm.$nextTick()
+			const written = wrapper.find('.ink__stats').text()
+			expect(written).toMatch(/1\/s moves/)
+
+			await pointer(wrapper, 'pointerup')
+			vi.advanceTimersByTime(3000)
+			await wrapper.vm.$nextTick()
+
+			expect(wrapper.find('.ink__stats').text()).toBe(written)
+		} finally {
+			vi.useRealTimers()
+		}
+	})
 })

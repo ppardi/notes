@@ -155,26 +155,34 @@ export default {
 			   drawing. That is the one thing the numbers below cannot say on
 			   their own. */
 			let last = performance.now()
+			this.worstEver = 0
 			const tick = (now) => {
 				this.tally.ticks += 1
 				this.tally.worstGap = Math.max(this.tally.worstGap, now - last)
+				this.worstEver = Math.max(this.worstEver, now - last)
 				last = now
 				this.ticker = requestAnimationFrame(tick)
 			}
 			this.ticker = requestAnimationFrame(tick)
 			this.statsTimer = setInterval(() => {
 				const t = this.tally
+				this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0 }
+				/* Hold the last second that had writing in it. Otherwise the
+				   numbers are wiped the moment the pen lifts, which is exactly
+				   when someone looks at them. */
+				if (this.stats && !t.moves) {
+					return
+				}
 				const canvas = this.$refs.canvas
 				const filter = canvas ? window.getComputedStyle(canvas).filter : 'none'
 				this.stats = [
-					`${t.ticks}/s frames offered, worst gap ${t.worstGap.toFixed(0)}ms`,
+					`${t.ticks}/s frames offered, worst gap ${t.worstGap.toFixed(0)}ms (${this.worstEver.toFixed(0)}ms worst yet)`,
 					`${t.moves}/s moves  ${t.samples}/s samples  ${t.paints}/s paints`,
 					`${(t.moveMs / Math.max(t.moves, 1)).toFixed(3)}ms per move  ${(t.paintMs / Math.max(t.paints, 1)).toFixed(2)}ms per paint`,
 					`${t.moveMs.toFixed(0)}ms + ${t.paintMs.toFixed(0)}ms of every 1000ms in here`,
 					`${this.strokes.length} strokes, ${this.current?.points.length ?? 0} points under the pen`,
 					`canvas ${canvas?.width ?? 0}x${canvas?.height ?? 0} at ${window.devicePixelRatio || 1}x, filter ${filter}`,
 				].join('\n')
-				this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0 }
 			}, 1000)
 		},
 
