@@ -131,6 +131,23 @@ test.describe('Ink', () => {
 		await expect(page.locator('.ink__canvas')).toBeHidden()
 	})
 
+	test('leaves ink-shaped images from elsewhere alone when they are tapped', async ({ page, request }) => {
+		await login(page)
+		await deleteAllNotesVia()
+		await setNoteMode(request, 'rich')
+		// Named like ink, but one is another note's and one is on another host.
+		const noteId = await createNoteViaRequest('', 'Foreign ink', 'Typed already.\n\n![other](.attachments.99999/ink-abc123.png)\n\n![web](https://links.example.test/ink-abc123.png)\n')
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+		await expect(page.locator('.ProseMirror').first()).toBeVisible()
+
+		const figures = page.locator('figure[data-component="image-view"]')
+		await expect(figures).toHaveCount(2)
+		await figures.nth(0).click()
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await figures.nth(1).click()
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+	})
+
 	test('keeps exactly one tap listener across the editor being closed and reopened', async ({ page, request }) => {
 		// Count the live capture-phase click listeners the component registers.
 		// A second registration, or one left behind on a closed editor, is what

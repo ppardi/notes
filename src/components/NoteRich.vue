@@ -152,7 +152,7 @@ export default {
 		 * @param {MouseEvent} event the click
 		 */
 		onEditorClick(event) {
-			const id = inkIdFromNode(event.target)
+			const id = inkIdFromNode(event.target, this.noteId)
 			if (id === null) {
 				return
 			}
@@ -276,11 +276,13 @@ export default {
 					this.loading = false
 					this.editorElement = this.$refs.editor
 					this.installHeadingFold()
-					/* Removed first: onLoaded runs on every editor creation, and
-					   this fork recreates the editor for the close-and-reopen
-					   dance in src/editorHandoff.js. Without this the listeners
-					   stack up and one tap opens the canvas several times.
-					   Removing a listener that was never added is a no-op. */
+					/* onLoaded runs on every editor creation, and this fork
+					   recreates the editor for the close-and-reopen dance in
+					   src/editorHandoff.js. The element is the same each time.
+					   A second registration of this same bound function would be
+					   ignored by the browser anyway; removing first is
+					   belt-and-braces on top of that, and what really matters is
+					   removing it wherever the editor is torn down. */
 					this.stopListeningForInk()
 					this.$refs.editor?.addEventListener('click', this.onEditorClick, true)
 				},

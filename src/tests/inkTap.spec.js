@@ -22,21 +22,34 @@ function figure(src) {
 
 describe('inkIdFromNode', () => {
 	it('finds the ink a tap landed in', () => {
-		expect(inkIdFromNode(figure('.attachments.85110/ink-abc123.png'))).toBe('abc123')
+		expect(inkIdFromNode(figure('.attachments.85110/ink-abc123.png'), 85110)).toBe('abc123')
 	})
 
 	it('ignores an ordinary image', () => {
 		/* Tapping a photo must still do what Text does with a photo. */
-		expect(inkIdFromNode(figure('.attachments.85110/holiday.png'))).toBeNull()
+		expect(inkIdFromNode(figure('.attachments.85110/holiday.png'), 85110)).toBeNull()
 	})
 
 	it('ignores a tap outside any image', () => {
-		expect(inkIdFromNode(document.createElement('p'))).toBeNull()
-		expect(inkIdFromNode(null)).toBeNull()
+		expect(inkIdFromNode(document.createElement('p'), 85110)).toBeNull()
+		expect(inkIdFromNode(null, 85110)).toBeNull()
 	})
 
 	it('does not claim a name that only looks like ink', () => {
-		expect(inkIdFromNode(figure('.attachments.85110/ink-.png'))).toBeNull()
-		expect(inkIdFromNode(figure('.attachments.85110/ink-a b.png'))).toBeNull()
+		expect(inkIdFromNode(figure('.attachments.85110/ink-.png'), 85110)).toBeNull()
+		expect(inkIdFromNode(figure('.attachments.85110/ink-a b.png'), 85110)).toBeNull()
+	})
+
+	it('does not claim an external image with an ink-shaped name', () => {
+		expect(inkIdFromNode(figure('https://elsewhere.example/ink-abc123.png'), 85110)).toBeNull()
+		expect(inkIdFromNode(figure('https://elsewhere.example/.attachments.85110/ink-abc123.png'), 85110)).toBeNull()
+	})
+
+	it('does not claim ink that sits in another note\'s attachment folder', () => {
+		expect(inkIdFromNode(figure('.attachments.99999/ink-abc123.png'), 85110)).toBeNull()
+	})
+
+	it('accepts the note id as a string, as a route gives it', () => {
+		expect(inkIdFromNode(figure('.attachments.85110/ink-abc123.png'), '85110')).toBe('abc123')
 	})
 })
