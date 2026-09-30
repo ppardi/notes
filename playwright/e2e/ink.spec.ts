@@ -161,6 +161,21 @@ test.describe('Ink', () => {
 		expect(filters).toEqual(['invert(1)', 'none'])
 	})
 
+	test('leaves a control inside the ink to Text', async ({ page, request }) => {
+		await openInkedNote(page, request)
+		await drawAndFinish(page)
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+
+		// Text draws a caption field and a delete button inside its image node.
+		// Those are Text's: claiming a tap on one opens the canvas instead of
+		// doing what the control says.
+		const caption = page.locator('figure[data-component="image-view"] input.image__caption__input')
+		await expect(caption).toHaveCount(1)
+		await caption.click({ force: true })
+
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+	})
+
 	test('leaves ink-shaped images from elsewhere alone when they are tapped', async ({ page, request }) => {
 		await login(page)
 		await deleteAllNotesVia()

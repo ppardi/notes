@@ -17,6 +17,11 @@ import { INK_FILE_PATTERN, inkAttachmentPath } from './inkLink.js'
 
 const FIGURE = 'figure[data-component="image-view"][data-src]'
 
+/* Text draws its own controls inside that figure - a delete button, a caption
+   field. They are Text's to handle: a tap on one must do what the control
+   says, not open the canvas. */
+const CONTROL = 'button, a, input, textarea, select, [role="button"], [contenteditable="true"]'
+
 /**
  * The ink id of the image a click landed in.
  *
@@ -33,6 +38,15 @@ const FIGURE = 'figure[data-component="image-view"][data-src]'
 export function inkIdFromNode(target, noteId) {
 	const figure = target?.closest?.(FIGURE)
 	if (!figure) {
+		return null
+	}
+	/* Not everything that looks like a control is one of Text's: the picture
+	   itself is wrapped in a button ("Open image"), and a tap on that is the
+	   tap this whole feature is for. The control a tap is left to is one
+	   beside the picture, not one the picture is inside. */
+	const picture = figure.querySelector('img')
+	const control = target.closest(CONTROL)
+	if (control && figure.contains(control) && !(picture && control.contains(picture))) {
 		return null
 	}
 	const src = figure.getAttribute('data-src') ?? ''
