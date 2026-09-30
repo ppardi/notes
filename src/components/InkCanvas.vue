@@ -43,7 +43,7 @@
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
 import { loadInk, saveInk } from '../inkFile.js'
-import { samplesFrom, shouldDraw } from '../inkInput.js'
+import { eventAge, samplesFrom, shouldDraw } from '../inkInput.js'
 import { INK_COLOR, traceStroke } from '../inkRender.js'
 import { statsWanted } from '../inkStats.js'
 
@@ -136,11 +136,38 @@ export default {
 		/* A readout of what this canvas is really doing, for diagnosing a
 		   device that is not in the room. It costs nothing unless it was asked
 		   for, and is meant to be screenshotted and read, not kept. */
+		emptyTally() {
+			return { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0, lagSum: 0, lagMax: 0, batchSum: 0 }
+		},
+
+		/* How far behind the pen we are, and how much of that was already
+		   spent before the event reached us.
+		 *
+		 * Every pointer event carries the moment it happened, so the distance
+		 * from that to now is the delay the hand actually feels - and none of
+		 * it is ours until this line runs. The batch span is how old the
+		 * oldest sample in the event is: the digitizer's samples arrive many
+		 * at a time, and the first of them has been waiting that long.
+		 *
+		 * This is the number that says whether the delay is before us or
+		 * after us, which nothing else here could tell apart.
+		 *
+		 * @param {PointerEvent} event the move
+		 * @param {number} now the time its handling began
+		 */
+		noteLag(event, now) {
+			const lag = eventAge(event.timeStamp, now)
+			this.tally.lagSum += lag
+			this.tally.lagMax = Math.max(this.tally.lagMax, lag)
+			const oldest = event.getCoalescedEvents?.()?.[0]?.timeStamp
+			this.tally.batchSum += oldest ? eventAge(oldest, now) : lag
+		},
+
 		startStats() {
 			if (!statsWanted()) {
 				return
 			}
-			this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0 }
+			this.tally = this.emptyTally()
 			/* The cadence the browser is actually giving us, measured apart
 			   from our own painting. If this collapses while the time spent
 			   in here stays near nothing, the cost is the platform's - the
@@ -159,7 +186,7 @@ export default {
 			this.ticker = requestAnimationFrame(tick)
 			this.statsTimer = setInterval(() => {
 				const t = this.tally
-				this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0 }
+				this.tally = this.emptyTally()
 				/* Hold the last second that had writing in it. Otherwise the
 				   numbers are wiped the moment the pen lifts, which is exactly
 				   when someone looks at them. */
@@ -171,6 +198,7 @@ export default {
 				this.stats = [
 					`${t.ticks}/s frames offered, worst gap ${t.worstGap.toFixed(0)}ms (${this.worstEver.toFixed(0)}ms worst yet)`,
 					`${t.moves}/s moves  ${t.samples}/s samples  ${t.paints}/s paints`,
+					`behind the pen ${(t.lagSum / Math.max(t.moves, 1)).toFixed(0)}ms, worst ${t.lagMax.toFixed(0)}ms; batch spans ${(t.batchSum / Math.max(t.moves, 1)).toFixed(0)}ms`,
 					`${(t.moveMs / Math.max(t.moves, 1)).toFixed(3)}ms per move  ${(t.paintMs / Math.max(t.paints, 1)).toFixed(2)}ms per paint`,
 					`${t.moveMs.toFixed(0)}ms + ${t.paintMs.toFixed(0)}ms of every 1000ms in here`,
 					`${this.strokes.length} strokes, ${this.current?.points.length ?? 0} points under the pen`,
@@ -273,6 +301,7 @@ export default {
 				this.tally.moves += 1
 				this.tally.samples += samples.length
 				this.tally.moveMs += performance.now() - started
+				this.noteLag(event, started)
 			}
 		},
 

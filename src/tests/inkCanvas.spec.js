@@ -532,10 +532,32 @@ describe('the stats readout', () => {
 
 			const shown = wrapper.find('.ink__stats').text()
 			expect(shown).toMatch(/\d+\/s frames offered, worst gap \d+ms/)
+			expect(shown).toMatch(/behind the pen \d+ms, worst \d+ms; batch spans \d+ms/)
 			expect(shown).toMatch(/1\/s moves\s+1\/s samples\s+\d+\/s paints/)
 			expect(shown).toMatch(/ms per move/)
 			expect(shown).toMatch(/0 strokes, \d+ points under the pen/)
 			expect(shown).toMatch(/canvas \d+x\d+ at \d+x, filter /)
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+
+	it('reports how far behind the pen it is, from the event itself', async () => {
+		/* The one number that says whether the delay is before us or after us.
+		   An event that happened 40ms ago was already late when it arrived. */
+		statsWanted.mockReturnValue(true)
+		vi.useFakeTimers()
+		try {
+			const wrapper = await open({ png: new Blob(), strokes: [] })
+			await pointer(wrapper, 'pointerdown')
+			const late = performance.now() - 40
+			await pointer(wrapper, 'pointermove', { offsetX: 40, timeStamp: late })
+			runFrame()
+			vi.advanceTimersByTime(1000)
+			await wrapper.vm.$nextTick()
+
+			const shown = wrapper.find('.ink__stats').text()
+			expect(shown).toMatch(/behind the pen (3[5-9]|4[0-9])ms/)
 		} finally {
 			vi.useRealTimers()
 		}

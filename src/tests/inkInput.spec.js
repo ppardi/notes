@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { samplesFrom, shouldDraw } from '../inkInput.js'
+import { eventAge, samplesFrom, shouldDraw } from '../inkInput.js'
 
 /**
  * @param {object} fields what the event carries
@@ -87,5 +87,33 @@ describe('shouldDraw', () => {
 		   take no input at all, which is worse than taking a stray touch. */
 		expect(shouldDraw(pointer({ pointerType: '' }))).toBe(true)
 		expect(shouldDraw(pointer({ pointerType: undefined }))).toBe(true)
+	})
+})
+
+describe('eventAge', () => {
+	it('measures an event stamped on the page clock', () => {
+		expect(eventAge(1000, 1042)).toBe(42)
+	})
+
+	it('measures an event stamped on the wall clock', () => {
+		/* timeStamp is meant to be relative to the page's time origin, and is
+		   not everywhere: some engines report epoch milliseconds. Read as a
+		   page time, that gives an age of minus fifty-odd years, which would
+		   be reported as though it meant something. */
+		const now = performance.now()
+		expect(eventAge(Date.now() - 30, now)).toBeGreaterThanOrEqual(29)
+		expect(eventAge(Date.now() - 30, now)).toBeLessThan(120)
+	})
+
+	it('gives nothing rather than nonsense for a stamp it cannot place', () => {
+		expect(eventAge(undefined, 1000)).toBe(0)
+		expect(eventAge(Number.NaN, 1000)).toBe(0)
+		/* From the future, on neither clock. */
+		expect(eventAge(1e15, 1000)).toBe(0)
+	})
+
+	it('gives nothing for an age too large to be an input delay', () => {
+		/* Half a minute behind the pen is not a measurement, it is a mistake. */
+		expect(eventAge(0, 60000)).toBe(0)
 	})
 })
