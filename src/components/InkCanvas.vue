@@ -40,10 +40,10 @@
 </template>
 
 <script>
-import { getStroke } from 'perfect-freehand'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import { loadInk, saveInk } from '../inkFile.js'
 import { PEN_SEEN_MS, samplesFrom, shouldDraw } from '../inkInput.js'
+import { INK_COLOR, traceStroke } from '../inkRender.js'
 
 export default {
 	name: 'InkCanvas',
@@ -81,7 +81,6 @@ export default {
 	},
 
 	async mounted() {
-		this.fit()
 		/* Rotating an iPad changes the canvas size. Without this the backing
 		   store keeps the old dimensions and every stroke drawn afterwards
 		   lands offset from the pen - on the one device this is built for. */
@@ -106,7 +105,10 @@ export default {
 			}
 			this.strokes = existing?.strokes ?? []
 			this.ready = true
-			this.draw()
+			/* After the render that shows it, so the canvas being fitted is the
+			   one that ends up on screen, at the size the dialog gives it. */
+			await this.$nextTick()
+			this.paint()
 		} catch {
 			/* We could not tell whether there is ink here already. Saving now
 			   would replace it by name with whatever is drawn on a blank page,
@@ -124,20 +126,61 @@ export default {
 	},
 
 	methods: {
+		/* Painting is what notices the new size and refits for it, so there is
+		   one path into that and not two. */
 		onResize() {
-			this.fit()
-			this.draw()
+			this.paintNow()
 		},
 
+		/* The backing store this canvas should have: its box in device pixels,
+		   which is what keeps a stroke crisp on a high-density screen. */
+		backingSize() {
+			const canvas = this.$refs.canvas
+			const ratio = window.devicePixelRatio || 1
+			return [Math.round(canvas.clientWidth * ratio), Math.round(canvas.clientHeight * ratio)]
+		},
+
+		/* Size the canvas and the layer behind it to the box, and set what a
+		   context loses whenever its size is written to: the device-pixel
+		   scale, so every coordinate from here on is a CSS pixel, and the
+		   colour every stroke is filled in. */
 		fit() {
 			const canvas = this.$refs.canvas
 			if (!canvas) {
 				return
 			}
+			this.layer = this.layer ?? document.createElement('canvas')
 			const ratio = window.devicePixelRatio || 1
-			canvas.width = canvas.clientWidth * ratio
-			canvas.height = canvas.clientHeight * ratio
-			canvas.getContext('2d')?.scale(ratio, ratio)
+			const [width, height] = this.backingSize()
+			for (const surface of [canvas, this.layer]) {
+				surface.width = width
+				surface.height = height
+				const context = surface.getContext('2d')
+				if (context) {
+					context.scale(ratio, ratio)
+					context.fillStyle = INK_COLOR
+				}
+			}
+		},
+
+		/* Fit where the drawing happens rather than only where the canvas is
+		   mounted. At mount the dialog has not been laid out, so the box can
+		   still be nothing; and a canvas that is resized loses its backing
+		   store, taking the scale, the colour and the page with it. Checking
+		   here means a canvas is never drawn on unprepared, whatever put it
+		   in that state. */
+		ensureFitted() {
+			const canvas = this.$refs.canvas
+			if (!canvas) {
+				return false
+			}
+			const [width, height] = this.backingSize()
+			if (this.layer && canvas.width === width && canvas.height === height) {
+				return true
+			}
+			this.fit()
+			this.renderLayer()
+			return true
 		},
 
 		penSeen() {
@@ -192,7 +235,7 @@ export default {
 				return
 			}
 			this.current.points.push(...samplesFrom(event))
-			this.draw()
+			this.requestPaint()
 		},
 
 		onUp(event) {
@@ -208,39 +251,94 @@ export default {
 			this.current = null
 			this.pointerId = null
 			this.pointerType = null
-			this.draw()
+			this.paintNow()
 		},
 
+		/* The finished stroke goes onto the layer as it is committed, so the
+		   page is never traced twice. */
 		finishStroke() {
 			if (this.current) {
 				this.strokes.push(this.current)
+				const context = this.layer?.getContext('2d')
+				if (context) {
+					traceStroke(context, this.current.points)
+				}
 				this.current = null
 				this.pointerId = null
 				this.pointerType = null
-				this.draw()
+				this.paintNow()
 			}
 		},
 
 		undo() {
 			this.strokes.pop()
-			this.draw()
+			this.renderLayer()
+			this.paintNow()
 		},
 
-		draw() {
-			const context = this.$refs.canvas?.getContext('2d')
+		/* Cleared in CSS pixels, because the context is scaled by the device
+		   pixel ratio and its coordinates are CSS pixels from then on. */
+		clear(context) {
+			context.clearRect(0, 0, this.$refs.canvas.clientWidth, this.$refs.canvas.clientHeight)
+		},
+
+		/* Trace every finished stroke onto the layer. Only when what is on the
+		   layer has stopped being true: a resize, or an undo. Writing does not
+		   come through here, which is the point of the layer. */
+		renderLayer() {
+			const context = this.layer?.getContext('2d')
 			if (!context) {
 				return
 			}
-			/* Cleared in CSS pixels, because the context is scaled by the device
-			   pixel ratio and its coordinates are CSS pixels from then on. */
-			context.clearRect(0, 0, this.$refs.canvas.clientWidth, this.$refs.canvas.clientHeight)
-			for (const stroke of [...this.strokes, this.current].filter(Boolean)) {
-				const outline = getStroke(stroke.points, { size: 6, thinning: 0.6, simulatePressure: false })
-				context.beginPath()
-				outline.forEach(([x, y], i) => (i ? context.lineTo(x, y) : context.moveTo(x, y)))
-				context.closePath()
-				context.fill()
+			this.clear(context)
+			for (const stroke of this.strokes) {
+				traceStroke(context, stroke.points)
 			}
+		},
+
+		/* The page, then the stroke under the pen. The page is one blit of the
+		   layer rather than a retrace, so writing costs the same on a full
+		   page as on an empty one. */
+		paint() {
+			if (!this.ensureFitted()) {
+				return
+			}
+			const canvas = this.$refs.canvas
+			const context = canvas.getContext('2d')
+			if (!context) {
+				return
+			}
+			this.clear(context)
+			if (this.layer) {
+				context.drawImage(this.layer, 0, 0, canvas.clientWidth, canvas.clientHeight)
+			}
+			if (this.current) {
+				traceStroke(context, this.current.points)
+			}
+		},
+
+		/* One paint per frame, however many samples arrived in it. A pen
+		   reports far more often than the screen refreshes, and painting on
+		   each report is work thrown away - it is what puts the ink behind
+		   the pen. */
+		requestPaint() {
+			if (this.frame) {
+				return
+			}
+			this.frame = requestAnimationFrame(() => {
+				this.frame = null
+				this.paint()
+			})
+		},
+
+		/* Paint now, cancelling a frame that would repeat it. For the moments
+		   that read the canvas rather than show it. */
+		paintNow() {
+			if (this.frame) {
+				cancelAnimationFrame(this.frame)
+				this.frame = null
+			}
+			this.paint()
 		},
 
 		async done() {
@@ -250,6 +348,9 @@ export default {
 			/* A stroke still under the pen is drawn on the canvas, so it would be
 			   in the PNG but not in the strokes. Commit it first. */
 			this.finishStroke()
+			/* The PNG is whatever the canvas shows, so nothing may be waiting
+			   for a frame when it is read. */
+			this.paintNow()
 			this.error = ''
 			this.saving = true
 			try {
@@ -285,6 +386,17 @@ export default {
 	flex: 1;
 	flex-direction: column;
 	min-height: 0;
+}
+
+/* Ink is drawn and saved as one colour on transparency, and the theme is
+   applied where it is shown - here and on the note - so a page written on a
+   light screen reads on a dark one. Nextcloud sets this to `no` on a light
+   theme, which is not a filter, so the picture is left alone; where the
+   variable is not set at all the declaration is dropped and the ink stays as
+   it was drawn. */
+.ink__canvas,
+.ink__backdrop {
+	filter: var(--background-invert-if-dark);
 }
 
 /* The saved picture, behind a canvas that is blank and takes no input. Laid

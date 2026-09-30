@@ -12,25 +12,61 @@ vi.mock('@nextcloud/vue/components/NcButton', () => ({
 	default: { name: 'NcButton', template: '<button><slot /></button>' },
 }))
 
+/* Counting what is traced is how these tests see the cost of drawing: the
+   canvas must not retrace the page to show one more stroke. */
+const traceStroke = vi.fn()
+vi.mock('../inkRender.js', async (original) => ({
+	...(await original()),
+	traceStroke: (...a) => traceStroke(...a),
+}))
+
 const saveInk = vi.fn()
 const loadInk = vi.fn()
 vi.mock('../inkFile.js', () => ({ saveInk: (...a) => saveInk(...a), loadInk: (...a) => loadInk(...a) }))
 
 const InkCanvas = (await import('../components/InkCanvas.vue')).default
+const { INK_COLOR } = await import('../inkRender.js')
+
+/* Runs whatever is waiting for the next frame. Set up in beforeAll, where the
+   queue it drains lives. */
+let runFrame
 
 beforeAll(() => {
 	globalThis.t = (app, text) => text
-	HTMLCanvasElement.prototype.getContext = () => ({
-		clearRect: () => {},
-		fill: () => {},
-		beginPath: () => {},
-		closePath: () => {},
-		moveTo: () => {},
-		lineTo: () => {},
-		save: () => {},
-		restore: () => {},
-		scale: () => {},
-	})
+	/* One context per canvas, so a test can count what was asked of it. */
+	const contexts = new WeakMap()
+	HTMLCanvasElement.prototype.getContext = function() {
+		if (!contexts.has(this)) {
+			contexts.set(this, {
+				calls: [],
+				fillStyle: null,
+				clearRect() { this.calls.push('clearRect') },
+				drawImage() { this.calls.push('drawImage') },
+				fill() {},
+				beginPath() {},
+				closePath() {},
+				moveTo() {},
+				lineTo() {},
+				quadraticCurveTo() {},
+				save() {},
+				restore() {},
+				scale() {},
+			})
+		}
+		return contexts.get(this)
+	}
+	/* Frames run when a test says so, so "one paint per frame" is observable
+	   rather than a race with jsdom's own clock. */
+	let pending = []
+	globalThis.requestAnimationFrame = (cb) => pending.push(cb)
+	globalThis.cancelAnimationFrame = () => {
+		pending = []
+	}
+	runFrame = () => {
+		const due = pending
+		pending = []
+		due.forEach((cb) => cb())
+	}
 	HTMLCanvasElement.prototype.toBlob = function(cb) {
 		cb(new Blob([new Uint8Array([1])]))
 	}
@@ -41,6 +77,7 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+	traceStroke.mockReset()
 	saveInk.mockReset()
 	loadInk.mockReset()
 })
@@ -367,5 +404,116 @@ describe('InkCanvas', () => {
 			wrapper.unmount()
 			expect(disconnect).toHaveBeenCalled()
 		})
+	})
+})
+
+describe('InkCanvas drawing', () => {
+	const page = (n) => Array.from({ length: n }, (_, i) => ({ points: [[i, i, 0.5]] }))
+	const visible = (wrapper) => wrapper.find('canvas').element.getContext('2d')
+
+	/* One stroke, written the way a pen writes it: many samples, then a lift. */
+	async function write(wrapper) {
+		await pointer(wrapper, 'pointerdown')
+		for (let i = 1; i <= 6; i++) {
+			await pointer(wrapper, 'pointermove', { offsetX: 10 + i * 3 })
+			runFrame()
+		}
+		await pointer(wrapper, 'pointerup')
+	}
+
+	it('paints once a frame, however many samples arrive in it', async () => {
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		const context = visible(wrapper)
+		await pointer(wrapper, 'pointerdown')
+		context.calls.length = 0
+
+		await pointer(wrapper, 'pointermove', { offsetX: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 30 })
+		await pointer(wrapper, 'pointermove', { offsetX: 40 })
+		expect(context.calls).toEqual([])
+
+		runFrame()
+		expect(context.calls.filter((c) => c === 'clearRect')).toHaveLength(1)
+	})
+
+	it('costs the same to write on a full page as on an empty one', async () => {
+		/* The lag: a canvas that retraces every stroke on every sample gets
+		   slower the more has been written on it. Whatever this costs, it must
+		   not grow with the page. */
+		const traced = async (n) => {
+			const wrapper = await open({ png: new Blob(), strokes: page(n) })
+			traceStroke.mockClear()
+			await write(wrapper)
+			return traceStroke.mock.calls.length
+		}
+
+		const empty = await traced(2)
+		/* Without this the test passes on a canvas that traces nothing. */
+		expect(empty).toBeGreaterThan(0)
+		expect(await traced(50)).toBe(empty)
+	})
+
+	it('shows the strokes already there without tracing them again', async () => {
+		const wrapper = await open({ png: new Blob(), strokes: page(20) })
+		const context = visible(wrapper)
+		traceStroke.mockClear()
+		context.calls.length = 0
+
+		await pointer(wrapper, 'pointerdown')
+		await pointer(wrapper, 'pointermove', { offsetX: 20 })
+		runFrame()
+
+		/* The page comes from the layer it was already traced onto; only the
+		   stroke under the pen is traced. */
+		expect(context.calls).toContain('drawImage')
+		expect(traceStroke).toHaveBeenCalledTimes(1)
+	})
+
+	it('retraces the page when a stroke is taken off it', async () => {
+		const wrapper = await open({ png: new Blob(), strokes: page(3) })
+		traceStroke.mockClear()
+
+		wrapper.vm.undo()
+
+		expect(traceStroke).toHaveBeenCalledTimes(2)
+	})
+
+	it('has everything on the canvas before it is saved', async () => {
+		/* The PNG is whatever the canvas shows. A stroke still waiting for a
+		   frame would be in the strokes and not in the picture. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		await pointer(wrapper, 'pointerdown')
+		await pointer(wrapper, 'pointermove', { offsetX: 40 })
+		const context = visible(wrapper)
+		context.calls.length = 0
+
+		await wrapper.vm.done()
+
+		expect(context.calls).toContain('clearRect')
+		expect(saveInk).toHaveBeenCalledTimes(1)
+	})
+
+	it('draws in the one colour the theme is applied to', async () => {
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		wrapper.vm.paint()
+		expect(visible(wrapper).fillStyle).toBe(INK_COLOR)
+	})
+
+	it('fits a canvas it was given after the dialog was laid out', async () => {
+		/* At mount the dialog has no size yet, so the canvas fitted then can
+		   be the wrong one or no size at all. Drawing must not go onto an
+		   unprepared canvas. */
+		const wrapper = await open({ png: new Blob(), strokes: page(3) })
+		const canvas = wrapper.find('canvas').element
+		canvas.width = 1
+		canvas.height = 1
+		traceStroke.mockClear()
+
+		wrapper.vm.paint()
+
+		expect(canvas.width).toBe(800 * (window.devicePixelRatio || 1))
+		/* The layer went with it, so the page is put back. */
+		expect(traceStroke).toHaveBeenCalledTimes(3)
 	})
 })
