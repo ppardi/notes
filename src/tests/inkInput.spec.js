@@ -36,16 +36,36 @@ describe('samplesFrom', () => {
 		expect(samplesFrom(pointer({ offsetX: 7, offsetY: 8, pressure: 0.3 }))).toEqual([[7, 8, 0.3]])
 	})
 
+	it('falls back when getCoalescedEvents returns an empty list', () => {
+		/* An empty list should not erase the event's own position. */
+		expect(samplesFrom(pointer({ offsetX: 7, offsetY: 8, pressure: 0.3, getCoalescedEvents: () => [] }))).toEqual([[7, 8, 0.3]])
+	})
+
 	it('gives a mouse a usable pressure', () => {
 		/* A mouse reports 0.5 while down and 0 otherwise; a pen that reports 0
 		   on contact would otherwise draw nothing at all. */
-		expect(samplesFrom(pointer({ pointerType: 'mouse', pressure: 0 }))[0][2]).toBeGreaterThan(0)
+		expect(samplesFrom(pointer({ pointerType: 'mouse', pressure: 0 }))[0][2]).toBe(0.5)
+	})
+
+	it('substitutes flat pressure per sample in a coalesced run', () => {
+		/* A coalesced run can have mixed pressure values; each zero must become FLAT_PRESSURE. */
+		const coalesced = [
+			pointer({ offsetX: 1, offsetY: 1, pressure: 0 }),
+			pointer({ offsetX: 2, offsetY: 2, pressure: 0.4 }),
+		]
+		const event = pointer({ offsetX: 3, offsetY: 3, getCoalescedEvents: () => coalesced })
+		expect(samplesFrom(event)).toEqual([[1, 1, 0.5], [2, 2, 0.4]])
 	})
 })
 
 describe('shouldDraw', () => {
 	it('draws for a pen', () => {
 		expect(shouldDraw(pointer({ pointerType: 'pen' }), false)).toBe(true)
+	})
+
+	it('draws for a pen even after a pen has been seen', () => {
+		/* A pen must draw after the first stroke, or the feature is unusable. */
+		expect(shouldDraw(pointer({ pointerType: 'pen' }), true)).toBe(true)
 	})
 
 	it('draws for a finger when no pen has been seen', () => {
