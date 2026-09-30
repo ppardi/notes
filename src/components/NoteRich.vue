@@ -34,7 +34,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import InkCanvas from './InkCanvas.vue'
 import TagCompletion from './TagCompletion.vue'
 import { closeEditor, reopenEditor } from '../editorHandoff.js'
-import { inkContent, makeInkId } from '../inkLink.js'
+import { inkContent, inkIdFromUrl, makeInkId } from '../inkLink.js'
 import logger from '../Logger.js'
 import { queueCommand, refreshNote } from '../NotesService.js'
 import { borrowProseMirror, hasTopLevelHeading, headingFoldPlugin } from '../proseMirrorHeadingFold.js'
@@ -142,6 +142,27 @@ export default {
 		},
 
 		/**
+		 * Open a link that is not ours, the way Text does when nobody has
+		 * claimed links: resolved against this page, in a new tab.
+		 *
+		 * Claiming links replaces that behaviour for every link in every note,
+		 * so it is restated here rather than assumed. The one difference is
+		 * noopener, so a page a note links to gets no handle on this one.
+		 *
+		 * @param {string} href the link, absolute or relative
+		 */
+		openOrdinaryLink(href) {
+			let target = href
+			try {
+				target = new URL(href, window.location.href).href
+			} catch {
+				/* Not a URL the browser can resolve: pass it on as it came, as
+				   Text's own handler would have thrown on it. */
+			}
+			window.open(target, '_blank', 'noopener')
+		},
+
+		/**
 		 * @param {object} saved what the canvas saved
 		 * @param {string} saved.id the ink's id
 		 */
@@ -215,6 +236,17 @@ export default {
 					this.loading = false
 					this.editorElement = this.$refs.editor
 					this.installHeadingFold()
+				},
+				openLinkHandler: (href) => {
+					/* Text hands us the resolved absolute URL, while the document
+					   holds a relative path - so the id is read off the tail.
+					   Anything that is not ours is handed straight back. */
+					const id = inkIdFromUrl(href)
+					if (id === null) {
+						this.openOrdinaryLink(href)
+						return
+					}
+					this.openInk(id)
 				},
 				onUpdate: ({ markdown }) => {
 					if (this.note) {

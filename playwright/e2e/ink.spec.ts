@@ -23,12 +23,23 @@ async function drawAndFinish(page: Page): Promise<void> {
 	await page.getByRole('button', { name: 'Ink', exact: true }).click()
 	const canvas = page.locator('.ink__canvas')
 	await expect(canvas).toBeVisible()
+	// The canvas takes no strokes until it has looked for ink already there, and
+	// Done is disabled until it has. Drawing before that drops the stroke silently.
+	await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
 
+	// Draw from the middle. The canvas is fixed to the whole viewport but sits
+	// inside the content area's stacking context, so the app header and the
+	// navigation sidebar are painted over its top and left edges and swallow a
+	// stroke that starts there.
 	const box = (await canvas.boundingBox())!
-	await page.mouse.move(box.x + 50, box.y + 50)
+	const x = box.x + box.width / 2
+	const y = box.y + box.height / 2
+	await page.mouse.move(x, y)
 	await page.mouse.down()
-	await page.mouse.move(box.x + 150, box.y + 120, { steps: 10 })
+	await page.mouse.move(x + 100, y + 70, { steps: 10 })
 	await page.mouse.up()
+	// A stroke that landed is what makes Undo available.
+	await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
 	await page.getByRole('button', { name: 'Done' }).click()
 }
 
@@ -68,5 +79,44 @@ test.describe('Ink', () => {
 		expect(after.split('\n')[0]).toBe('# Inked')
 		expect(after).toContain('Typed already.')
 		expect(after.indexOf('![')).toBeGreaterThan(after.indexOf('Typed already.'))
+	})
+
+	test('reopens the ink from its link, with the strokes still there', async ({ page, request }) => {
+		const noteId = await openInkedNote(page, request)
+		await drawAndFinish(page)
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
+		const before = await noteContent(noteId)
+
+		await page.getByRole('link', { name: 'Edit ink' }).click()
+		await expect(page.locator('.ink__canvas')).toBeVisible()
+		// The strokes came back, so this is the same ink and not a new block.
+		// Scoped to the canvas: the editor's own toolbar has an Undo too.
+		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
+
+		// Finishing again replaces the file; it must not add a second block.
+		await page.getByRole('button', { name: 'Done' }).click()
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await page.waitForTimeout(3000)
+		expect(await noteContent(noteId)).toBe(before)
+	})
+
+	test('leaves an ordinary link to the browser, in a new tab', async ({ page, request, context }) => {
+		await login(page)
+		await deleteAllNotesVia()
+		await setNoteMode(request, 'rich')
+		// A host that does not exist, answered locally, so the test needs no network.
+		await context.route('https://links.example.test/**', route => route.fulfill({ contentType: 'text/html', body: '<p>ok</p>' }))
+		const noteId = await createNoteViaRequest('', 'Linked', '[A web page](https://links.example.test/ordinary-link)\n')
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+		await expect(page.locator('.ProseMirror').first()).toBeVisible()
+
+		const opened = context.waitForEvent('page')
+		await page.getByRole('link', { name: 'A web page' }).click()
+		const tab = await opened
+		expect(tab.url()).toContain('ordinary-link')
+		// The note itself stayed where it was, and no canvas opened.
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		expect(page.url()).toContain(`/apps/notes/note/${noteId}`)
 	})
 })
