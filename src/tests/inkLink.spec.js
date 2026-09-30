@@ -4,7 +4,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest'
-import { INK_FILE_PATTERN, inkAttachmentPath, inkFileName, inkIdFromUrl, inkLinkUrl, inkMarkdown, makeInkId } from '../inkLink.js'
+import { INK_FILE_PATTERN, inkAttachmentPath, inkContent, inkFileName, inkIdFromUrl, inkLinkUrl, inkMarkdown, makeInkId } from '../inkLink.js'
 
 beforeAll(() => {
 	globalThis.t = (app, text, params) => Object.entries(params ?? {})
@@ -76,6 +76,18 @@ describe('what goes into the note', () => {
 		expect(markdown).toContain(inkLinkUrl('abc123'))
 		expect(markdown.split('\n\n').length).toBeGreaterThanOrEqual(2)
 		expect(markdown).not.toMatch(/\[!\[[^\]]*\]\([^)]*\)\]\(/)
+	})
+})
+
+describe('what goes into the editor', () => {
+	it('is an image block and a separate paragraph holding the link', () => {
+		const [image, paragraph] = inkContent(85110, 'abc123')
+		expect(image.type).toBe('image')
+		expect(image.attrs.src).toBe('.attachments.85110/ink-abc123.png')
+		expect(paragraph.type).toBe('paragraph')
+		expect(paragraph.content[0].marks[0].attrs.href).toBe(inkLinkUrl('abc123'))
+		/* The link is never a mark on the image: Text would discard it. */
+		expect(image.marks).toBeUndefined()
 	})
 })
 

@@ -7,6 +7,20 @@
 	<div class="text-editor-wrapper" :class="{ loading: loading, 'icon-error': !loading && (!note || note.error), 'is-mobile': isMobile }">
 		<div v-show="!loading" ref="editor" class="text-editor" />
 		<TagCompletion :editorElement="editorElement" @select="onTagCompleted" />
+		<NcButton v-if="!loading"
+			class="ink-open"
+			variant="tertiary"
+			@click="openInk()"
+		>
+			{{ t('notes', 'Ink') }}
+		</NcButton>
+		<InkCanvas
+			v-if="inkId"
+			:noteId="Number(noteId)"
+			:inkId="inkId"
+			@saved="onInkSaved"
+			@close="inkId = null"
+		/>
 	</div>
 </template>
 
@@ -16,8 +30,11 @@ import { showError } from '@nextcloud/dialogs'
 import { emit, subscribe, unsubscribe } from '@nextcloud/event-bus'
 import { useIsMobile } from '@nextcloud/vue/composables/useIsMobile'
 import { markRaw } from 'vue'
+import NcButton from '@nextcloud/vue/components/NcButton'
+import InkCanvas from './InkCanvas.vue'
 import TagCompletion from './TagCompletion.vue'
 import { closeEditor, reopenEditor } from '../editorHandoff.js'
+import { inkContent, makeInkId } from '../inkLink.js'
 import logger from '../Logger.js'
 import { queueCommand, refreshNote } from '../NotesService.js'
 import { borrowProseMirror, hasTopLevelHeading, headingFoldPlugin } from '../proseMirrorHeadingFold.js'
@@ -41,6 +58,8 @@ export default {
 	name: 'NoteRich',
 
 	components: {
+		InkCanvas,
+		NcButton,
 		TagCompletion,
 	},
 
@@ -66,6 +85,8 @@ export default {
 			hashWords: null,
 			tagSaveTimer: null,
 			tagRefreshTimer: null,
+			inkId: null,
+			newInk: false,
 		}
 	},
 
@@ -110,6 +131,29 @@ export default {
 	},
 
 	methods: {
+		/**
+		 * Open the canvas, on a new ink block or one already in the note.
+		 *
+		 * @param {string | null} id the ink to reopen, or null for a new one
+		 */
+		openInk(id = null) {
+			this.newInk = id === null
+			this.inkId = id ?? makeInkId()
+		},
+
+		/**
+		 * @param {object} saved what the canvas saved
+		 * @param {string} saved.id the ink's id
+		 */
+		onInkSaved({ id }) {
+			/* Only a new block is written into the note. Re-editing overwrites
+			   the file under the same name, so the markdown already points at
+			   it and rewriting would only churn the note. */
+			if (this.newInk) {
+				this.editor?.insertAtCursor?.(inkContent(Number(this.noteId), id))
+			}
+		},
+
 		async fetchData() {
 			this.etag = null
 

@@ -85,3 +85,32 @@ export function inkIdFromUrl(url) {
 export function inkMarkdown(noteId, id) {
 	return `![${t('notes', 'Ink')}](${inkAttachmentPath(noteId, id)})\n\n[${t('notes', 'Edit ink')}](${inkLinkUrl(id)})\n`
 }
+
+/**
+ * The same two blocks as inkMarkdown, as the document nodes Text's editor
+ * takes.
+ *
+ * The editor's insertAtCursor reads a string as HTML, not markdown, so the
+ * markdown would land in the note as literal, backslash-escaped text rather
+ * than as an image and a link.
+ *
+ * @param {number} noteId the note
+ * @param {string} id the ink's id
+ * @return {object[]} nodes to insert
+ */
+export function inkContent(noteId, id) {
+	return [
+		{
+			type: 'image',
+			attrs: { src: inkAttachmentPath(noteId, id), alt: t('notes', 'Ink') },
+		},
+		{
+			type: 'paragraph',
+			content: [{
+				type: 'text',
+				text: t('notes', 'Edit ink'),
+				marks: [{ type: 'link', attrs: { href: inkLinkUrl(id) } }],
+			}],
+		},
+	]
+}
