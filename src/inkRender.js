@@ -20,7 +20,11 @@ export const INK_COLOR = '#000000'
    while a stylus reports real pressure and drew a line that swelled and
    tapered - a fountain pen where a pen was wanted. The nib is the same width
    however hard it is pressed, on every device. */
-const STROKE = { size: 6, thinning: 0, simulatePressure: false }
+/** The nib's width in CSS pixels, exported so a caller can tell how far a
+ *  stroke's ink spreads beyond the points it was drawn from. */
+export const STROKE_SIZE = 6
+
+const STROKE = { size: STROKE_SIZE, thinning: 0, simulatePressure: false }
 
 /* Below this, perfect-freehand has not returned a shape worth curving. */
 const CURVABLE = 4

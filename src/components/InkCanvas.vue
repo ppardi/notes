@@ -12,9 +12,15 @@
 					:src="backdrop"
 					:alt="t('notes', 'The ink as it is saved')"
 				>
+				<!-- What has been written already. Not touched while writing,
+				     so the cost of a stroke does not grow with the page. -->
+				<canvas ref="page" class="ink__canvas ink__canvas--page" aria-hidden="true" />
+				<!-- The stroke under the pen, alone on a transparent sheet
+				     above it. The two are composited by the browser, which is
+				     what a compositor is for. -->
 				<canvas
 					ref="canvas"
-					class="ink__canvas"
+					class="ink__canvas ink__canvas--live"
 					@pointerdown="onDown"
 					@pointermove="onMove"
 					@pointerup="onUp"
@@ -43,8 +49,8 @@
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
 import { loadInk, saveInk } from '../inkFile.js'
-import { eventAge, samplesFrom, shouldDraw } from '../inkInput.js'
-import { INK_COLOR, traceStroke } from '../inkRender.js'
+import { eventAge, predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
+import { INK_COLOR, STROKE_SIZE, traceStroke } from '../inkRender.js'
 import { statsWanted } from '../inkStats.js'
 
 export default {
@@ -108,10 +114,12 @@ export default {
 			}
 			this.strokes = existing?.strokes ?? []
 			this.ready = true
-			/* After the render that shows it, so the canvas being fitted is the
-			   one that ends up on screen, at the size the dialog gives it. */
+			/* After the render that shows it, so the sheets being fitted are
+			   the ones that end up on screen, at the size the dialog gives
+			   them. */
 			await this.$nextTick()
-			this.paint()
+			this.fit()
+			this.renderPage()
 		} catch {
 			/* We could not tell whether there is ink here already. Saving now
 			   would replace it by name with whatever is drawn on a blank page,
@@ -152,15 +160,23 @@ export default {
 		 * This is the number that says whether the delay is before us or
 		 * after us, which nothing else here could tell apart.
 		 *
+		 * Takes the samples already read rather than asking for them again:
+		 * getCoalescedEvents builds the whole batch afresh on every call, and
+		 * asking twice a move doubled that - only while the readout was on,
+		 * so measuring made what it measured worse.
+		 *
 		 * @param {PointerEvent} event the move
 		 * @param {number} now the time its handling began
+		 * @param {Array<Array<number>>} samples the batch it carried
 		 */
-		noteLag(event, now) {
+		noteLag(event, now, samples) {
 			const lag = eventAge(event.timeStamp, now)
 			this.tally.lagSum += lag
 			this.tally.lagMax = Math.max(this.tally.lagMax, lag)
-			const oldest = event.getCoalescedEvents?.()?.[0]?.timeStamp
-			this.tally.batchSum += oldest ? eventAge(oldest, now) : lag
+			/* The oldest sample has been waiting the length of the batch; at
+			   the rate they arrive, one frame each is the closest estimate
+			   without asking for their stamps again. */
+			this.tally.batchSum += lag + Math.max(samples.length - 1, 0) * (1000 / 60)
 		},
 
 		startStats() {
@@ -207,13 +223,13 @@ export default {
 			}, 1000)
 		},
 
-		/* Painting is what notices the new size and refits for it, so there is
-		   one path into that and not two. */
+		/* Painting notices the new size and refits for it, which redraws the
+		   page as part of doing so. */
 		onResize() {
 			this.paintNow()
 		},
 
-		/* The backing store this canvas should have: its box in device pixels,
+		/* The backing store a canvas should have: its box in device pixels,
 		   which is what keeps a stroke crisp on a high-density screen. */
 		backingSize() {
 			const canvas = this.$refs.canvas
@@ -221,46 +237,68 @@ export default {
 			return [Math.round(canvas.clientWidth * ratio), Math.round(canvas.clientHeight * ratio)]
 		},
 
-		/* Size the canvas and the layer behind it to the box, and set what a
-		   context loses whenever its size is written to: the device-pixel
-		   scale, so every coordinate from here on is a CSS pixel, and the
-		   colour every stroke is filled in. */
+		/* A context, made once and kept.
+		 *
+		 * The sheet under the pen asks to be desynchronized: the hint exists
+		 * for drawing on the web, and lets the browser skip as much
+		 * compositing as it can rather than keeping the canvas in step with
+		 * the rest of the page. iOS grants it. The page beneath does not ask,
+		 * because it is the one read back for the PNG and a canvas that has
+		 * bypassed compositing is not the place to read pixels from.
+		 *
+		 * @param {string} which 'page' or 'canvas'
+		 * @return {CanvasRenderingContext2D | null} its context
+		 */
+		contextFor(which) {
+			this.contexts = this.contexts ?? {}
+			if (!this.contexts[which]) {
+				const surface = this.$refs[which]
+				this.contexts[which] = surface?.getContext('2d', which === 'canvas' ? { desynchronized: true } : undefined) ?? null
+			}
+			return this.contexts[which]
+		},
+
+		/* Size both sheets to the box, and set what a context loses whenever
+		   its size is written to: the device-pixel scale, so every coordinate
+		   from here on is a CSS pixel, and the colour strokes are filled in. */
 		fit() {
 			const canvas = this.$refs.canvas
 			if (!canvas) {
 				return
 			}
-			this.layer = this.layer ?? document.createElement('canvas')
 			const ratio = window.devicePixelRatio || 1
 			const [width, height] = this.backingSize()
-			for (const surface of [canvas, this.layer]) {
+			for (const which of ['page', 'canvas']) {
+				const surface = this.$refs[which]
+				if (!surface) {
+					continue
+				}
 				surface.width = width
 				surface.height = height
-				const context = surface.getContext('2d')
+				const context = this.contextFor(which)
 				if (context) {
 					context.scale(ratio, ratio)
 					context.fillStyle = INK_COLOR
 				}
 			}
+			this.painted = null
 		},
 
 		/* Fit where the drawing happens rather than only where the canvas is
 		   mounted. At mount the dialog has not been laid out, so the box can
 		   still be nothing; and a canvas that is resized loses its backing
-		   store, taking the scale, the colour and the page with it. Checking
-		   here means a canvas is never drawn on unprepared, whatever put it
-		   in that state. */
+		   store, taking the scale, the colour and the page with it. */
 		ensureFitted() {
 			const canvas = this.$refs.canvas
 			if (!canvas) {
 				return false
 			}
 			const [width, height] = this.backingSize()
-			if (this.layer && canvas.width === width && canvas.height === height) {
+			if (canvas.width === width && canvas.height === height) {
 				return true
 			}
 			this.fit()
-			this.renderLayer()
+			this.renderPage()
 			return true
 		},
 
@@ -284,6 +322,7 @@ export default {
 			this.$refs.canvas?.setPointerCapture?.(event.pointerId)
 			this.pointerId = event.pointerId
 			this.pointerType = event.pointerType
+			this.predicted = []
 			this.current = { points: samplesFrom(event) }
 		},
 
@@ -296,12 +335,15 @@ export default {
 			const started = this.tally ? performance.now() : 0
 			const samples = samplesFrom(event)
 			this.current.points.push(...samples)
+			/* Drawn, never kept: the file holds what the pen did, not what it
+			   was expected to do. */
+			this.predicted = predictedFrom(event)
 			this.requestPaint()
 			if (this.tally) {
 				this.tally.moves += 1
 				this.tally.samples += samples.length
 				this.tally.moveMs += performance.now() - started
-				this.noteLag(event, started)
+				this.noteLag(event, started, samples)
 			}
 		},
 
@@ -313,16 +355,17 @@ export default {
 			this.finishStroke()
 		},
 
-		/* The finished stroke goes onto the layer as it is committed, so the
-		   page is never traced twice. */
+		/* The finished stroke moves down onto the page as it is committed, so
+		   the page is never traced twice and the sheet above goes empty. */
 		finishStroke() {
 			if (this.current) {
 				this.strokes.push(this.current)
-				const context = this.layer?.getContext('2d')
+				const context = this.contextFor('page')
 				if (context) {
 					traceStroke(context, this.current.points)
 				}
 				this.current = null
+				this.predicted = []
 				this.pointerId = null
 				this.pointerType = null
 				this.paintNow()
@@ -331,49 +374,70 @@ export default {
 
 		undo() {
 			this.strokes.pop()
-			this.renderLayer()
-			this.paintNow()
+			this.renderPage()
 		},
 
-		/* Cleared in CSS pixels, because the context is scaled by the device
-		   pixel ratio and its coordinates are CSS pixels from then on. */
-		clear(context) {
-			context.clearRect(0, 0, this.$refs.canvas.clientWidth, this.$refs.canvas.clientHeight)
+		/* The rectangle a set of points puts ink in, in CSS pixels, widened by
+		   the nib so the edges of the stroke are inside it. */
+		boundsOf(points) {
+			if (!points.length) {
+				return null
+			}
+			let minX = Infinity
+			let minY = Infinity
+			let maxX = -Infinity
+			let maxY = -Infinity
+			for (const [x, y] of points) {
+				minX = Math.min(minX, x)
+				minY = Math.min(minY, y)
+				maxX = Math.max(maxX, x)
+				maxY = Math.max(maxY, y)
+			}
+			const pad = STROKE_SIZE + 2
+			return [minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2]
 		},
 
-		/* Trace every finished stroke onto the layer. Only when what is on the
-		   layer has stopped being true: a resize, or an undo. Writing does not
-		   come through here, which is the point of the layer. */
-		renderLayer() {
-			const context = this.layer?.getContext('2d')
-			if (!context) {
+		/* Trace every finished stroke onto the page. Only when what is on it
+		   has stopped being true: a resize, an undo, or ink loaded from the
+		   file. Writing does not come through here, which is the point. */
+		renderPage() {
+			const context = this.contextFor('page')
+			const canvas = this.$refs.canvas
+			if (!context || !canvas) {
 				return
 			}
-			this.clear(context)
+			context.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight)
 			for (const stroke of this.strokes) {
 				traceStroke(context, stroke.points)
 			}
 		},
 
-		/* The page, then the stroke under the pen. The page is one blit of the
-		   layer rather than a retrace, so writing costs the same on a full
-		   page as on an empty one. */
-		paint() {
+		/* The stroke under the pen, and the browser's guess at where it is
+		   going, alone on the sheet above the page.
+		 *
+		 * Only the rectangle last painted is cleared, not the whole sheet -
+		 * on this iPad the whole sheet is two and a half million pixels, and
+		 * a word occupies a few thousand of them. */
+		paintLive() {
 			const started = this.tally ? performance.now() : 0
 			if (!this.ensureFitted()) {
 				return
 			}
-			const canvas = this.$refs.canvas
-			const context = canvas.getContext('2d')
+			const context = this.contextFor('canvas')
 			if (!context) {
 				return
 			}
-			this.clear(context)
-			if (this.layer) {
-				context.drawImage(this.layer, 0, 0, canvas.clientWidth, canvas.clientHeight)
+			if (this.painted) {
+				context.clearRect(...this.painted)
 			}
 			if (this.current) {
-				traceStroke(context, this.current.points)
+				const points = this.predicted?.length
+					? [...this.current.points, ...this.predicted]
+					: this.current.points
+				traceStroke(context, points)
+				this.painted = this.boundsOf(points)
+			} else {
+				this.painted = null
 			}
 			if (this.tally) {
 				this.tally.paints += 1
@@ -383,26 +447,24 @@ export default {
 
 		/* One paint per frame, however many samples arrived in it. A pen
 		   reports far more often than the screen refreshes, and painting on
-		   each report is work thrown away - it is what puts the ink behind
-		   the pen. */
+		   each report is work thrown away. */
 		requestPaint() {
 			if (this.frame) {
 				return
 			}
 			this.frame = requestAnimationFrame(() => {
 				this.frame = null
-				this.paint()
+				this.paintLive()
 			})
 		},
 
-		/* Paint now, cancelling a frame that would repeat it. For the moments
-		   that read the canvas rather than show it. */
+		/* Paint now, cancelling a frame that would repeat it. */
 		paintNow() {
 			if (this.frame) {
 				cancelAnimationFrame(this.frame)
 				this.frame = null
 			}
-			this.paint()
+			this.paintLive()
 		},
 
 		async done() {
@@ -412,13 +474,13 @@ export default {
 			/* A stroke still under the pen is drawn on the canvas, so it would be
 			   in the PNG but not in the strokes. Commit it first. */
 			this.finishStroke()
-			/* The PNG is whatever the canvas shows, so nothing may be waiting
-			   for a frame when it is read. */
-			this.paintNow()
 			this.error = ''
 			this.saving = true
 			try {
-				const png = await new Promise((resolve) => this.$refs.canvas.toBlob(resolve, 'image/png'))
+				/* Read from the page, not the sheet above it: every stroke has
+				   been committed down to the page by now, and the sheet holds
+				   nothing but a prediction that was never part of the ink. */
+				const png = await new Promise((resolve) => this.$refs.page.toBlob(resolve, 'image/png'))
 				await saveInk(this.noteId, this.inkId, png, this.strokes)
 				this.$emit('saved', { id: this.inkId })
 				this.$emit('close')
@@ -484,17 +546,23 @@ export default {
 	pointer-events: none;
 }
 
+/* The two sheets lie on top of one another, filling the stage. Absolute
+   rather than flexed, because a canvas is sized by its bitmap - larger than
+   its box on a high-density screen - and would otherwise refuse to shrink to
+   make room for the message below. */
 .ink__canvas {
-	position: relative;
-	flex: 1;
-	/* A canvas is sized by its bitmap, which is larger than its box on a
-	   high-density screen. Without this it can never shrink to make room for
-	   the message below it. */
-	min-height: 0;
+	position: absolute;
+	inset: 0;
 	width: 100%;
+	height: 100%;
 	/* The canvas owns the surface while it is open, so a drag never reaches the
 	   note behind it and "scroll" versus "draw" never has to be decided. */
 	touch-action: none;
+}
+
+/* Only the top sheet takes input; the page beneath is never pointed at. */
+.ink__canvas--page {
+	pointer-events: none;
 }
 
 .ink__bar {

@@ -26,7 +26,7 @@ async function openInkedNote(page: Page, request: Parameters<typeof setNoteMode>
 
 async function drawAndFinish(page: Page): Promise<void> {
 	await page.getByRole('button', { name: 'Ink', exact: true }).click()
-	const canvas = page.locator('.ink__canvas')
+	const canvas = page.locator('.ink__canvas--live')
 	await expect(canvas).toBeVisible()
 	// The canvas takes no strokes until it has looked for ink already there, and
 	// Done is disabled until it has. Drawing before that drops the stroke silently.
@@ -89,11 +89,11 @@ test.describe('Ink', () => {
 	test('reopens the ink from its link, with the strokes still there', async ({ page, request }) => {
 		const noteId = await openInkedNote(page, request)
 		await drawAndFinish(page)
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
 
 		await page.getByRole('link', { name: 'Edit ink' }).click()
-		await expect(page.locator('.ink__canvas')).toBeVisible()
+		await expect(page.locator('.ink__canvas--live')).toBeVisible()
 		// The strokes came back, so this is the same ink and not a new block.
 		// Scoped to the canvas: the editor's own toolbar has an Undo too.
 		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
@@ -102,7 +102,7 @@ test.describe('Ink', () => {
 		// Asserted on the editor's DOM, which changes at once, rather than on the
 		// file, which a debounced autosave writes whenever it likes.
 		await page.getByRole('button', { name: 'Done' }).click()
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		// By alt text: the editor draws other images of its own, such as the
 		// icon beside a link.
 		await expect(page.locator('.ProseMirror img[alt="Ink"]')).toHaveCount(1)
@@ -112,10 +112,10 @@ test.describe('Ink', () => {
 	test('reopens the ink when the ink itself is tapped', async ({ page, request }) => {
 		await openInkedNote(page, request)
 		await drawAndFinish(page)
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 
 		await page.locator('figure[data-component="image-view"]').click()
-		await expect(page.locator('.ink__canvas')).toBeVisible()
+		await expect(page.locator('.ink__canvas--live')).toBeVisible()
 		// The strokes came back, so the tap reached the same ink and not a new block.
 		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
 	})
@@ -133,7 +133,7 @@ test.describe('Ink', () => {
 		const photo = page.locator('figure[data-component="image-view"]')
 		await expect(photo).toHaveCount(1)
 		await photo.click()
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 	})
 
 	test('follows the theme where it is rendered, and leaves other pictures alone', async ({ page, request }) => {
@@ -164,7 +164,7 @@ test.describe('Ink', () => {
 	test('is not text to select, so iOS does not arbitrate every touch', async ({ page, request }) => {
 		await openInkedNote(page, request)
 		await page.getByRole('button', { name: 'Ink', exact: true }).click()
-		const canvas = page.locator('.ink__canvas')
+		const canvas = page.locator('.ink__canvas--live')
 		await expect(canvas).toBeVisible()
 
 		// A press on the canvas was starting a text selection on iOS: blue
@@ -186,7 +186,7 @@ test.describe('Ink', () => {
 	test('leaves a control inside the ink to Text', async ({ page, request }) => {
 		await openInkedNote(page, request)
 		await drawAndFinish(page)
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 
 		// Text draws a caption field and a delete button inside its image node.
 		// Those are Text's: claiming a tap on one opens the canvas instead of
@@ -195,7 +195,7 @@ test.describe('Ink', () => {
 		await expect(caption).toHaveCount(1)
 		await caption.click({ force: true })
 
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 	})
 
 	test('leaves ink-shaped images from elsewhere alone when they are tapped', async ({ page, request }) => {
@@ -210,9 +210,9 @@ test.describe('Ink', () => {
 		const figures = page.locator('figure[data-component="image-view"]')
 		await expect(figures).toHaveCount(2)
 		await figures.nth(0).click()
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await figures.nth(1).click()
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 	})
 
 	test('keeps exactly one tap listener across the editor being closed and reopened', async ({ page, request }) => {
@@ -249,7 +249,7 @@ test.describe('Ink', () => {
 		const listeners = async (): Promise<number> => await page.evaluate(() => (window as any).__inkTapListeners())
 		await expect.poll(listeners).toBe(1)
 		await drawAndFinish(page)
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 
 		// The close-and-reopen dance other parts of the app run around a write.
 		await page.evaluate((id) => (window as any)._nc_event_bus.emit('notes:editor:close', { noteId: id }), noteId)
@@ -259,17 +259,17 @@ test.describe('Ink', () => {
 
 		// And the tap still works on the recreated editor.
 		await page.locator('figure[data-component="image-view"]').click()
-		await expect(page.locator('.ink__canvas')).toBeVisible()
+		await expect(page.locator('.ink__canvas--live')).toBeVisible()
 	})
 
 	test('records a stroke started in the top-left corner of the canvas', async ({ page, request }) => {
 		await openInkedNote(page, request)
 		await page.getByRole('button', { name: 'Ink', exact: true }).click()
-		await expect(page.locator('.ink__canvas')).toBeVisible()
+		await expect(page.locator('.ink__canvas--live')).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
 
 		// Where the header and the sidebar used to be painted over the canvas.
-		const box = (await page.locator('.ink__canvas').boundingBox())!
+		const box = (await page.locator('.ink__canvas--live').boundingBox())!
 		await page.mouse.move(box.x + 50, box.y + 50)
 		await page.mouse.down()
 		await page.mouse.move(box.x + 150, box.y + 120, { steps: 10 })
@@ -292,7 +292,7 @@ test.describe('Ink', () => {
 		const tab = await opened
 		expect(tab.url()).toContain('ordinary-link')
 		// The note itself stayed where it was, and no canvas opened.
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		expect(page.url()).toContain(`/apps/notes/note/${noteId}`)
 	})
 
@@ -310,7 +310,7 @@ test.describe('Ink', () => {
 		const tab = await opened
 		expect(tab.url()).toBe('https://links.example.test/index.php/apps/notes/ink/abc123')
 		// It is another server's ink, not ours: no canvas opens here.
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 	})
 
 	test('says so when the ink a link points at is gone', async ({ page, request }) => {
@@ -319,14 +319,14 @@ test.describe('Ink', () => {
 		   would write a file the note no longer mentions. */
 		const noteId = await openInkedNote(page, request)
 		await drawAndFinish(page)
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
 
 		const path = (await noteContent(noteId)).match(/\.attachments\.\d+\/(ink-[A-Za-z0-9_-]+\.png)/)![0]
 		await deleteNoteAttachment(noteId, path)
 
 		await page.getByRole('link', { name: 'Edit ink' }).click()
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await expect(page.getByText(/picture for this ink could not be found/i)).toBeVisible()
 		// A missing file is not proof of deletion, and the link may be all that is left.
 		await expect(page.getByText(/no longer|delete the link/i)).toHaveCount(0)
@@ -337,7 +337,7 @@ test.describe('Ink', () => {
 		   are two blocks precisely so they survive; assert that they do. */
 		const noteId = await openInkedNote(page, request)
 		await drawAndFinish(page)
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 
 		await page.locator('.ProseMirror').click()
 		await page.keyboard.press('Control+End')
@@ -355,12 +355,12 @@ test.describe('Ink', () => {
 		   this is an unhandled rejection and a canvas that never opens. */
 		const noteId = await openInkedNote(page, request)
 		await drawAndFinish(page)
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
 
 		await page.route('**/attachment?*', (route) => route.fulfill({ status: 500 }))
 		await page.getByRole('link', { name: 'Edit ink' }).click()
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await expect(page.getByText(/could not be opened/i)).toBeVisible()
 		// Not told the ink is gone: it may well still be there.
 		await expect(page.getByText(/could not be found|no longer/i)).toHaveCount(0)
@@ -372,7 +372,7 @@ test.describe('Ink', () => {
 		   blank page, so the canvas must show it, say so, and not save. */
 		const noteId = await openInkedNote(page, request)
 		await drawAndFinish(page)
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
 
 		const path = (await noteContent(noteId)).match(/\.attachments\.\d+\/(ink-[A-Za-z0-9_-]+\.png)/)!
@@ -381,13 +381,13 @@ test.describe('Ink', () => {
 		await replaceNoteAttachment(noteId, path[1], plain)
 
 		await page.getByRole('link', { name: 'Edit ink' }).click()
-		await expect(page.locator('.ink__canvas')).toBeVisible()
+		await expect(page.locator('.ink__canvas--live')).toBeVisible()
 		await expect(page.locator('.ink__backdrop')).toBeVisible()
 		await expect(page.getByText(/strokes of this ink could not be read/i)).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Done' })).toBeDisabled()
 
 		// Drawing is refused too, so there is nothing to save in the first place.
-		const box = (await page.locator('.ink__canvas').boundingBox())!
+		const box = (await page.locator('.ink__canvas--live').boundingBox())!
 		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
 		await page.mouse.down()
 		await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2 + 70, { steps: 5 })
@@ -395,7 +395,7 @@ test.describe('Ink', () => {
 		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeDisabled()
 
 		await page.getByRole('button', { name: 'Cancel' }).click()
-		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		expect((await noteAttachment(noteId, path[0])).equals(plain), 'the file on disk is untouched').toBe(true)
 	})
 })

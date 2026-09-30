@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { eventAge, samplesFrom, shouldDraw } from '../inkInput.js'
+import { eventAge, predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
 
 /**
  * @param {object} fields what the event carries
@@ -115,5 +115,26 @@ describe('eventAge', () => {
 	it('gives nothing for an age too large to be an input delay', () => {
 		/* Half a minute behind the pen is not a measurement, it is a mistake. */
 		expect(eventAge(0, 60000)).toBe(0)
+	})
+})
+
+describe('predictedFrom', () => {
+	it('takes where the browser thinks the pen is going', () => {
+		/* Safari has had this since 18.2 and it is meant for exactly this:
+		   ink can be drawn ahead of the samples that have arrived, which is
+		   what hides the delay between the nib and the line. */
+		const ahead = [pointer({ offsetX: 10, offsetY: 11, pressure: 0.4 }), pointer({ offsetX: 20, offsetY: 21, pressure: 0.4 })]
+		const event = pointer({ getPredictedEvents: () => ahead })
+		expect(predictedFrom(event)).toEqual([[10, 11, 0.4], [20, 21, 0.4]])
+	})
+
+	it('gives nothing where the browser will not guess', () => {
+		expect(predictedFrom(pointer({}))).toEqual([])
+		expect(predictedFrom(pointer({ getPredictedEvents: () => [] }))).toEqual([])
+	})
+
+	it('gives a prediction with no pressure the same flat value as a sample', () => {
+		const event = pointer({ getPredictedEvents: () => [pointer({ offsetX: 1, offsetY: 2, pressure: 0 })] })
+		expect(predictedFrom(event)).toEqual([[1, 2, 0.5]])
 	})
 })

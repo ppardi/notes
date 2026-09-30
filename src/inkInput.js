@@ -19,11 +19,31 @@ const FLAT_PRESSURE = 0.5
 export function samplesFrom(event) {
 	const coalesced = event.getCoalescedEvents?.()
 	const events = coalesced?.length ? coalesced : [event]
-	return events.map((e) => [
-		e.offsetX,
-		e.offsetY,
-		e.pressure > 0 ? e.pressure : FLAT_PRESSURE,
-	])
+	return events.map(toSample)
+}
+
+/**
+ * @param {PointerEvent} e one position report
+ * @return {Array<number>} [x, y, pressure]
+ */
+function toSample(e) {
+	return [e.offsetX, e.offsetY, e.pressure > 0 ? e.pressure : FLAT_PRESSURE]
+}
+
+/**
+ * Where the browser thinks the pen is going.
+ *
+ * Drawn but never kept. Between the nib and the last sample that has actually
+ * arrived there is always a gap, and this is the browser's own guess at what
+ * fills it - the one thing that can shorten a delay rather than merely stop
+ * adding to it. Safari has had it since 18.2.
+ *
+ * @param {PointerEvent} event the move
+ * @return {Array<Array<number>>} samples ahead of the pen, or none
+ */
+export function predictedFrom(event) {
+	const ahead = event.getPredictedEvents?.()
+	return ahead?.length ? ahead.map(toSample) : []
 }
 
 /**
