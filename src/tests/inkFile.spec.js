@@ -79,6 +79,14 @@ describe('loadInk', () => {
 		await expect(loadInk(5, 'abc')).rejects.toThrow('network')
 	})
 
+	it('asks for the file by its path in the attachment folder', async () => {
+		/* The server looks a bare name up beside the note, where it never is,
+		   and answers 404 - which reads as "the ink was deleted". */
+		get.mockResolvedValue({ data: await tinyPng().arrayBuffer() })
+		await loadInk(5, 'abc')
+		expect(get.mock.calls[0][1].params.path).toBe('.attachments.5/ink-abc.png')
+	})
+
 	it('hands back the strokes as a plain list, not the envelope', async () => {
 		/* What saveInk uploads is what loadInk must read back. */
 		post.mockResolvedValue({ data: { filename: '.attachments.5/ink-abc.png' } })

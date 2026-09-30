@@ -41,7 +41,9 @@ export async function loadInk(noteId, id) {
 	const url = generateUrl(`/apps/notes/notes/${noteId}/attachment`)
 	try {
 		const response = await axios.get(url, {
-			params: { path: inkFileName(id) },
+			/* The server resolves this against the note's folder, so the bare file
+			   name would look beside the note rather than in its attachments. */
+			params: { path: inkAttachmentPath(noteId, id) },
 			responseType: 'arraybuffer',
 		})
 		const bytes = new Uint8Array(response.data)
