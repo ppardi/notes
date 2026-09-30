@@ -517,3 +517,34 @@ describe('InkCanvas drawing', () => {
 		expect(traceStroke).toHaveBeenCalledTimes(3)
 	})
 })
+
+describe('the stats readout', () => {
+	it('is not there, and costs nothing, unless the URL asks for it', async () => {
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		expect(wrapper.find('.ink__stats').exists()).toBe(false)
+		/* Nothing to tally means the timing calls are never reached. */
+		expect(wrapper.vm.tally).toBeUndefined()
+	})
+
+	it('reports what the canvas is doing when the URL asks', async () => {
+		vi.stubGlobal('location', { search: '?inkstats=1' })
+		vi.useFakeTimers()
+		try {
+			const wrapper = await open({ png: new Blob(), strokes: [] })
+			await pointer(wrapper, 'pointerdown')
+			await pointer(wrapper, 'pointermove', { offsetX: 40 })
+			runFrame()
+
+			vi.advanceTimersByTime(1000)
+			await wrapper.vm.$nextTick()
+
+			const shown = wrapper.find('.ink__stats').text()
+			expect(shown).toMatch(/1\/s moves\s+1\/s samples\s+\d+\/s paints/)
+			expect(shown).toMatch(/ms per move/)
+			expect(shown).toMatch(/0 strokes, \d+ points under the pen/)
+			expect(shown).toMatch(/canvas \d+x\d+ at \d+x/)
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+})

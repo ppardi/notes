@@ -35,6 +35,7 @@
 			<p v-if="error" class="ink__error" role="alert">
 				{{ error }}
 			</p>
+			<pre v-if="stats" class="ink__stats">{{ stats }}</pre>
 		</div>
 	</Teleport>
 </template>
@@ -77,10 +78,12 @@ export default {
 			saving: false,
 			error: '',
 			backdrop: '',
+			stats: '',
 		}
 	},
 
 	async mounted() {
+		this.startStats()
 		/* Rotating an iPad changes the canvas size. Without this the backing
 		   store keeps the old dimensions and every stroke drawn afterwards
 		   lands offset from the pen - on the one device this is built for. */
@@ -120,12 +123,42 @@ export default {
 	beforeUnmount() {
 		window.removeEventListener('resize', this.onResize)
 		this.observer?.disconnect()
+		clearInterval(this.statsTimer)
 		if (this.backdrop) {
 			URL.revokeObjectURL(this.backdrop)
 		}
 	},
 
 	methods: {
+		/* A readout of what this canvas is really doing, for diagnosing a
+		   device that is not in the room. It costs nothing unless the note's
+		   URL asks for it with ?inkstats=1, and is meant to be screenshotted
+		   and read, not kept. */
+		startStats() {
+			let wanted
+			try {
+				wanted = new URLSearchParams(window.location.search).has('inkstats')
+			} catch {
+				wanted = false
+			}
+			if (!wanted) {
+				return
+			}
+			this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0 }
+			this.statsTimer = setInterval(() => {
+				const t = this.tally
+				const canvas = this.$refs.canvas
+				this.stats = [
+					`${t.moves}/s moves  ${t.samples}/s samples  ${t.paints}/s paints`,
+					`${(t.moveMs / Math.max(t.moves, 1)).toFixed(3)}ms per move  ${(t.paintMs / Math.max(t.paints, 1)).toFixed(2)}ms per paint`,
+					`${t.moveMs.toFixed(0)}ms + ${t.paintMs.toFixed(0)}ms of every 1000ms in here`,
+					`${this.strokes.length} strokes, ${this.current?.points.length ?? 0} points under the pen`,
+					`canvas ${canvas?.width ?? 0}x${canvas?.height ?? 0} at ${window.devicePixelRatio || 1}x`,
+				].join('\n')
+				this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0 }
+			}, 1000)
+		},
+
 		/* Painting is what notices the new size and refits for it, so there is
 		   one path into that and not two. */
 		onResize() {
@@ -234,8 +267,15 @@ export default {
 			if (!this.current || event.pointerId !== this.pointerId || !this.accepting()) {
 				return
 			}
-			this.current.points.push(...samplesFrom(event))
+			const started = this.tally ? performance.now() : 0
+			const samples = samplesFrom(event)
+			this.current.points.push(...samples)
 			this.requestPaint()
+			if (this.tally) {
+				this.tally.moves += 1
+				this.tally.samples += samples.length
+				this.tally.moveMs += performance.now() - started
+			}
 		},
 
 		onUp(event) {
@@ -300,6 +340,7 @@ export default {
 		   layer rather than a retrace, so writing costs the same on a full
 		   page as on an empty one. */
 		paint() {
+			const started = this.tally ? performance.now() : 0
 			if (!this.ensureFitted()) {
 				return
 			}
@@ -314,6 +355,10 @@ export default {
 			}
 			if (this.current) {
 				traceStroke(context, this.current.points)
+			}
+			if (this.tally) {
+				this.tally.paints += 1
+				this.tally.paintMs += performance.now() - started
 			}
 		},
 
@@ -436,5 +481,21 @@ export default {
 	padding: var(--default-grid-baseline);
 	color: var(--color-error);
 	text-align: center;
+}
+
+/* Over the top-left of the page, where writing rarely starts. Takes no
+   pointer input, so it can never eat a stroke. */
+.ink__stats {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	margin: 0;
+	padding: var(--default-grid-baseline);
+	border-end-end-radius: var(--border-radius);
+	background: var(--color-background-hover);
+	color: var(--color-text-maxcontrast);
+	font-size: 11px;
+	line-height: 1.4;
+	pointer-events: none;
 }
 </style>
