@@ -161,6 +161,51 @@ test.describe('Ink', () => {
 		expect(filters).toEqual(['invert(1)', 'none'])
 	})
 
+	test('marks the page on contact, on the second stroke as much as the first', async ({ page, request }) => {
+		// Every test here drew one unbroken line, and so did every check by
+		// hand, which is the shape of drawing that was never broken. Lifting
+		// the pen and putting it down again is where the ink used to wait for
+		// the browser to report a move before anything appeared under the nib.
+		await openInkedNote(page, request)
+		await page.getByRole('button', { name: 'Ink', exact: true }).click()
+		const canvas = page.locator('.ink__canvas--live')
+		await expect(canvas).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		// How much ink is on the sheet the stroke under the pen is drawn on.
+		const inkOnSheet = () => canvas.evaluate((element: HTMLCanvasElement) => {
+			const pixels = element.getContext('2d')!.getImageData(0, 0, element.width, element.height).data
+			let lit = 0
+			for (let i = 3; i < pixels.length; i += 4) {
+				if (pixels[i] > 0) {
+					lit += 1
+				}
+			}
+			return lit
+		})
+
+		const box = (await canvas.boundingBox())!
+		const x = box.x + box.width / 2
+		const y = box.y + box.height / 2
+
+		for (const stroke of [0, 1, 2]) {
+			const from = y + stroke * 40
+			await page.mouse.move(x, from)
+			await page.mouse.down()
+			// Nothing has moved yet: the mark must already be there.
+			expect(await inkOnSheet(), `stroke ${stroke} left the nib on a blank page`).toBeGreaterThan(0)
+			await page.mouse.move(x + 80, from + 30, { steps: 8 })
+			await page.mouse.up()
+		}
+
+		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
+		await page.getByRole('button', { name: 'Done' }).click()
+		await expect(canvas).toBeHidden()
+
+		// All three survived, so lifting between them lost nothing.
+		await expect(page.locator('figure[data-component="image-view"]')).toHaveCount(1)
+	})
+
 	test('is not text to select, so iOS does not arbitrate every touch', async ({ page, request }) => {
 		await openInkedNote(page, request)
 		await page.getByRole('button', { name: 'Ink', exact: true }).click()
