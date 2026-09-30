@@ -440,6 +440,15 @@ export default {
 .ink {
 	position: fixed;
 	inset: 0;
+	/* A page of handwriting is not text to select. Without this, iOS treats a
+	   press on the canvas as the start of a selection: it shows the blue
+	   handles and the Copy/Look Up callout, and - worse than the mess - its
+	   gesture recogniser arbitrates every touch before the page sees it,
+	   which is felt as the ink lagging behind the pen. touch-action alone
+	   does not stop this; it only governs scrolling and zooming. */
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
 	z-index: 10000;
 	display: flex;
 	flex-direction: column;
