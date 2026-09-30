@@ -63,7 +63,12 @@ export function inkIdFromUrl(url) {
 	if (!match) {
 		return null
 	}
-	const id = decodeURIComponent(match[1])
+	let id
+	try {
+		id = decodeURIComponent(match[1])
+	} catch {
+		return null
+	}
 	return ID.test(id) ? id : null
 }
 

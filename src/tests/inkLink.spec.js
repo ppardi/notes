@@ -48,6 +48,21 @@ describe('ink links', () => {
 		   path the note should not be able to ask for. */
 		expect(inkIdFromUrl('/index.php/apps/notes/ink/../../etc/passwd')).toBeNull()
 	})
+
+	it('guards against encoded traversal in the id', () => {
+		/* The ID.test(id) guard must reject ids that decode to path traversal
+		   or other invalid characters. */
+		expect(inkIdFromUrl('/index.php/apps/notes/ink/..%2F..%2Fetc%2Fpasswd')).toBeNull()
+		expect(inkIdFromUrl('/index.php/apps/notes/ink/%2e%2e')).toBeNull()
+		expect(inkIdFromUrl('/index.php/apps/notes/ink/abc%00def')).toBeNull()
+	})
+
+	it('handles malformed URL encoding gracefully', () => {
+		/* Malformed escape sequences that cause decodeURIComponent to throw
+		   must return null, not propagate the exception. */
+		expect(inkIdFromUrl('/index.php/apps/notes/ink/%')).toBeNull()
+		expect(inkIdFromUrl('/index.php/apps/notes/ink/%E0%A4%A')).toBeNull()
+	})
 })
 
 describe('what goes into the note', () => {
@@ -58,6 +73,7 @@ describe('what goes into the note', () => {
 		expect(markdown).toContain('![')
 		expect(markdown).toContain('.attachments.85110/ink-abc123.png')
 		expect(markdown).toContain('](')
+		expect(markdown).toContain(inkLinkUrl('abc123'))
 		expect(markdown.split('\n\n').length).toBeGreaterThanOrEqual(2)
 		expect(markdown).not.toMatch(/\[!\[[^\]]*\]\([^)]*\)\]\(/)
 	})
