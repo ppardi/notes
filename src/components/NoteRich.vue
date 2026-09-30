@@ -142,6 +142,18 @@ export default {
 		},
 
 		/**
+		 * @param {string} href the link, absolute or relative
+		 * @return {boolean} whether it resolves to this server
+		 */
+		isSameOrigin(href) {
+			try {
+				return new URL(href, window.location.href).origin === window.location.origin
+			} catch {
+				return false
+			}
+		},
+
+		/**
 		 * Open a link that is not ours, the way Text does when nobody has
 		 * claimed links: resolved against this page, in a new tab.
 		 *
@@ -241,7 +253,9 @@ export default {
 					/* Text hands us the resolved absolute URL, while the document
 					   holds a relative path - so the id is read off the tail.
 					   Anything that is not ours is handed straight back. */
-					const id = inkIdFromUrl(href)
+					/* Ours only when it points at this server: the path alone
+					   cannot tell this app's ink from another instance's. */
+					const id = this.isSameOrigin(href) ? inkIdFromUrl(href) : null
 					if (id === null) {
 						this.openOrdinaryLink(href)
 						return

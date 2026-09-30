@@ -49,10 +49,12 @@ afterEach(() => {
 	vi.unstubAllGlobals()
 })
 
+/* The canvas teleports itself to <body>, which wrapper.find cannot see into;
+   stubbing teleport renders it in place. Its position is for the e2e test. */
 /* Mount and let the existing ink (none, unless a test says so) finish loading. */
 async function open(existing = null) {
 	loadInk.mockResolvedValue(existing)
-	const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t } } })
+	const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t }, stubs: { teleport: true } } })
 	await flushPromises()
 	return wrapper
 }
@@ -130,7 +132,7 @@ describe('InkCanvas', () => {
 			/* loadInk rethrows anything but a 404. Opening blank would let the
 			   person write a new page and replace the one that is there. */
 			loadInk.mockRejectedValue(new Error('500'))
-			const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t } } })
+			const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t }, stubs: { teleport: true } } })
 			await flushPromises()
 
 			expect(wrapper.vm.error).toBeTruthy()
@@ -146,7 +148,7 @@ describe('InkCanvas', () => {
 
 		it('still lets the person leave', async () => {
 			loadInk.mockRejectedValue(new Error('500'))
-			const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t } } })
+			const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t }, stubs: { teleport: true } } })
 			await flushPromises()
 			const buttons = wrapper.findAll('button')
 			expect(buttons[0].attributes('disabled')).toBeDefined()

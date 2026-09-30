@@ -86,7 +86,6 @@ test.describe('Ink', () => {
 		await drawAndFinish(page)
 		await expect(page.locator('.ink__canvas')).toBeHidden()
 		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
-		const before = await noteContent(noteId)
 
 		await page.getByRole('link', { name: 'Edit ink' }).click()
 		await expect(page.locator('.ink__canvas')).toBeVisible()
@@ -95,10 +94,29 @@ test.describe('Ink', () => {
 		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
 
 		// Finishing again replaces the file; it must not add a second block.
+		// Asserted on the editor's DOM, which changes at once, rather than on the
+		// file, which a debounced autosave writes whenever it likes.
 		await page.getByRole('button', { name: 'Done' }).click()
 		await expect(page.locator('.ink__canvas')).toBeHidden()
-		await page.waitForTimeout(3000)
-		expect(await noteContent(noteId)).toBe(before)
+		// By alt text: the editor draws other images of its own, such as the
+		// icon beside a link.
+		await expect(page.locator('.ProseMirror img[alt="Ink"]')).toHaveCount(1)
+		await expect(page.getByRole('link', { name: 'Edit ink' })).toHaveCount(1)
+	})
+
+	test('records a stroke started in the top-left corner of the canvas', async ({ page, request }) => {
+		await openInkedNote(page, request)
+		await page.getByRole('button', { name: 'Ink', exact: true }).click()
+		await expect(page.locator('.ink__canvas')).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		// Where the header and the sidebar used to be painted over the canvas.
+		const box = (await page.locator('.ink__canvas').boundingBox())!
+		await page.mouse.move(box.x + 50, box.y + 50)
+		await page.mouse.down()
+		await page.mouse.move(box.x + 150, box.y + 120, { steps: 10 })
+		await page.mouse.up()
+		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
 	})
 
 	test('leaves an ordinary link to the browser, in a new tab', async ({ page, request, context }) => {
@@ -118,5 +136,22 @@ test.describe('Ink', () => {
 		// The note itself stayed where it was, and no canvas opened.
 		await expect(page.locator('.ink__canvas')).toBeHidden()
 		expect(page.url()).toContain(`/apps/notes/note/${noteId}`)
+	})
+
+	test('leaves an ink-shaped link on another host to the browser', async ({ page, request, context }) => {
+		await login(page)
+		await deleteAllNotesVia()
+		await setNoteMode(request, 'rich')
+		await context.route('https://links.example.test/**', route => route.fulfill({ contentType: 'text/html', body: '<p>ok</p>' }))
+		const noteId = await createNoteViaRequest('', 'Foreign', '[Someone else\'s ink](https://links.example.test/index.php/apps/notes/ink/abc123)\n')
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+		await expect(page.locator('.ProseMirror').first()).toBeVisible()
+
+		const opened = context.waitForEvent('page')
+		await page.getByRole('link', { name: 'Someone else\'s ink' }).click()
+		const tab = await opened
+		expect(tab.url()).toBe('https://links.example.test/index.php/apps/notes/ink/abc123')
+		// It is another server's ink, not ours: no canvas opens here.
+		await expect(page.locator('.ink__canvas')).toBeHidden()
 	})
 })

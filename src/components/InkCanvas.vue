@@ -4,30 +4,32 @@
 -->
 
 <template>
-	<div class="ink" role="dialog" :aria-label="t('notes', 'Ink')">
-		<canvas
-			ref="canvas"
-			class="ink__canvas"
-			@pointerdown="onDown"
-			@pointermove="onMove"
-			@pointerup="onUp"
-			@pointercancel="onUp"
-		/>
-		<div class="ink__bar">
-			<NcButton :disabled="!ready || !strokes.length || saving" @click="undo">
-				{{ t('notes', 'Undo') }}
-			</NcButton>
-			<NcButton @click="$emit('close')">
-				{{ t('notes', 'Cancel') }}
-			</NcButton>
-			<NcButton variant="primary" :disabled="!ready || saving" @click="done">
-				{{ t('notes', 'Done') }}
-			</NcButton>
+	<Teleport to="body">
+		<div class="ink" role="dialog" :aria-label="t('notes', 'Ink')">
+			<canvas
+				ref="canvas"
+				class="ink__canvas"
+				@pointerdown="onDown"
+				@pointermove="onMove"
+				@pointerup="onUp"
+				@pointercancel="onUp"
+			/>
+			<div class="ink__bar">
+				<NcButton :disabled="!ready || !strokes.length || saving" @click="undo">
+					{{ t('notes', 'Undo') }}
+				</NcButton>
+				<NcButton @click="$emit('close')">
+					{{ t('notes', 'Cancel') }}
+				</NcButton>
+				<NcButton variant="primary" :disabled="!ready || saving" @click="done">
+					{{ t('notes', 'Done') }}
+				</NcButton>
+			</div>
+			<p v-if="error" class="ink__error" role="alert">
+				{{ error }}
+			</p>
 		</div>
-		<p v-if="error" class="ink__error" role="alert">
-			{{ error }}
-		</p>
-	</div>
+	</Teleport>
 </template>
 
 <script>
