@@ -596,7 +596,7 @@ class NotesService {
 	 * @throws InvalidPathException
 	 *                              https://github.com/nextcloud/text/blob/main/lib/Service/AttachmentService.php
 	 */
-	public function createImage(string $userId, int $noteId, $fileDataArray) : array {
+	public function createImage(string $userId, int $noteId, $fileDataArray, bool $replace = false) : array {
 		$note = $this->get($userId, $noteId);
 
 		// validate the requested name before it is used in any filesystem lookup
@@ -607,7 +607,13 @@ class NotesService {
 		}
 
 		$saveDir = $this->getAttachmentDirectoryForNote($note, $userId);
-		$fileName = self::getUniqueFileName($saveDir, $fileDataArray['name']);
+		/* Replacing keeps the name the note already points at. Without it a
+		   second save writes "name (1).png", orphaning the first and forcing
+		   the note's markdown to be rewritten on every edit. basename() keeps
+		   the name inside this note's own folder, as deleteAttachment does. */
+		$fileName = $replace
+			? basename($fileDataArray['name'])
+			: self::getUniqueFileName($saveDir, $fileDataArray['name']);
 
 		// read uploaded file from disk
 		$fp = fopen($fileDataArray['tmp_name'], 'r');
@@ -616,7 +622,11 @@ class NotesService {
 
 		$result = [];
 		$result['filename'] = $this->noteUtil->getAttachmentFolderName($note->getId()) . '/' . $fileName;
-		$saveDir->newFile($fileName, $content);
+		if ($replace && $saveDir->nodeExists($fileName)) {
+			$saveDir->get($fileName)->putContent($content);
+		} else {
+			$saveDir->newFile($fileName, $content);
+		}
 		return $result;
 	}
 

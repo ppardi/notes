@@ -393,13 +393,14 @@ class NotesController extends Controller {
 	 *
 	 */
 	#[NoAdminRequired]
-	public function uploadFile(int $noteid): JSONResponse {
+	public function uploadFile(int $noteid, bool $replace = false): JSONResponse {
 		$file = $this->request->getUploadedFile('file');
-		return $this->helper->handleErrorResponse(function () use ($noteid, $file) {
+		return $this->helper->handleErrorResponse(function () use ($noteid, $file, $replace) {
 			return $this->notesService->createImage(
 				$this->helper->getUID(),
 				$noteid,
-				$file
+				$file,
+				$replace
 			);
 		});
 	}
