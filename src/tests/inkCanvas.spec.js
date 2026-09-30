@@ -420,15 +420,32 @@ describe('InkCanvas drawing', () => {
 		await pointer(wrapper, 'pointerup')
 	}
 
+	it('marks the page the moment the pen touches it', async () => {
+		/* Nothing was drawn until the first pointermove arrived, so the nib
+		   sat on a blank page until the pen had moved far enough for the
+		   browser to say so. The first sample is already in hand at
+		   pointerdown; there is nothing to wait for. */
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		traceStroke.mockClear()
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 40, offsetY: 40 })
+
+		/* Without waiting for a frame, and without a move having arrived. */
+		expect(traceStroke).toHaveBeenCalledTimes(1)
+		expect(traceStroke.mock.calls[0][0]).toBe(live(wrapper))
+		expect(traceStroke.mock.calls[0][1]).toEqual([[40, 40, 0.5]])
+	})
+
 	it('never touches the page while a stroke is being written', async () => {
 		/* The whole point of the two sheets. What has been written already is
 		   composited by the browser; it is not redrawn to show one more mark. */
 		const wrapper = await open({ png: new Blob(), strokes: manyStrokes(20) })
 		const beneath = page(wrapper)
+		await pointer(wrapper, 'pointerdown')
+		/* After the mark made on contact, so what is counted is the writing. */
 		traceStroke.mockClear()
 		beneath.calls.length = 0
 
-		await pointer(wrapper, 'pointerdown')
 		await pointer(wrapper, 'pointermove', { offsetX: 20 })
 		runFrame()
 
