@@ -4,7 +4,8 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest'
-import { INK_FILE_PATTERN, inkAttachmentPath, inkContent, inkFileName, inkIdFromUrl, inkLinkUrl, inkMarkdown, makeInkId } from '../inkLink.js'
+import * as inkLink from '../inkLink.js'
+import { INK_FILE_PATTERN, inkAttachmentPath, inkContent, inkFileName, inkIdFromUrl, inkLinkUrl, makeInkId } from '../inkLink.js'
 
 beforeAll(() => {
 	globalThis.t = (app, text, params) => Object.entries(params ?? {})
@@ -65,17 +66,19 @@ describe('ink links', () => {
 	})
 })
 
-describe('what goes into the note', () => {
-	it('writes the image and its link as separate blocks', () => {
-		/* Text discards a link wrapped around an image, in the DOM and out of
-		   the markdown on the first save. Two blocks is what survives. */
-		const markdown = inkMarkdown(85110, 'abc123')
-		expect(markdown).toContain('![')
-		expect(markdown).toContain('.attachments.85110/ink-abc123.png')
-		expect(markdown).toContain('](')
-		expect(markdown).toContain(inkLinkUrl('abc123'))
-		expect(markdown.split('\n\n').length).toBeGreaterThanOrEqual(2)
-		expect(markdown).not.toMatch(/\[!\[[^\]]*\]\([^)]*\)\]\(/)
+describe('what the module offers', () => {
+	it('has one way to put ink in a note, and it is nodes rather than a string', () => {
+		/* A markdown string handed to the editor lands as escaped literal text,
+		   so a helper that builds one is a trap, not an option. */
+		expect(Object.keys(inkLink).sort()).toEqual([
+			'INK_FILE_PATTERN',
+			'inkAttachmentPath',
+			'inkContent',
+			'inkFileName',
+			'inkIdFromUrl',
+			'inkLinkUrl',
+			'makeInkId',
+		])
 	})
 })
 

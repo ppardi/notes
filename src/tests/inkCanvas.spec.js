@@ -103,16 +103,61 @@ describe('InkCanvas', () => {
 		expect(wrapper.emitted('close')).toHaveLength(1)
 	})
 
-	it('opens over a picture whose strokes cannot be read', async () => {
-		/* An ink file from elsewhere, or one whose metadata was stripped. Open
-		   empty rather than refusing to open at all. */
-		const wrapper = await open({ png: new Blob(), strokes: null })
-		expect(loadInk).toHaveBeenCalledWith(5, 'abc')
-		expect(wrapper.vm.strokes).toEqual([])
-		expect(wrapper.vm.error).toBeFalsy()
-		/* Empty, but writable: this is not the same as a failed load. */
-		await pointer(wrapper, 'pointerdown')
-		expect(wrapper.vm.current).not.toBeNull()
+	describe('when the picture is there but its strokes cannot be read', () => {
+		/* An ink file whose metadata chunk was dropped, as Nextcloud's preview
+		   generation can do. The file on disk is still the only copy of the
+		   handwriting, and saving replaces it by name. */
+		const unreadable = () => open({ png: new Blob([new Uint8Array([1, 2, 3])]), strokes: null })
+
+		beforeEach(() => {
+			URL.createObjectURL = vi.fn(() => 'blob:picture')
+			URL.revokeObjectURL = vi.fn()
+		})
+
+		it('shows the picture that is there, and says the strokes could not be read', async () => {
+			const wrapper = await unreadable()
+			expect(loadInk).toHaveBeenCalledWith(5, 'abc')
+			expect(wrapper.find('img.ink__backdrop').attributes('src')).toBe('blob:picture')
+			expect(wrapper.find('.ink__error').text()).toMatch(/strokes.*could not be read/i)
+		})
+
+		it('cannot be saved over it', async () => {
+			const wrapper = await unreadable()
+
+			/* Drawing is refused, so nothing exists to save. */
+			await pointer(wrapper, 'pointerdown')
+			await pointer(wrapper, 'pointermove', { offsetX: 50 })
+			await pointer(wrapper, 'pointerup')
+			expect(wrapper.vm.current).toBeNull()
+			expect(wrapper.vm.strokes).toEqual([])
+
+			/* And Done is refused, even when asked directly. */
+			const buttons = wrapper.findAll('button')
+			expect(buttons[2].attributes('disabled')).toBeDefined()
+			await wrapper.vm.done()
+			expect(saveInk).not.toHaveBeenCalled()
+			expect(wrapper.emitted('saved')).toBeUndefined()
+		})
+
+		it('still lets the person leave', async () => {
+			const wrapper = await unreadable()
+			const buttons = wrapper.findAll('button')
+			expect(buttons[1].attributes('disabled')).toBeUndefined()
+			await buttons[1].trigger('click')
+			expect(wrapper.emitted('close')).toHaveLength(1)
+		})
+
+		it('lets go of the picture when it closes', async () => {
+			const wrapper = await unreadable()
+			wrapper.unmount()
+			expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:picture')
+		})
+
+		it('shows no picture over ink whose strokes were read', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [] })
+			expect(wrapper.find('img.ink__backdrop').exists()).toBe(false)
+			expect(wrapper.vm.ready).toBe(true)
+		})
 	})
 
 	it('opens over the strokes that were saved before', async () => {

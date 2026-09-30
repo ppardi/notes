@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace OCA\Notes\Controller;
 
 use OCA\Notes\Service\Note;
+use OCA\Notes\Service\NoteDoesNotExistException;
 use OCA\Notes\Service\NotesService;
 use OCA\Notes\Service\SettingsService;
 use OCP\AppFramework\Controller;
@@ -20,9 +21,11 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\StreamResponse;
 use OCP\Files\IMimeTypeDetector;
+use OCP\Files\InvalidPathException;
 use OCP\Files\Lock\ILock;
 use OCP\Files\Lock\ILockManager;
 use OCP\Files\Lock\LockContext;
+use OCP\Files\NotFoundException;
 use OCP\IConfig;
 use OCP\IL10N;
 use OCP\IRequest;
@@ -383,9 +386,17 @@ class NotesController extends Controller {
 			$response->addHeader('Vary', 'Authorization, Cookie');
 			$response->cacheFor(3600);
 			return $response;
-		} catch (\Exception $e) {
+		} catch (NoteDoesNotExistException|NotFoundException $e) {
+			// Only a file that is not there is a 404. Anything else failing
+			// (a lock, storage, a bug) must not read as "deleted": clients act on it.
 			$this->helper->logException($e);
 			return $this->helper->createErrorResponse(Http::STATUS_NOT_FOUND);
+		} catch (InvalidPathException $e) {
+			$this->helper->logException($e);
+			return $this->helper->createErrorResponse(Http::STATUS_BAD_REQUEST);
+		} catch (\Exception $e) {
+			$this->helper->logException($e);
+			return $this->helper->createErrorResponse(Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
 

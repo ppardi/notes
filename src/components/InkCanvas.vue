@@ -6,14 +6,21 @@
 <template>
 	<Teleport to="body">
 		<div class="ink" role="dialog" :aria-label="t('notes', 'Ink')">
-			<canvas
-				ref="canvas"
-				class="ink__canvas"
-				@pointerdown="onDown"
-				@pointermove="onMove"
-				@pointerup="onUp"
-				@pointercancel="onUp"
-			/>
+			<div class="ink__stage">
+				<img v-if="backdrop"
+					class="ink__backdrop"
+					:src="backdrop"
+					:alt="t('notes', 'The ink as it is saved')"
+				>
+				<canvas
+					ref="canvas"
+					class="ink__canvas"
+					@pointerdown="onDown"
+					@pointermove="onMove"
+					@pointerup="onUp"
+					@pointercancel="onUp"
+				/>
+			</div>
 			<div class="ink__bar">
 				<NcButton :disabled="!ready || !strokes.length || saving" @click="undo">
 					{{ t('notes', 'Undo') }}
@@ -69,6 +76,7 @@ export default {
 			ready: false,
 			saving: false,
 			error: '',
+			backdrop: '',
 		}
 	},
 
@@ -86,8 +94,16 @@ export default {
 		}
 		try {
 			const existing = await loadInk(this.noteId, this.inkId)
-			/* Strokes we cannot read are not a reason to refuse to open: the
-			   reader gets an empty canvas rather than a dead end. */
+			if (existing && existing.strokes === null) {
+				/* The picture is there but what drew it is not: a preview or a
+				   copy that lost its metadata. Saving would replace the file
+				   by name with whatever is drawn on this blank page, so show
+				   the picture, say so, and stay unready - no input, no save -
+				   exactly as when the load fails. */
+				this.backdrop = URL.createObjectURL(existing.png)
+				this.error = t('notes', 'The strokes of this ink could not be read, so it cannot be edited. The picture is shown as it is saved; nothing has been changed.')
+				return
+			}
 			this.strokes = existing?.strokes ?? []
 			this.ready = true
 			this.draw()
@@ -102,6 +118,9 @@ export default {
 	beforeUnmount() {
 		window.removeEventListener('resize', this.onResize)
 		this.observer?.disconnect()
+		if (this.backdrop) {
+			URL.revokeObjectURL(this.backdrop)
+		}
 	},
 
 	methods: {
@@ -260,7 +279,28 @@ export default {
 	background: var(--color-main-background);
 }
 
+.ink__stage {
+	position: relative;
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+}
+
+/* The saved picture, behind a canvas that is blank and takes no input. Laid
+   from the corner the page was drawn from, whole rather than cropped. */
+.ink__backdrop {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	object-position: top left;
+	pointer-events: none;
+}
+
 .ink__canvas {
+	position: relative;
 	flex: 1;
 	/* A canvas is sized by its bitmap, which is larger than its box on a
 	   high-density screen. Without this it can never shrink to make room for

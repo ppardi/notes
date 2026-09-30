@@ -7,7 +7,7 @@ import type { Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { createNoteViaRequest, deleteAllNotesVia, deleteNoteAttachment, noteAttachment, noteContent, setNoteMode } from '../support/note.ts'
+import { createNoteViaRequest, deleteAllNotesVia, deleteNoteAttachment, noteAttachment, noteContent, replaceNoteAttachment, setNoteMode } from '../support/note.ts'
 
 async function openInkedNote(page: Page, request: Parameters<typeof setNoteMode>[0]): Promise<number> {
 	await login(page)
@@ -260,7 +260,9 @@ test.describe('Ink', () => {
 
 		await page.getByRole('link', { name: 'Edit ink' }).click()
 		await expect(page.locator('.ink__canvas')).toBeHidden()
-		await expect(page.getByText(/ink.*no longer|no longer.*ink/i)).toBeVisible()
+		await expect(page.getByText(/picture for this ink could not be found/i)).toBeVisible()
+		// A missing file is not proof of deletion, and the link may be all that is left.
+		await expect(page.getByText(/no longer|delete the link/i)).toHaveCount(0)
 	})
 
 	test('keeps the image and the link through an edit', async ({ page, request }) => {
@@ -294,6 +296,39 @@ test.describe('Ink', () => {
 		await expect(page.locator('.ink__canvas')).toBeHidden()
 		await expect(page.getByText(/could not be opened/i)).toBeVisible()
 		// Not told the ink is gone: it may well still be there.
-		await expect(page.getByText(/no longer/i)).toHaveCount(0)
+		await expect(page.getByText(/could not be found|no longer/i)).toHaveCount(0)
+	})
+
+	test('shows the picture and refuses to replace it when its strokes cannot be read', async ({ page, request }) => {
+		/* A preview, or a copy that lost its metadata chunk, is still the only
+		   handwriting there is. Done would replace the file by name with a
+		   blank page, so the canvas must show it, say so, and not save. */
+		const noteId = await openInkedNote(page, request)
+		await drawAndFinish(page)
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
+
+		const path = (await noteContent(noteId)).match(/\.attachments\.\d+\/(ink-[A-Za-z0-9_-]+\.png)/)!
+		// A valid one-pixel PNG with no stroke chunk in it.
+		const plain = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+		await replaceNoteAttachment(noteId, path[1], plain)
+
+		await page.getByRole('link', { name: 'Edit ink' }).click()
+		await expect(page.locator('.ink__canvas')).toBeVisible()
+		await expect(page.locator('.ink__backdrop')).toBeVisible()
+		await expect(page.getByText(/strokes of this ink could not be read/i)).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeDisabled()
+
+		// Drawing is refused too, so there is nothing to save in the first place.
+		const box = (await page.locator('.ink__canvas').boundingBox())!
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+		await page.mouse.down()
+		await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2 + 70, { steps: 5 })
+		await page.mouse.up()
+		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeDisabled()
+
+		await page.getByRole('button', { name: 'Cancel' }).click()
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		expect((await noteAttachment(noteId, path[0])).equals(plain), 'the file on disk is untouched').toBe(true)
 	})
 })

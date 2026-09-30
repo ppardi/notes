@@ -73,26 +73,15 @@ export function inkIdFromUrl(url) {
 }
 
 /**
- * What one ink block looks like in the note.
+ * What one ink block looks like in the note, as the document nodes Text's
+ * editor takes.
  *
  * Two blocks, not one: Text discards a link wrapped around an image, in the
  * DOM and out of the markdown on the first save.
  *
- * @param {number} noteId the note
- * @param {string} id the ink's id
- * @return {string} markdown to insert
- */
-export function inkMarkdown(noteId, id) {
-	return `![${t('notes', 'Ink')}](${inkAttachmentPath(noteId, id)})\n\n[${t('notes', 'Edit ink')}](${inkLinkUrl(id)})\n`
-}
-
-/**
- * The same two blocks as inkMarkdown, as the document nodes Text's editor
- * takes.
- *
- * The editor's insertAtCursor reads a string as HTML, not markdown, so the
- * markdown would land in the note as literal, backslash-escaped text rather
- * than as an image and a link.
+ * Nodes rather than markdown, because the editor's insertAtCursor reads a
+ * string as HTML: markdown would land in the note as literal, backslash-escaped
+ * text rather than as an image and a link.
  *
  * @param {number} noteId the note
  * @param {string} id the ink's id

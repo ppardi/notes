@@ -591,6 +591,7 @@ class NotesService {
 	 *
 	 * @return array
 	 * @throws NotPermittedException
+	 * @throws NoteNotWritableException if the note is read-only
 	 * @throws ImageNotWritableException
 	 * @throws NotFoundException
 	 * @throws InvalidPathException
@@ -598,6 +599,11 @@ class NotesService {
 	 */
 	public function createImage(string $userId, int $noteId, $fileDataArray, bool $replace = false) : array {
 		$note = $this->get($userId, $noteId);
+		if ($replace) {
+			// overwriting destroys what is there, so it needs the same right
+			// as deleting an attachment does
+			$this->noteUtil->ensureNoteIsWritable($note->getFile());
+		}
 
 		// strip any directory part first, then validate what is left, before it
 		// is used in any filesystem lookup (same order as deleteAttachment)

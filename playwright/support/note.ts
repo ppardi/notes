@@ -120,6 +120,23 @@ export async function noteAttachment(noteId: number, path: string): Promise<Buff
 }
 
 /**
+ * Overwrite an attachment's bytes, through the same route the canvas saves by.
+ *
+ * @param noteId The note the attachment belongs to
+ * @param name The attachment's file name, e.g. `ink-abc.png`
+ * @param body The bytes to leave there
+ */
+export async function replaceNoteAttachment(noteId: number, name: string, body: Buffer): Promise<void> {
+	await onOwnContext(async (request) => {
+		const response = await request.post(`/index.php/apps/notes/notes/${noteId}/attachment?replace=1`, {
+			headers: { ...apiHeaders(), 'OCS-APIRequest': 'true' },
+			multipart: { file: { name, mimeType: 'image/png', buffer: body } },
+		})
+		expect(response.ok(), `replacing ${name} of note ${noteId}`).toBeTruthy()
+	})
+}
+
+/**
  * Delete an attachment the way the app's own API does.
  *
  * @param noteId The note the attachment belongs to

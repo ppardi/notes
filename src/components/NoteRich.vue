@@ -41,6 +41,7 @@ import logger from '../Logger.js'
 import { queueCommand, refreshNote } from '../NotesService.js'
 import { borrowProseMirror, hasTopLevelHeading, headingFoldPlugin } from '../proseMirrorHeadingFold.js'
 import store from '../store.js'
+import { findTextEditor } from '../textEditor.js'
 import { routeIsNewNote, tagsMayHaveChanged } from '../Util.js'
 import { restoreVersion } from '../versionRestore.js'
 
@@ -158,7 +159,10 @@ export default {
 					return
 				}
 				if (existing === null) {
-					showError(t('notes', 'That ink is no longer in this note. You can delete the link.'))
+					/* Hedged on purpose: a 404 is the server's word that the file was
+					   not found, not proof that it was deleted, and the link may be
+					   the only thing that still points at it. */
+					showError(t('notes', 'The picture for this ink could not be found. It may have been deleted. Nothing has been changed.'))
 					return
 				}
 			}
@@ -251,11 +255,16 @@ export default {
 		 *
 		 * Reaches the editor the way installHeadingFold does, because the
 		 * handle Text returns can focus but cannot say where the caret is.
+		 * When it cannot be reached the ink goes in wherever focus puts it,
+		 * which is the hazard above, so findTextEditor says so in the log.
 		 */
 		placeCaretForInk() {
-			const tiptap = this.$refs?.editor?.querySelector('.ProseMirror')?.editor
+			const tiptap = findTextEditor(this.$refs?.editor)
 			const selection = tiptap?.state?.selection
 			if (!selection || typeof tiptap.commands?.focus !== 'function') {
+				if (tiptap) {
+					logger.warn('Text\'s editor has no caret to read; placing the ink where focus lands')
+				}
 				this.editor?.focus?.()
 				return
 			}
@@ -338,10 +347,8 @@ export default {
 		/**
 		 * Let the reader fold the note's sections under their headings.
 		 *
-		 * Text keeps its editor to itself: the handle it hands back holds the
-		 * ProseMirror instance in a private field, and the only way to reach it
-		 * is the element tiptap marks with itself. That is not a promise Text has
-		 * made, so this asks rather than insists — without it the note is still
+		 * Text keeps its editor to itself, so this asks for it through
+		 * findTextEditor rather than insisting — without it the note is still
 		 * perfectly readable and editable, only unfoldable.
 		 *
 		 * The fold is drawn with decorations, which are the view's own layer and
@@ -350,7 +357,7 @@ export default {
 		 */
 		async installHeadingFold() {
 			await this.$nextTick()
-			const editor = this.$refs?.editor?.querySelector('.ProseMirror')?.editor
+			const editor = findTextEditor(this.$refs?.editor)
 			if (typeof editor?.registerPlugin !== 'function') {
 				logger.debug('Text exposes no editor to fold headings with')
 				return
