@@ -35,6 +35,7 @@ import InkCanvas from './InkCanvas.vue'
 import TagCompletion from './TagCompletion.vue'
 import { closeEditor, reopenEditor } from '../editorHandoff.js'
 import { inkContent, inkIdFromUrl, makeInkId } from '../inkLink.js'
+import { inkIdFromNode } from '../inkTap.js'
 import logger from '../Logger.js'
 import { queueCommand, refreshNote } from '../NotesService.js'
 import { borrowProseMirror, hasTopLevelHeading, headingFoldPlugin } from '../proseMirrorHeadingFold.js'
@@ -121,6 +122,7 @@ export default {
 
 	unmounted() {
 		this.clearTagTimers()
+		this.stopListeningForInk()
 		this?.editor?.destroy()
 		unsubscribe('files:node:updated', this.fileUpdated)
 		unsubscribe('notes:editor:close', this.closeForWrite)
@@ -139,6 +141,31 @@ export default {
 		openInk(id = null) {
 			this.newInk = id === null
 			this.inkId = id ?? makeInkId()
+		},
+
+		/**
+		 * Open the canvas when a tap lands on ink.
+		 *
+		 * Capture phase, so Text's own handler does not open the viewer first.
+		 * Anything that is not ink is left entirely alone.
+		 *
+		 * @param {MouseEvent} event the click
+		 */
+		onEditorClick(event) {
+			const id = inkIdFromNode(event.target)
+			if (id === null) {
+				return
+			}
+			event.preventDefault()
+			event.stopPropagation()
+			this.openInk(id)
+		},
+
+		/**
+		 * Stop listening for taps on ink. Safe to call when nothing listens.
+		 */
+		stopListeningForInk() {
+			this.$refs?.editor?.removeEventListener('click', this.onEditorClick, true)
 		},
 
 		/**
@@ -233,6 +260,7 @@ export default {
 			if (!this.$refs?.editor) {
 				await this.$nextTick()
 			}
+			this.stopListeningForInk()
 			this?.editor?.destroy()
 			this.loading = true
 			this.editorElement = null
@@ -248,6 +276,13 @@ export default {
 					this.loading = false
 					this.editorElement = this.$refs.editor
 					this.installHeadingFold()
+					/* Removed first: onLoaded runs on every editor creation, and
+					   this fork recreates the editor for the close-and-reopen
+					   dance in src/editorHandoff.js. Without this the listeners
+					   stack up and one tap opens the canvas several times.
+					   Removing a listener that was never added is a no-op. */
+					this.stopListeningForInk()
+					this.$refs.editor?.addEventListener('click', this.onEditorClick, true)
 				},
 				openLinkHandler: (href) => {
 					/* Text hands us the resolved absolute URL, while the document
@@ -404,6 +439,7 @@ export default {
 			} catch {
 				// Text reports its own save failures.
 			}
+			this.stopListeningForInk()
 			this.editor.destroy()
 			this.editor = null
 			this.loading = true

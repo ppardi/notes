@@ -104,6 +104,80 @@ test.describe('Ink', () => {
 		await expect(page.getByRole('link', { name: 'Edit ink' })).toHaveCount(1)
 	})
 
+	test('reopens the ink when the ink itself is tapped', async ({ page, request }) => {
+		await openInkedNote(page, request)
+		await drawAndFinish(page)
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+
+		await page.locator('figure[data-component="image-view"]').click()
+		await expect(page.locator('.ink__canvas')).toBeVisible()
+		// The strokes came back, so the tap reached the same ink and not a new block.
+		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
+	})
+
+	test('leaves an ordinary image alone when it is tapped', async ({ page, request }) => {
+		await login(page)
+		await deleteAllNotesVia()
+		await setNoteMode(request, 'rich')
+		const noteId = await createNoteViaRequest('', 'Photo', 'Typed already.\n\n![holiday](.attachments.1/holiday.png)\n')
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+		await expect(page.locator('.ProseMirror').first()).toBeVisible()
+
+		// Only a tap on ink is claimed. A photo has to keep doing what Text does
+		// with a photo, so no canvas may open for it.
+		const photo = page.locator('figure[data-component="image-view"]')
+		await expect(photo).toHaveCount(1)
+		await photo.click()
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+	})
+
+	test('keeps exactly one tap listener across the editor being closed and reopened', async ({ page, request }) => {
+		// Count the live capture-phase click listeners the component registers.
+		// A second registration, or one left behind on a closed editor, is what
+		// the remove-before-add and the remove-on-destroy are there to prevent.
+		await page.addInitScript(() => {
+			const live: Array<[EventTarget, unknown]> = []
+			const add = EventTarget.prototype.addEventListener
+			const remove = EventTarget.prototype.removeEventListener
+			const isOurs = (type: string, listener: unknown, options: unknown): boolean => type === 'click'
+				&& (options === true || (typeof options === 'object' && options !== null && (options as AddEventListenerOptions).capture === true))
+				&& typeof listener === 'function'
+				&& listener.name.includes('onEditorClick')
+			EventTarget.prototype.addEventListener = function(type: string, listener: any, options?: any) {
+				if (isOurs(type, listener, options) && !live.some(([t, l]) => t === this && l === listener)) {
+					live.push([this, listener])
+				}
+				return add.call(this, type, listener, options)
+			}
+			EventTarget.prototype.removeEventListener = function(type: string, listener: any, options?: any) {
+				if (isOurs(type, listener, options)) {
+					const at = live.findIndex(([t, l]) => t === this && l === listener)
+					if (at !== -1) {
+						live.splice(at, 1)
+					}
+				}
+				return remove.call(this, type, listener, options)
+			}
+			;(window as any).__inkTapListeners = () => live.length
+		})
+
+		const noteId = await openInkedNote(page, request)
+		const listeners = async (): Promise<number> => await page.evaluate(() => (window as any).__inkTapListeners())
+		await expect.poll(listeners).toBe(1)
+		await drawAndFinish(page)
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+
+		// The close-and-reopen dance other parts of the app run around a write.
+		await page.evaluate((id) => (window as any)._nc_event_bus.emit('notes:editor:close', { noteId: id }), noteId)
+		await expect.poll(listeners).toBe(0)
+		await page.evaluate((id) => (window as any)._nc_event_bus.emit('notes:editor:reopen', { noteId: id }), noteId)
+		await expect.poll(listeners).toBe(1)
+
+		// And the tap still works on the recreated editor.
+		await page.locator('figure[data-component="image-view"]').click()
+		await expect(page.locator('.ink__canvas')).toBeVisible()
+	})
+
 	test('records a stroke started in the top-left corner of the canvas', async ({ page, request }) => {
 		await openInkedNote(page, request)
 		await page.getByRole('button', { name: 'Ink', exact: true }).click()
@@ -124,7 +198,7 @@ test.describe('Ink', () => {
 		await deleteAllNotesVia()
 		await setNoteMode(request, 'rich')
 		// A host that does not exist, answered locally, so the test needs no network.
-		await context.route('https://links.example.test/**', route => route.fulfill({ contentType: 'text/html', body: '<p>ok</p>' }))
+		await context.route('https://links.example.test/**', (route) => route.fulfill({ contentType: 'text/html', body: '<p>ok</p>' }))
 		const noteId = await createNoteViaRequest('', 'Linked', '[A web page](https://links.example.test/ordinary-link)\n')
 		await page.goto(`/index.php/apps/notes/note/${noteId}`)
 		await expect(page.locator('.ProseMirror').first()).toBeVisible()
@@ -142,7 +216,7 @@ test.describe('Ink', () => {
 		await login(page)
 		await deleteAllNotesVia()
 		await setNoteMode(request, 'rich')
-		await context.route('https://links.example.test/**', route => route.fulfill({ contentType: 'text/html', body: '<p>ok</p>' }))
+		await context.route('https://links.example.test/**', (route) => route.fulfill({ contentType: 'text/html', body: '<p>ok</p>' }))
 		const noteId = await createNoteViaRequest('', 'Foreign', '[Someone else\'s ink](https://links.example.test/index.php/apps/notes/ink/abc123)\n')
 		await page.goto(`/index.php/apps/notes/note/${noteId}`)
 		await expect(page.locator('.ProseMirror').first()).toBeVisible()
