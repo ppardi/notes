@@ -14,13 +14,13 @@
 			@pointercancel="onUp"
 		/>
 		<div class="ink__bar">
-			<NcButton :disabled="!strokes.length || saving" @click="undo">
+			<NcButton :disabled="!ready || !strokes.length || saving" @click="undo">
 				{{ t('notes', 'Undo') }}
 			</NcButton>
-			<NcButton :disabled="saving" @click="$emit('close')">
+			<NcButton @click="$emit('close')">
 				{{ t('notes', 'Cancel') }}
 			</NcButton>
-			<NcButton variant="primary" :disabled="saving" @click="done">
+			<NcButton variant="primary" :disabled="!ready || saving" @click="done">
 				{{ t('notes', 'Done') }}
 			</NcButton>
 		</div>
@@ -61,7 +61,9 @@ export default {
 		return {
 			strokes: [],
 			current: null,
+			pointerId: null,
 			penSeenAt: 0,
+			ready: false,
 			saving: false,
 			error: '',
 		}
@@ -73,15 +75,30 @@ export default {
 		   store keeps the old dimensions and every stroke drawn afterwards
 		   lands offset from the pen - on the one device this is built for. */
 		window.addEventListener('resize', this.onResize)
-		const existing = await loadInk(this.noteId, this.inkId)
-		/* Strokes we cannot read are not a reason to refuse to open: the reader
-		   gets an empty canvas rather than a dead end. */
-		this.strokes = existing?.strokes ?? []
-		this.draw()
+		/* The window is not the only thing that resizes the canvas: showing the
+		   error message changes the layout beneath it. Watch the element itself. */
+		if (typeof ResizeObserver !== 'undefined') {
+			this.observer = new ResizeObserver(() => this.onResize())
+			this.observer.observe(this.$refs.canvas)
+		}
+		try {
+			const existing = await loadInk(this.noteId, this.inkId)
+			/* Strokes we cannot read are not a reason to refuse to open: the
+			   reader gets an empty canvas rather than a dead end. */
+			this.strokes = existing?.strokes ?? []
+			this.ready = true
+			this.draw()
+		} catch {
+			/* We could not tell whether there is ink here already. Saving now
+			   would replace it by name with whatever is drawn on a blank page,
+			   so stay open to say so, but take no input and save nothing. */
+			this.error = t('notes', 'The existing ink could not be loaded. Close this and try again; nothing has been changed.')
+		}
 	},
 
 	beforeUnmount() {
 		window.removeEventListener('resize', this.onResize)
+		this.observer?.disconnect()
 	},
 
 	methods: {
@@ -105,32 +122,58 @@ export default {
 			return Date.now() - this.penSeenAt < PEN_SEEN_MS
 		},
 
-		onDown(event) {
+		/* Remember the pen on ANY pen event, hovering included: a Pencil near the
+		   screen reports pointermove before it touches, and that is the signal
+		   that a hand is about to land. */
+		notePen(event) {
 			if (event.pointerType === 'pen') {
 				this.penSeenAt = Date.now()
 			}
-			if (!shouldDraw(event, this.penSeen())) {
+		},
+
+		/* Whether input may change the drawing at all: not before the existing
+		   ink has loaded (it would be replaced), and not while saving (a stroke
+		   added now is in one of the PNG and the strokes but not the other). */
+		accepting() {
+			return this.ready && !this.saving
+		},
+
+		onDown(event) {
+			this.notePen(event)
+			/* One stroke at a time: a second pointer must not replace it. */
+			if (!this.accepting() || this.current || !shouldDraw(event, this.penSeen())) {
 				return
 			}
 			this.$refs.canvas?.setPointerCapture?.(event.pointerId)
+			this.pointerId = event.pointerId
 			this.current = { points: samplesFrom(event) }
 		},
 
 		onMove(event) {
-			if (!this.current) {
+			this.notePen(event)
+			/* Only the pointer that started the stroke extends it. A palm resting
+			   beside the pen keeps reporting moves, and those are not ink. */
+			if (!this.current || event.pointerId !== this.pointerId || !this.accepting()) {
 				return
-			}
-			if (event.pointerType === 'pen') {
-				this.penSeenAt = Date.now()
 			}
 			this.current.points.push(...samplesFrom(event))
 			this.draw()
 		},
 
-		onUp() {
+		onUp(event) {
+			this.notePen(event)
+			/* The palm lifting must not end the pen's stroke. */
+			if (!this.current || event.pointerId !== this.pointerId || !this.accepting()) {
+				return
+			}
+			this.finishStroke()
+		},
+
+		finishStroke() {
 			if (this.current) {
 				this.strokes.push(this.current)
 				this.current = null
+				this.pointerId = null
 				this.draw()
 			}
 		},
@@ -158,6 +201,12 @@ export default {
 		},
 
 		async done() {
+			if (!this.ready || this.saving) {
+				return
+			}
+			/* A stroke still under the pen is drawn on the canvas, so it would be
+			   in the PNG but not in the strokes. Commit it first. */
+			this.finishStroke()
 			this.error = ''
 			this.saving = true
 			try {
@@ -189,6 +238,11 @@ export default {
 
 .ink__canvas {
 	flex: 1;
+	/* A canvas is sized by its bitmap, which is larger than its box on a
+	   high-density screen. Without this it can never shrink to make room for
+	   the message below it. */
+	min-height: 0;
+	width: 100%;
 	/* The canvas owns the surface while it is open, so a drag never reaches the
 	   note behind it and "scroll" versus "draw" never has to be decided. */
 	touch-action: none;
