@@ -703,6 +703,17 @@ export default {
 	align-self: flex-end;
 }
 
+/* Ink follows the theme where it is rendered, the same way the canvas it was
+   drawn on does. Ink in any note's attachment folder counts, not only this
+   note's: unlike a tap, which writes and so must be sure whose ink it opens,
+   colouring only has to be right about what the picture is, and a file named
+   this way in a Notes attachment folder is this app's ink wherever it came
+   from. An ordinary picture, and one on another host, are left alone. Only
+   the picture is recoloured, so Text's caption and controls keep theirs. */
+.text-editor:deep(figure[data-component="image-view"][data-src^=".attachments."][data-src*="/ink-"][data-src$=".png"] img) {
+	filter: var(--background-invert-if-dark);
+}
+
 .note-container {
 	min-height: 100%;
 	width: 100%;

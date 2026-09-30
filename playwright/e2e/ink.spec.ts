@@ -7,7 +7,12 @@ import type { Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { createNoteViaRequest, deleteAllNotesVia, deleteNoteAttachment, noteAttachment, noteContent, replaceNoteAttachment, setNoteMode } from '../support/note.ts'
+import { createNoteViaRequest, deleteAllNotesVia, deleteNoteAttachment, noteAttachment, noteContent, replaceNoteAttachment, setNoteContent, setNoteMode } from '../support/note.ts'
+
+// The smallest PNG there is, so the pictures these tests read the style off
+// are really there: Text renders a broken image as an icon and no <img> at
+// all, and a test that found no <img> would pass for the wrong reason.
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
 
 async function openInkedNote(page: Page, request: Parameters<typeof setNoteMode>[0]): Promise<number> {
 	await login(page)
@@ -129,6 +134,31 @@ test.describe('Ink', () => {
 		await expect(photo).toHaveCount(1)
 		await photo.click()
 		await expect(page.locator('.ink__canvas')).toBeHidden()
+	})
+
+	test('follows the theme where it is rendered, and leaves other pictures alone', async ({ page, request }) => {
+		await login(page)
+		await deleteAllNotesVia()
+		await setNoteMode(request, 'rich')
+		const noteId = await createNoteViaRequest('', 'Themed', 'Typed already.\n')
+		// Both really on disk, in this note's own folder, so both render.
+		await replaceNoteAttachment(noteId, 'ink-abc123.png', PNG)
+		await replaceNoteAttachment(noteId, 'holiday.png', PNG)
+		await setNoteContent(noteId, `Typed already.\n\n![ink](.attachments.${noteId}/ink-abc123.png)\n\n![holiday](.attachments.${noteId}/holiday.png)\n`)
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+		await expect(page.locator('.ProseMirror').first()).toBeVisible()
+		await expect(page.locator('figure[data-component="image-view"] img')).toHaveCount(2)
+
+		// A dark theme is this variable and nothing else: Nextcloud sets it to
+		// invert(100%) there and to `no`, which is not a filter, on a light one.
+		// It is defined on [data-theme-default], so that is where it is replaced
+		// - a rule on :root would lose to it and prove nothing.
+		await page.addStyleTag({ content: '[data-theme-default] { --background-invert-if-dark: invert(100%); }' })
+
+		// Read off the painted style: a rule that matched nothing would compute
+		// to `none` here, exactly as a picture left alone does.
+		const filters = await page.locator('figure[data-component="image-view"] img').evaluateAll((images) => images.map((image) => getComputedStyle(image).filter))
+		expect(filters).toEqual(['invert(1)', 'none'])
 	})
 
 	test('leaves ink-shaped images from elsewhere alone when they are tapped', async ({ page, request }) => {

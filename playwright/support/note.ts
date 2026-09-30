@@ -79,6 +79,25 @@ export async function createNoteRevisions(revisions: string[]): Promise<number> 
 }
 
 /**
+ * Write a note's whole content, the way the app's own API does.
+ *
+ * For content that has to name the note's own attachment folder, which is not
+ * known until the note exists.
+ *
+ * @param noteId The note to write
+ * @param content The markdown to write into it
+ */
+export async function setNoteContent(noteId: number, content: string): Promise<void> {
+	await onOwnContext(async (request) => {
+		const response = await request.put(`/index.php/apps/notes/api/v1/notes/${noteId}`, {
+			headers: apiHeaders(),
+			data: { content },
+		})
+		expect(response.ok(), `writing note ${noteId} (HTTP ${response.status()})`).toBeTruthy()
+	})
+}
+
+/**
  * Remove every note, on a request context of its own.
  *
  * @see onOwnContext for why these calls do not use the page's own context
