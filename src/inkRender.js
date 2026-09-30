@@ -15,10 +15,12 @@ import { getStroke } from 'perfect-freehand'
  */
 export const INK_COLOR = '#000000'
 
-/* size is the nib in CSS pixels; thinning is how much pressure narrows it. A
-   device that reports no pressure draws at a flat middle (see inkInput.js), so
-   thinning only shows on a stylus that reports it. */
-const STROKE = { size: 6, thinning: 0.6, simulatePressure: false }
+/* size is the nib in CSS pixels. thinning is how much pressure narrows it, and
+   it is off: a mouse reports one flat pressure and so draws a uniform line,
+   while a stylus reports real pressure and drew a line that swelled and
+   tapered - a fountain pen where a pen was wanted. The nib is the same width
+   however hard it is pressed, on every device. */
+const STROKE = { size: 6, thinning: 0, simulatePressure: false }
 
 /* Below this, perfect-freehand has not returned a shape worth curving. */
 const CURVABLE = 4

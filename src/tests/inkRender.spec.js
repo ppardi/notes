@@ -66,4 +66,24 @@ describe('traceStroke', () => {
 	it('is one colour on transparency, so the theme can be applied where it is shown', () => {
 		expect(INK_COLOR).toBe('#000000')
 	})
+
+	it('is the same width however hard the pen is pressed', () => {
+		/* A mouse reports one flat pressure, so a mouse stroke is uniform and
+		   reads as a pen. A stylus reports real pressure, and width that
+		   follows it reads as a fountain pen - which is not what this is for.
+		   The same path drawn softly and hard must come out the same. */
+		const path = (pressure) => Array.from({ length: 12 }, (_, i) => [i * 4, Math.sin(i / 2) * 10, pressure])
+		const extent = (points) => {
+			const { context, calls } = recorder()
+			traceStroke(context, points)
+			const coords = calls.flatMap(([, ...args]) => args)
+			const xs = coords.filter((_, i) => i % 2 === 0)
+			const ys = coords.filter((_, i) => i % 2 === 1)
+			return [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)]
+		}
+		const [softWidth, softHeight] = extent(path(0.1))
+		const [hardWidth, hardHeight] = extent(path(0.9))
+		expect(hardWidth).toBeCloseTo(softWidth, 6)
+		expect(hardHeight).toBeCloseTo(softHeight, 6)
+	})
 })
