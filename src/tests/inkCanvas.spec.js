@@ -20,6 +20,11 @@ vi.mock('../inkRender.js', async (original) => ({
 	traceStroke: (...a) => traceStroke(...a),
 }))
 
+/* Whether the readout was asked for is decided at app load, by inkStats.js,
+   which has its own tests. Here it is simply told. */
+const statsWanted = vi.fn(() => false)
+vi.mock('../inkStats.js', () => ({ statsWanted: () => statsWanted() }))
+
 const saveInk = vi.fn()
 const loadInk = vi.fn()
 vi.mock('../inkFile.js', () => ({ saveInk: (...a) => saveInk(...a), loadInk: (...a) => loadInk(...a) }))
@@ -77,6 +82,7 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+	statsWanted.mockReturnValue(false)
 	traceStroke.mockReset()
 	saveInk.mockReset()
 	loadInk.mockReset()
@@ -519,15 +525,15 @@ describe('InkCanvas drawing', () => {
 })
 
 describe('the stats readout', () => {
-	it('is not there, and costs nothing, unless the URL asks for it', async () => {
+	it('is not there, and costs nothing, unless it was asked for', async () => {
 		const wrapper = await open({ png: new Blob(), strokes: [] })
 		expect(wrapper.find('.ink__stats').exists()).toBe(false)
 		/* Nothing to tally means the timing calls are never reached. */
 		expect(wrapper.vm.tally).toBeUndefined()
 	})
 
-	it('reports what the canvas is doing when the URL asks', async () => {
-		vi.stubGlobal('location', { search: '?inkstats=1' })
+	it('reports what the canvas is doing when it was asked for', async () => {
+		statsWanted.mockReturnValue(true)
 		vi.useFakeTimers()
 		try {
 			const wrapper = await open({ png: new Blob(), strokes: [] })
@@ -552,7 +558,7 @@ describe('the stats readout', () => {
 	it('holds the last second that had writing in it', async () => {
 		/* The numbers are read after the pen lifts. Wiping them on the first
 		   idle second would leave zeros on screen exactly when someone looks. */
-		vi.stubGlobal('location', { search: '?inkstats=1' })
+		statsWanted.mockReturnValue(true)
 		vi.useFakeTimers()
 		try {
 			const wrapper = await open({ png: new Blob(), strokes: [] })

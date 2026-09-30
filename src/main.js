@@ -7,6 +7,10 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router.js'
 
+/* Imported for its own sake: it reads ?inkstats from the URL as this loads,
+   before the router has a chance to drop it. */
+import './inkStats.js'
+
 __webpack_nonce__ = btoa(OC.requestToken)
 __webpack_public_path__ = OC.linkTo('notes', 'js/') // eslint-disable-line
 

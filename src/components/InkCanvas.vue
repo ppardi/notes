@@ -45,6 +45,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import { loadInk, saveInk } from '../inkFile.js'
 import { PEN_SEEN_MS, samplesFrom, shouldDraw } from '../inkInput.js'
 import { INK_COLOR, traceStroke } from '../inkRender.js'
+import { statsWanted } from '../inkStats.js'
 
 export default {
 	name: 'InkCanvas',
@@ -134,17 +135,10 @@ export default {
 
 	methods: {
 		/* A readout of what this canvas is really doing, for diagnosing a
-		   device that is not in the room. It costs nothing unless the note's
-		   URL asks for it with ?inkstats=1, and is meant to be screenshotted
-		   and read, not kept. */
+		   device that is not in the room. It costs nothing unless it was asked
+		   for, and is meant to be screenshotted and read, not kept. */
 		startStats() {
-			let wanted
-			try {
-				wanted = new URLSearchParams(window.location.search).has('inkstats')
-			} catch {
-				wanted = false
-			}
-			if (!wanted) {
+			if (!statsWanted()) {
 				return
 			}
 			this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0 }
