@@ -124,6 +124,9 @@ export default {
 		window.removeEventListener('resize', this.onResize)
 		this.observer?.disconnect()
 		clearInterval(this.statsTimer)
+		if (this.ticker) {
+			cancelAnimationFrame(this.ticker)
+		}
 		if (this.backdrop) {
 			URL.revokeObjectURL(this.backdrop)
 		}
@@ -144,18 +147,34 @@ export default {
 			if (!wanted) {
 				return
 			}
-			this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0 }
+			this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0 }
+			/* The cadence the browser is actually giving us, measured apart
+			   from our own painting. If this collapses while the time spent
+			   in here stays near nothing, the cost is the platform's - the
+			   compositor, the filter over a full-screen canvas - and not the
+			   drawing. That is the one thing the numbers below cannot say on
+			   their own. */
+			let last = performance.now()
+			const tick = (now) => {
+				this.tally.ticks += 1
+				this.tally.worstGap = Math.max(this.tally.worstGap, now - last)
+				last = now
+				this.ticker = requestAnimationFrame(tick)
+			}
+			this.ticker = requestAnimationFrame(tick)
 			this.statsTimer = setInterval(() => {
 				const t = this.tally
 				const canvas = this.$refs.canvas
+				const filter = canvas ? window.getComputedStyle(canvas).filter : 'none'
 				this.stats = [
+					`${t.ticks}/s frames offered, worst gap ${t.worstGap.toFixed(0)}ms`,
 					`${t.moves}/s moves  ${t.samples}/s samples  ${t.paints}/s paints`,
 					`${(t.moveMs / Math.max(t.moves, 1)).toFixed(3)}ms per move  ${(t.paintMs / Math.max(t.paints, 1)).toFixed(2)}ms per paint`,
 					`${t.moveMs.toFixed(0)}ms + ${t.paintMs.toFixed(0)}ms of every 1000ms in here`,
 					`${this.strokes.length} strokes, ${this.current?.points.length ?? 0} points under the pen`,
-					`canvas ${canvas?.width ?? 0}x${canvas?.height ?? 0} at ${window.devicePixelRatio || 1}x`,
+					`canvas ${canvas?.width ?? 0}x${canvas?.height ?? 0} at ${window.devicePixelRatio || 1}x, filter ${filter}`,
 				].join('\n')
-				this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0 }
+				this.tally = { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0 }
 			}, 1000)
 		},
 

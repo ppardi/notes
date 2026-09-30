@@ -539,10 +539,11 @@ describe('the stats readout', () => {
 			await wrapper.vm.$nextTick()
 
 			const shown = wrapper.find('.ink__stats').text()
+			expect(shown).toMatch(/\d+\/s frames offered, worst gap \d+ms/)
 			expect(shown).toMatch(/1\/s moves\s+1\/s samples\s+\d+\/s paints/)
 			expect(shown).toMatch(/ms per move/)
 			expect(shown).toMatch(/0 strokes, \d+ points under the pen/)
-			expect(shown).toMatch(/canvas \d+x\d+ at \d+x/)
+			expect(shown).toMatch(/canvas \d+x\d+ at \d+x, filter /)
 		} finally {
 			vi.useRealTimers()
 		}
