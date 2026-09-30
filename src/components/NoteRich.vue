@@ -150,7 +150,37 @@ export default {
 			   the file under the same name, so the markdown already points at
 			   it and rewriting would only churn the note. */
 			if (this.newInk) {
+				this.placeCaretForInk()
 				this.editor?.insertAtCursor?.(inkContent(Number(this.noteId), id))
+			}
+		},
+
+		/**
+		 * Make sure the ink goes somewhere the reader would choose.
+		 *
+		 * A note that was only opened, never clicked into, has the caret where
+		 * ProseMirror starts it: inside the first block, which is the heading
+		 * the note's title and file name are read from. Ink written there
+		 * would become the note's first line, and the next autotitle would
+		 * rename the file after an image. So a caret in the first block sends
+		 * the ink to the end of the note instead, and anywhere else the
+		 * reader's own caret is kept, with a selected range collapsed to its
+		 * end so that inserting cannot delete what they had selected.
+		 *
+		 * Reaches the editor the way installHeadingFold does, because the
+		 * handle Text returns can focus but cannot say where the caret is.
+		 */
+		placeCaretForInk() {
+			const tiptap = this.$refs?.editor?.querySelector('.ProseMirror')?.editor
+			const selection = tiptap?.state?.selection
+			if (!selection || typeof tiptap.commands?.focus !== 'function') {
+				this.editor?.focus?.()
+				return
+			}
+			if (selection.$to.index(0) === 0) {
+				tiptap.commands.focus('end')
+			} else if (!selection.empty) {
+				tiptap.commands.setTextSelection(selection.to)
 			}
 		},
 

@@ -105,6 +105,21 @@ export async function deleteAllNotesVia(): Promise<void> {
  * @return The id of the created note
  */
 /**
+ * An attachment's bytes, fetched from the server the way the app fetches them.
+ *
+ * @param noteId The note the attachment belongs to
+ * @param path The attachment's path, e.g. `.attachments.12/photo.png`
+ * @return The file's bytes
+ */
+export async function noteAttachment(noteId: number, path: string): Promise<Buffer> {
+	return onOwnContext(async (request) => {
+		const response = await request.get(`/index.php/apps/notes/api/v1.4/attachment/${noteId}?path=${encodeURIComponent(path)}`, { headers: apiHeaders() })
+		expect(response.ok(), `reading ${path} of note ${noteId}`).toBeTruthy()
+		return await response.body()
+	})
+}
+
+/**
  * What a note holds on disk, read through the API.
  *
  * @param noteId The note to read
