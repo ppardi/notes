@@ -60,25 +60,32 @@ describe('samplesFrom', () => {
 
 describe('shouldDraw', () => {
 	it('draws for a pen', () => {
-		expect(shouldDraw(pointer({ pointerType: 'pen' }), false)).toBe(true)
+		expect(shouldDraw(pointer({ pointerType: 'pen' }))).toBe(true)
 	})
 
-	it('draws for a pen even after a pen has been seen', () => {
-		/* A pen must draw after the first stroke, or the feature is unusable. */
-		expect(shouldDraw(pointer({ pointerType: 'pen' }), true)).toBe(true)
+	it('draws for a mouse', () => {
+		expect(shouldDraw(pointer({ pointerType: 'mouse' }))).toBe(true)
 	})
 
-	it('draws for a finger when no pen has been seen', () => {
-		/* The feature is for a Pencil but must not be unusable without one. */
-		expect(shouldDraw(pointer({ pointerType: 'touch' }), false)).toBe(true)
+	it('never draws for a finger', () => {
+		/* A hand resting on the screen arrives as touch, and so does a finger
+		   meaning to write. They cannot be told apart, and on the device this
+		   is for the hand is far more often what landed. Letting a finger draw
+		   is a choice to be offered, not one to be made by the app. */
+		expect(shouldDraw(pointer({ pointerType: 'touch' }))).toBe(false)
 	})
 
-	it('ignores a finger once a pen has been seen', () => {
-		/* This is palm rejection: the hand resting on the screen is touch. */
+	it('never draws for a finger, whatever else has happened', () => {
+		/* There is no state that turns this back on - no "unless a pen has
+		   been seen", which is what let the first palm of a fresh page draw. */
 		expect(shouldDraw(pointer({ pointerType: 'touch' }), true)).toBe(false)
+		expect(shouldDraw(pointer({ pointerType: 'touch' }), false)).toBe(false)
 	})
 
-	it('still draws for a mouse after a pen has been seen', () => {
-		expect(shouldDraw(pointer({ pointerType: 'mouse' }), true)).toBe(true)
+	it('draws for a pointer that will not say what it is', () => {
+		/* Some browsers report nothing. Refusing those would make the canvas
+		   take no input at all, which is worse than taking a stray touch. */
+		expect(shouldDraw(pointer({ pointerType: '' }))).toBe(true)
+		expect(shouldDraw(pointer({ pointerType: undefined }))).toBe(true)
 	})
 })

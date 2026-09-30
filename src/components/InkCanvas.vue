@@ -43,7 +43,7 @@
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
 import { loadInk, saveInk } from '../inkFile.js'
-import { PEN_SEEN_MS, samplesFrom, shouldDraw } from '../inkInput.js'
+import { samplesFrom, shouldDraw } from '../inkInput.js'
 import { INK_COLOR, traceStroke } from '../inkRender.js'
 import { statsWanted } from '../inkStats.js'
 
@@ -74,7 +74,6 @@ export default {
 			current: null,
 			pointerId: null,
 			pointerType: null,
-			penSeenAt: 0,
 			ready: false,
 			saving: false,
 			error: '',
@@ -237,19 +236,6 @@ export default {
 			return true
 		},
 
-		penSeen() {
-			return Date.now() - this.penSeenAt < PEN_SEEN_MS
-		},
-
-		/* Remember the pen on ANY pen event, hovering included: a Pencil near the
-		   screen reports pointermove before it touches, and that is the signal
-		   that a hand is about to land. */
-		notePen(event) {
-			if (event.pointerType === 'pen') {
-				this.penSeenAt = Date.now()
-			}
-		},
-
 		/* Whether input may change the drawing at all: not before the existing
 		   ink has loaded (it would be replaced), and not while saving (a stroke
 		   added now is in one of the PNG and the strokes but not the other). */
@@ -258,21 +244,13 @@ export default {
 		},
 
 		onDown(event) {
-			this.notePen(event)
-			if (!this.accepting()) {
+			if (!this.accepting() || !shouldDraw(event)) {
 				return
 			}
+			/* One stroke at a time. Nothing preempts a stroke in progress now
+			   that a finger cannot start one: what used to arrive first and
+			   have to be undone was the palm. */
 			if (this.current) {
-				/* One stroke at a time, except that the pen wins. Most iPads do
-				   not report hover, so a resting palm can start a stroke before
-				   any pen has been seen. When the pen then lands, that stroke was
-				   the palm: drop it, uncommitted, and let the pen write. */
-				if (event.pointerType !== 'pen' || this.pointerType === 'pen') {
-					return
-				}
-				this.abandonStroke()
-			}
-			if (!shouldDraw(event, this.penSeen())) {
 				return
 			}
 			this.$refs.canvas?.setPointerCapture?.(event.pointerId)
@@ -282,8 +260,7 @@ export default {
 		},
 
 		onMove(event) {
-			this.notePen(event)
-			/* Only the pointer that started the stroke extends it. A palm resting
+			/* Only the pointer that started the stroke extends it. A hand resting
 			   beside the pen keeps reporting moves, and those are not ink. */
 			if (!this.current || event.pointerId !== this.pointerId || !this.accepting()) {
 				return
@@ -300,19 +277,11 @@ export default {
 		},
 
 		onUp(event) {
-			this.notePen(event)
-			/* The palm lifting must not end the pen's stroke. */
+			/* A hand lifting must not end the pen's stroke. */
 			if (!this.current || event.pointerId !== this.pointerId || !this.accepting()) {
 				return
 			}
 			this.finishStroke()
-		},
-
-		abandonStroke() {
-			this.current = null
-			this.pointerId = null
-			this.pointerType = null
-			this.paintNow()
 		},
 
 		/* The finished stroke goes onto the layer as it is committed, so the

@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-/** How long a pen is remembered, so a palm landing after it is still ignored. */
-export const PEN_SEEN_MS = 1000
-
 /** What a device that reports no pressure draws at. */
 const FLAT_PRESSURE = 0.5
 
@@ -32,15 +29,19 @@ export function samplesFrom(event) {
 /**
  * Whether this event draws.
  *
+ * A finger never does. A hand resting on the screen arrives as touch and so
+ * does a finger meaning to write; nothing in the event tells them apart, and
+ * on the device this is built for the hand is far more often what landed.
+ * Deciding by whether a pen has been seen lately was worse than it sounds: on
+ * a page nobody has written on yet no pen has been seen, so the first thing a
+ * resting palm did was draw.
+ *
+ * Drawing with a finger is a choice worth offering one day. It is not one for
+ * the app to make on its own.
+ *
  * @param {PointerEvent} event the event
- * @param {boolean} penSeen whether a pen has been in use recently
  * @return {boolean} whether to draw
  */
-export function shouldDraw(event, penSeen) {
-	if (event.pointerType === 'touch') {
-		/* Palm rejection. A hand resting on the screen arrives as touch, and
-		   once a pen is in play touch is never the thing being drawn with. */
-		return !penSeen
-	}
-	return true
+export function shouldDraw(event) {
+	return event.pointerType !== 'touch'
 }
