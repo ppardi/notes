@@ -155,6 +155,23 @@ test.describe('The note pane on a touch screen', () => {
 
 				await expect.poll(() => pannableBy(page)).toBe(0)
 			})
+
+			test('lays the ink canvas out inside the window', async ({ page, request }) => {
+				await login(page)
+				await deleteAllNotesVia()
+				await setNoteMode(request, 'rich')
+				const noteId = await createNoteViaRequest('', 'Inked', BODY)
+				await openNote(page, noteId)
+				// Let the pane settle first, as the test above does: it is wider
+				// than itself for a moment while it loads.
+				await page.waitForTimeout(1200)
+
+				await page.getByRole('button', { name: 'Ink', exact: true }).click()
+				await expect(page.locator('.ink__canvas')).toBeVisible()
+
+				const found = await layoutProblems(page)
+				expect(found, found.join('\n')).toEqual([])
+			})
 		})
 	}
 })

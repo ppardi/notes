@@ -120,6 +120,19 @@ export async function noteAttachment(noteId: number, path: string): Promise<Buff
 }
 
 /**
+ * Delete an attachment the way the app's own API does.
+ *
+ * @param noteId The note the attachment belongs to
+ * @param path The attachment's path, e.g. `.attachments.12/photo.png`
+ */
+export async function deleteNoteAttachment(noteId: number, path: string): Promise<void> {
+	await onOwnContext(async (request) => {
+		const response = await request.delete(`/index.php/apps/notes/api/v1.4/attachment/${noteId}?path=${encodeURIComponent(path)}`, { headers: apiHeaders() })
+		expect(response.ok(), `deleting ${path} of note ${noteId}`).toBeTruthy()
+	})
+}
+
+/**
  * What a note holds on disk, read through the API.
  *
  * @param noteId The note to read

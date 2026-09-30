@@ -7,7 +7,7 @@ import type { Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { createNoteViaRequest, deleteAllNotesVia, noteAttachment, noteContent, setNoteMode } from '../support/note.ts'
+import { createNoteViaRequest, deleteAllNotesVia, deleteNoteAttachment, noteAttachment, noteContent, setNoteMode } from '../support/note.ts'
 
 async function openInkedNote(page: Page, request: Parameters<typeof setNoteMode>[0]): Promise<number> {
 	await login(page)
@@ -244,5 +244,56 @@ test.describe('Ink', () => {
 		expect(tab.url()).toBe('https://links.example.test/index.php/apps/notes/ink/abc123')
 		// It is another server's ink, not ours: no canvas opens here.
 		await expect(page.locator('.ink__canvas')).toBeHidden()
+	})
+
+	test('says so when the ink a link points at is gone', async ({ page, request }) => {
+		/* Deleting the picture leaves the link, because Text will not keep a
+		   link attached to an image. Following it must not open a canvas that
+		   would write a file the note no longer mentions. */
+		const noteId = await openInkedNote(page, request)
+		await drawAndFinish(page)
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
+
+		const path = (await noteContent(noteId)).match(/\.attachments\.\d+\/(ink-[A-Za-z0-9_-]+\.png)/)![0]
+		await deleteNoteAttachment(noteId, path)
+
+		await page.getByRole('link', { name: 'Edit ink' }).click()
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.getByText(/ink.*no longer|no longer.*ink/i)).toBeVisible()
+	})
+
+	test('keeps the image and the link through an edit', async ({ page, request }) => {
+		/* Text discards a link wrapped around an image on the first save. These
+		   are two blocks precisely so they survive; assert that they do. */
+		const noteId = await openInkedNote(page, request)
+		await drawAndFinish(page)
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+
+		await page.locator('.ProseMirror').click()
+		await page.keyboard.press('Control+End')
+		await page.keyboard.type(' more typing')
+		await expect.poll(async () => (await noteContent(noteId)).includes('more typing'), { timeout: 15000 }).toBe(true)
+
+		const after = await noteContent(noteId)
+		expect(after).toMatch(/!\[[^\]]*\]\(\.attachments\.\d+\/ink-[A-Za-z0-9_-]+\.png\)/)
+		expect(after).toMatch(/\]\(.*\/apps\/notes\/ink\/[A-Za-z0-9_-]+\)/)
+	})
+
+	test('says so when the ink cannot be read at all', async ({ page, request }) => {
+		/* Not a 404 - a server that answers badly. loadInk rethrows anything
+		   that is not "gone", and nothing awaits openInk, so without a catch
+		   this is an unhandled rejection and a canvas that never opens. */
+		const noteId = await openInkedNote(page, request)
+		await drawAndFinish(page)
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
+
+		await page.route('**/attachment?*', (route) => route.fulfill({ status: 500 }))
+		await page.getByRole('link', { name: 'Edit ink' }).click()
+		await expect(page.locator('.ink__canvas')).toBeHidden()
+		await expect(page.getByText(/could not be opened/i)).toBeVisible()
+		// Not told the ink is gone: it may well still be there.
+		await expect(page.getByText(/no longer/i)).toHaveCount(0)
 	})
 })

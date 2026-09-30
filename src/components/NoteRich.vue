@@ -34,6 +34,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import InkCanvas from './InkCanvas.vue'
 import TagCompletion from './TagCompletion.vue'
 import { closeEditor, reopenEditor } from '../editorHandoff.js'
+import { loadInk } from '../inkFile.js'
 import { inkContent, inkIdFromUrl, makeInkId } from '../inkLink.js'
 import { inkIdFromNode } from '../inkTap.js'
 import logger from '../Logger.js'
@@ -138,8 +139,29 @@ export default {
 		 *
 		 * @param {string | null} id the ink to reopen, or null for a new one
 		 */
-		openInk(id = null) {
+		async openInk(id = null) {
 			this.newInk = id === null
+			if (id !== null) {
+				/* The picture can be deleted while its link stays behind. Opening
+				   a canvas over nothing would write a file the note no longer
+				   points at, so say so instead. */
+				let existing
+				try {
+					existing = await loadInk(Number(this.noteId), id)
+				} catch (error) {
+					/* Callers do not await this - a tap and a link click both
+					   fire and forget - so anything thrown here would surface
+					   as an unhandled rejection and the reader would be told
+					   nothing at all while the canvas never opened. */
+					logger.error('Opening ink failed', { noteId: this.noteId, id, error })
+					showError(t('notes', 'The ink could not be opened. Please try again.'))
+					return
+				}
+				if (existing === null) {
+					showError(t('notes', 'That ink is no longer in this note. You can delete the link.'))
+					return
+				}
+			}
 			this.inkId = id ?? makeInkId()
 		},
 
@@ -656,10 +678,22 @@ export default {
 <style lang="scss" scoped>
 .text-editor-wrapper {
 	height: 100%;
+	/* The Ink button sits under the editor, so the editor takes what is left
+	   rather than the whole height. Sized to the full height it pushed the
+	   button below the bottom of the window, out of reach on a phone. */
+	display: flex;
+	flex-direction: column;
 }
 
 .text-editor {
-	height: 100%;
+	flex: 1;
+	/* A flex child will not shrink below its content unless told it may. */
+	min-height: 0;
+}
+
+.ink-open {
+	flex: none;
+	align-self: flex-end;
 }
 
 .note-container {
