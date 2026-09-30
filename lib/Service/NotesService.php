@@ -599,8 +599,10 @@ class NotesService {
 	public function createImage(string $userId, int $noteId, $fileDataArray, bool $replace = false) : array {
 		$note = $this->get($userId, $noteId);
 
-		// validate the requested name before it is used in any filesystem lookup
-		$this->filenameValidator->validateFilename($fileDataArray['name']);
+		// strip any directory part first, then validate what is left, before it
+		// is used in any filesystem lookup (same order as deleteAttachment)
+		$requestedName = basename($fileDataArray['name']);
+		$this->filenameValidator->validateFilename($requestedName);
 
 		if ($fileDataArray['tmp_name'] === '') {
 			throw new ImageNotWritableException();
@@ -609,11 +611,12 @@ class NotesService {
 		$saveDir = $this->getAttachmentDirectoryForNote($note, $userId);
 		/* Replacing keeps the name the note already points at. Without it a
 		   second save writes "name (1).png", orphaning the first and forcing
-		   the note's markdown to be rewritten on every edit. basename() keeps
-		   the name inside this note's own folder, as deleteAttachment does. */
+		   the note's markdown to be rewritten on every edit. The name was
+		   basenamed and validated above, so it stays inside this note's own
+		   folder, as deleteAttachment does. */
 		$fileName = $replace
-			? basename($fileDataArray['name'])
-			: self::getUniqueFileName($saveDir, $fileDataArray['name']);
+			? $requestedName
+			: self::getUniqueFileName($saveDir, $requestedName);
 
 		// read uploaded file from disk
 		$fp = fopen($fileDataArray['tmp_name'], 'r');
