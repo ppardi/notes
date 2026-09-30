@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { makeId } from './id.js'
+
 /**
  * An id for a new smart category.
  *
@@ -13,16 +15,7 @@
  * @return {string} the id
  */
 export function makeSmartCategoryId() {
-	const uuid = globalThis.crypto?.randomUUID?.()
-	if (uuid) {
-		return uuid.replaceAll('-', '')
-	}
-	/* Plain http is not a secure context, and randomUUID is withheld there -
-	   which a self-hosted server on a LAN reaches often enough to matter. Two
-	   padded base-36 runs give a fixed sixteen characters; slicing a random
-	   float instead would sometimes give one or two, and short ids collide. */
-	const run = () => Math.floor(Math.random() * (36 ** 8)).toString(36).padStart(8, '0')
-	return run() + run()
+	return makeId()
 }
 /**
  * Whether a category path is inside another one, or is it.
