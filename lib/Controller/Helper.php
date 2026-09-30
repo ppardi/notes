@@ -129,11 +129,15 @@ class Helper {
 		$this->logger->error('Controller failed with ' . get_class($e), [ 'exception' => $e ]);
 	}
 
-	/** @param 200|201|400|403|404|423|500|507 $statusCode */
-	public function createErrorResponse(int $statusCode) : JSONResponse {
-		$response = [
+	/**
+	 * @param 200|201|400|403|404|423|500|507 $statusCode
+	 * @param array<string, mixed> $extra detail the client can act on, merged
+	 *                                    over the defaults
+	 */
+	public function createErrorResponse(int $statusCode, array $extra = []) : JSONResponse {
+		$response = array_merge([
 			'errorType' => 'Exception'
-		];
+		], $extra);
 		return new JSONResponse($response, $statusCode);
 	}
 
@@ -155,6 +159,18 @@ class Helper {
 		} catch (\OCP\Files\InvalidPathException $e) {
 			$this->logException($e);
 			$response = $this->createErrorResponse(Http::STATUS_BAD_REQUEST);
+		} catch (\OCP\Lock\ManuallyLockedException $e) {
+			/* Ahead of the LockedException branch below, which it inherits from.
+			   Both answer a write with 423 and they are cleared differently: the
+			   transactional kind lets go by itself, this kind is held by an app
+			   or a person until they give it up. Passing the owner on is what
+			   lets the client say which, rather than leaving whoever reads the
+			   message to guess between two remedies. */
+			$this->logException($e);
+			$response = $this->createErrorResponse(Http::STATUS_LOCKED, [
+				'errorType' => 'ManuallyLocked',
+				'lockOwner' => $e->getOwner(),
+			]);
 		} catch (\OCP\Lock\LockedException $e) {
 			$this->logException($e);
 			$response = $this->createErrorResponse(Http::STATUS_LOCKED);

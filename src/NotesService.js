@@ -6,6 +6,7 @@
 import axios from '@nextcloud/axios'
 import { showError } from '@nextcloud/dialogs'
 import { generateUrl } from '@nextcloud/router'
+import { lockErrorMessage } from './lockError.js'
 import logger from './Logger.js'
 import store from './store.js'
 import { copyNote } from './Util.js'
@@ -23,7 +24,7 @@ function handleSyncError(message, err = null) {
 				showError(message + ' ' + t('notes', 'Note not found.'))
 				break
 			case 423:
-				showError(message + ' ' + t('notes', 'Note is locked.'))
+				showError(message + ' ' + lockErrorMessage(err.response.data))
 				break
 			case 507:
 				showError(message + ' ' + t('notes', 'Insufficient storage.'))
