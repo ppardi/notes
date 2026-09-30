@@ -29,9 +29,23 @@ function stored(name) {
 	}
 }
 
+/* Read loosely as well as properly. A note in a category already carries a
+   query, so appending "?inkstats=1" to its URL puts the question inside the
+   category's value instead of alongside it - a second question mark does not
+   start a second query. That is a reasonable thing to type and an
+   unreasonable thing to ignore, so the whole URL is searched when the
+   parameter is not there as one. Needs a value, so a note that merely
+   mentions the word does not switch it on. */
+const LOOSE = /[?&.]inkstats(?:=([^&#?]*))?/
+
 const asked = (() => {
 	try {
-		return new URLSearchParams(window.location.search).get('inkstats')
+		const proper = new URLSearchParams(window.location.search).get('inkstats')
+		if (proper !== null) {
+			return proper
+		}
+		const loose = LOOSE.exec(window.location.href ?? '')
+		return loose ? (loose[1] ?? '') : null
 	} catch {
 		return null
 	}

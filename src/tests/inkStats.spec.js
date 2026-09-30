@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
    needs it loaded afresh against a different URL. */
 async function loadWith(search) {
 	vi.resetModules()
-	vi.stubGlobal('location', { search })
+	vi.stubGlobal('location', { search, href: 'https://example.test/apps/notes/note/1' + search })
 	return (await import('../inkStats.js')).statsWanted
 }
 
@@ -40,6 +40,29 @@ describe('statsWanted', () => {
 		on()
 		expect((await loadWith('?inkstats=0'))()).toBe(false)
 		expect((await loadWith(''))()).toBe(false)
+	})
+
+	it('is on when a second question mark swallowed the question', async () => {
+		/* A note in a category already has a query, so appending "?inkstats=1"
+		   makes it part of the category's value rather than a parameter of its
+		   own. That is a reasonable thing to type and an unreasonable thing to
+		   ignore. */
+		expect((await loadWith('?category=Writing/Substack?inkstats=1'))()).toBe(true)
+	})
+
+	it('is on when asked for with no value at all', async () => {
+		expect((await loadWith('?inkstats'))()).toBe(true)
+	})
+
+	it('is still turned off by a malformed no', async () => {
+		const on = await loadWith('?inkstats=1')
+		on()
+		expect((await loadWith('?category=Writing?inkstats=0'))()).toBe(false)
+	})
+
+	it('is not turned on by a note that merely mentions it', async () => {
+		/* The loose reading must still need the word followed by a value. */
+		expect((await loadWith('?category=about%20inkstats%20and%20lag'))()).toBe(false)
 	})
 
 	it('says no rather than throwing where storage is refused', async () => {
