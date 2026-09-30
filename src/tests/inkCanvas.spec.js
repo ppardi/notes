@@ -179,11 +179,49 @@ describe('InkCanvas', () => {
 			expect(wrapper.vm.strokes[0].points).toHaveLength(2)
 		})
 
-		it('does not let a second pointer replace the stroke under way', async () => {
+		it('does not let a second pen replace the stroke under way', async () => {
 			const wrapper = await open()
 			await pointer(wrapper, 'pointerdown', { pointerId: 1 })
 			await pointer(wrapper, 'pointerdown', { pointerId: 2 })
 			expect(wrapper.vm.pointerId).toBe(1)
+		})
+
+		it('ignores a touch that lands while the pen is writing', async () => {
+			const wrapper = await open()
+			await pointer(wrapper, 'pointerdown', { pointerId: 1, offsetX: 10 })
+			await pointer(wrapper, 'pointerdown', { pointerType: 'touch', pointerId: 2, offsetX: 99 })
+			await pointer(wrapper, 'pointermove', { pointerId: 1, offsetX: 20 })
+			await pointer(wrapper, 'pointerup', { pointerId: 1 })
+
+			expect(wrapper.vm.strokes).toHaveLength(1)
+			expect(wrapper.vm.strokes[0].points.map(([x]) => x)).toEqual([10, 20])
+		})
+
+		it('lets the pen take over from a palm that started a stroke first', async () => {
+			/* An iPad whose Pencil does not hover: no pen has been seen, so the
+			   resting hand is let through and starts a stroke. The pen must not
+			   be locked out, and the palm's stroke is not something drawn. */
+			const wrapper = await open()
+			await pointer(wrapper, 'pointerdown', { pointerType: 'touch', pointerId: 2, offsetX: 99 })
+			await pointer(wrapper, 'pointermove', { pointerType: 'touch', pointerId: 2, offsetX: 98 })
+			expect(wrapper.vm.current).not.toBeNull()
+
+			await pointer(wrapper, 'pointerdown', { pointerId: 1, offsetX: 10 })
+			expect(wrapper.vm.pointerId).toBe(1)
+			await pointer(wrapper, 'pointermove', { pointerType: 'touch', pointerId: 2, offsetX: 97 })
+			await pointer(wrapper, 'pointermove', { pointerId: 1, offsetX: 20 })
+			await pointer(wrapper, 'pointerup', { pointerType: 'touch', pointerId: 2 })
+			await pointer(wrapper, 'pointerup', { pointerId: 1 })
+
+			expect(wrapper.vm.strokes).toHaveLength(1)
+			expect(wrapper.vm.strokes[0].points.map(([x]) => x)).toEqual([10, 20])
+		})
+
+		it('ignores a second touch while a touch stroke is under way', async () => {
+			const wrapper = await open()
+			await pointer(wrapper, 'pointerdown', { pointerType: 'touch', pointerId: 2 })
+			await pointer(wrapper, 'pointerdown', { pointerType: 'touch', pointerId: 3 })
+			expect(wrapper.vm.pointerId).toBe(2)
 		})
 
 		it('rejects a touch that lands after the pen hovered, with no stroke under way', async () => {

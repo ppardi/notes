@@ -62,6 +62,7 @@ export default {
 			strokes: [],
 			current: null,
 			pointerId: null,
+			pointerType: null,
 			penSeenAt: 0,
 			ready: false,
 			saving: false,
@@ -140,12 +141,25 @@ export default {
 
 		onDown(event) {
 			this.notePen(event)
-			/* One stroke at a time: a second pointer must not replace it. */
-			if (!this.accepting() || this.current || !shouldDraw(event, this.penSeen())) {
+			if (!this.accepting()) {
+				return
+			}
+			if (this.current) {
+				/* One stroke at a time, except that the pen wins. Most iPads do
+				   not report hover, so a resting palm can start a stroke before
+				   any pen has been seen. When the pen then lands, that stroke was
+				   the palm: drop it, uncommitted, and let the pen write. */
+				if (event.pointerType !== 'pen' || this.pointerType === 'pen') {
+					return
+				}
+				this.abandonStroke()
+			}
+			if (!shouldDraw(event, this.penSeen())) {
 				return
 			}
 			this.$refs.canvas?.setPointerCapture?.(event.pointerId)
 			this.pointerId = event.pointerId
+			this.pointerType = event.pointerType
 			this.current = { points: samplesFrom(event) }
 		},
 
@@ -169,11 +183,19 @@ export default {
 			this.finishStroke()
 		},
 
+		abandonStroke() {
+			this.current = null
+			this.pointerId = null
+			this.pointerType = null
+			this.draw()
+		},
+
 		finishStroke() {
 			if (this.current) {
 				this.strokes.push(this.current)
 				this.current = null
 				this.pointerId = null
+				this.pointerType = null
 				this.draw()
 			}
 		},
