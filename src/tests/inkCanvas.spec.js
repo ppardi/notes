@@ -274,6 +274,29 @@ describe('InkCanvas', () => {
 		expect(again.vm.strokes[0].points).toEqual([[400, 300, 0.5], [420, 330, 0.5]])
 	})
 
+	it('keeps only the samples that went somewhere', async () => {
+		/* The Pencil reports each position twice, and a stroke built from the
+		   pairs is a staircase: the curves came out faceted. Measured on the
+		   device - 513 of 1038 gaps were exactly nought. */
+		const wrapper = await open()
+		await pointer(wrapper, 'pointerdown', { offsetX: 10, offsetY: 10 })
+		await pointer(wrapper, 'pointermove', { offsetX: 10, offsetY: 10 })
+		await pointer(wrapper, 'pointermove', { offsetX: 12, offsetY: 11 })
+		await pointer(wrapper, 'pointermove', { offsetX: 12, offsetY: 11 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes[0].points).toEqual([[10, 10, 0.5], [12, 11, 0.5]])
+	})
+
+	it('keeps a stroke that never moved, which is a dot', async () => {
+		const wrapper = await open()
+		await pointer(wrapper, 'pointerdown', { offsetX: 10, offsetY: 10 })
+		await pointer(wrapper, 'pointermove', { offsetX: 10, offsetY: 10 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes[0].points).toEqual([[10, 10, 0.5]])
+	})
+
 	it('undoes the last stroke', async () => {
 		const wrapper = await open()
 		await pointer(wrapper, 'pointerdown', { offsetX: 1, offsetY: 1 })

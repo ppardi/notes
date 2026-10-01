@@ -64,7 +64,7 @@
 import NcButton from '@nextcloud/vue/components/NcButton'
 import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
-import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
+import { predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
 import { INK_COLOR, INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* How far a finger travels before it is moving the page rather than resting on
@@ -518,7 +518,7 @@ export default {
 				return
 			}
 			this.predicted = []
-			this.current = { points: this.onPage(samplesFrom(event)) }
+			this.current = { points: withoutRepeats(this.onPage(samplesFrom(event)), null) }
 			/* Draw it now. The first sample is already in hand, so waiting for
 			   a pointermove to show anything leaves the nib on a blank page
 			   for however long the browser takes to report the first one. */
@@ -546,7 +546,9 @@ export default {
 			if (!this.current) {
 				return
 			}
-			const samples = this.onPage(samplesFrom(event))
+			/* Only what moved. The Pencil reports each position twice, and the
+			   pairs make the stroke a staircase for the smoothing to follow. */
+			const samples = withoutRepeats(this.onPage(samplesFrom(event)), this.current.points.at(-1))
 			this.current.points.push(...samples)
 			/* Drawn, never kept: the file holds what the pen did, not what it
 			   was expected to do. */

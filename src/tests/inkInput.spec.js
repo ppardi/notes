@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
+import { predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
 
 /**
  * @param {object} fields what the event carries
@@ -107,5 +107,44 @@ describe('predictedFrom', () => {
 	it('gives a prediction with no pressure the same flat value as a sample', () => {
 		const event = pointer({ getPredictedEvents: () => [pointer({ offsetX: 1, offsetY: 2, pressure: 0 })] })
 		expect(predictedFrom(event)).toEqual([[1, 2, 0.5]])
+	})
+})
+
+describe('withoutRepeats', () => {
+	it('drops a sample that has not moved', () => {
+		/* Measured on the iPad: of 1038 gaps between samples in a page of
+		   handwriting, 513 were exactly zero - the pen's position arrives
+		   twice. A sample that has not moved says nothing the one before it
+		   did not, and the pair of them is a flat step for the stroke
+		   smoothing to follow, which is what put facets in the curves. */
+		const samples = [[10, 10, 0.4], [10, 10, 0.5], [12, 11, 0.5]]
+		expect(withoutRepeats(samples, null)).toEqual([[10, 10, 0.4], [12, 11, 0.5]])
+	})
+
+	it('keeps a sample that moved at all', () => {
+		/* Half a CSS pixel is one pixel on a 2x screen, and the pen reports
+		   them: that is detail, not noise. */
+		const samples = [[10, 10, 0.5], [10.5, 10, 0.5]]
+		expect(withoutRepeats(samples, null)).toHaveLength(2)
+	})
+
+	it('measures the first sample against where the stroke already was', () => {
+		/* The repeat can straddle two reports, and a stroke is built from
+		   many of them. */
+		expect(withoutRepeats([[10, 10, 0.5], [11, 10, 0.5]], [10, 10, 0.4]))
+			.toEqual([[11, 10, 0.5]])
+	})
+
+	it('keeps everything when nothing repeats', () => {
+		const samples = [[1, 1, 0.5], [2, 2, 0.5], [3, 3, 0.5]]
+		expect(withoutRepeats(samples, [0, 0, 0.5])).toEqual(samples)
+	})
+
+	it('hands back nothing for nothing', () => {
+		expect(withoutRepeats([], [1, 1, 0.5])).toEqual([])
+	})
+
+	it('keeps a stroke that is one point, which is a dot', () => {
+		expect(withoutRepeats([[5, 5, 0.5]], null)).toEqual([[5, 5, 0.5]])
 	})
 })

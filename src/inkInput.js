@@ -47,6 +47,38 @@ export function predictedFrom(event) {
 }
 
 /**
+ * The samples that actually went somewhere.
+ *
+ * The Pencil's position arrives twice. Measured on the device, in a page of
+ * handwriting: of 1038 gaps between consecutive samples, 513 were exactly
+ * nought. A sample in the same place as the one before it says nothing that
+ * one did not - pressure does not change the nib - and the pair is a flat
+ * step, so the stroke the smoothing follows is a staircase. That is what put
+ * visible facets in curves, and it showed up when the nib was thinned from 6
+ * CSS pixels to 2.5: a wide nib covers a one-pixel stair, a fine one draws it.
+ *
+ * Dropped rather than averaged, because there is nothing to average: the two
+ * are the same reading. It also halves what a page of handwriting stores.
+ *
+ * @param {Array<Array<number>>} samples what the event carried
+ * @param {Array<number> | null} previous where the stroke already was, so a
+ *   repeat across two reports goes too
+ * @return {Array<Array<number>>} the samples that moved
+ */
+export function withoutRepeats(samples, previous) {
+	const kept = []
+	let last = previous
+	for (const sample of samples) {
+		if (last && sample[0] === last[0] && sample[1] === last[1]) {
+			continue
+		}
+		kept.push(sample)
+		last = sample
+	}
+	return kept
+}
+
+/**
  * Whether this event draws.
  *
  * A finger never does. A hand resting on the screen arrives as touch and so
