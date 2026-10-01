@@ -25,7 +25,7 @@ const loadInk = vi.fn()
 vi.mock('../inkFile.js', () => ({ saveInk: (...a) => saveInk(...a), loadInk: (...a) => loadInk(...a) }))
 
 const InkCanvas = (await import('../components/InkCanvas.vue')).default
-const { CROP_MARGIN, INK_COLOR } = await import('../inkRender.js')
+const { CROP_MARGIN, INK_COLOR, INK_DENSITY } = await import('../inkRender.js')
 
 /* Runs whatever is waiting for the next frame. Set up in beforeAll, where the
    queue it drains lives. */
@@ -1029,11 +1029,33 @@ describe('InkCanvas drawing', () => {
 		expect(pictures).toHaveLength(1)
 		/* Neither sheet: a picture of its own, the size of what was written. */
 		expect(pictures[0].className).toBe('')
-		expect(pictures[0].width).toBe(Math.ceil(20 + CROP_MARGIN * 2))
-		expect(pictures[0].height).toBe(Math.ceil(30 + CROP_MARGIN * 2))
+		expect(pictures[0].width).toBe(Math.ceil((20 + CROP_MARGIN * 2) * INK_DENSITY))
+		expect(pictures[0].height).toBe(Math.ceil((30 + CROP_MARGIN * 2) * INK_DENSITY))
 		/* The stroke still under the pen was committed before it was drawn. */
 		expect(saveInk).toHaveBeenCalledTimes(1)
 		expect(saveInk.mock.calls[0][3]).toHaveLength(1)
+	})
+
+	it('saves the same picture whatever the screen it was drawn on', async () => {
+		/* The pixels in the file used to be the drawing device's own: the same
+		   handwriting came out twice the size in the note if it had been
+		   written on the iPad rather than the Mac. And the note shows ink at a
+		   size fixed against this density, so a device-dependent one would show
+		   it at a device-dependent size too. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		vi.stubGlobal('devicePixelRatio', 3)
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		const pictures = []
+		HTMLCanvasElement.prototype.toBlob = function(cb) {
+			pictures.push({ width: this.width, height: this.height })
+			cb(new Blob([new Uint8Array([1])]))
+		}
+		await pointer(wrapper, 'pointerdown', { offsetX: 400, offsetY: 300 })
+		await pointer(wrapper, 'pointermove', { offsetX: 420, offsetY: 330 })
+
+		await wrapper.vm.done()
+
+		expect(pictures[0].width).toBe(Math.ceil((20 + CROP_MARGIN * 2) * INK_DENSITY))
 	})
 
 	it('writes the strokes in the saved picture\'s own coordinates', async () => {

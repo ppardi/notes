@@ -32,6 +32,27 @@ export const STROKE_SIZE = 2.5
 const STROKE = { size: STROKE_SIZE, thinning: 0, simulatePressure: false }
 
 /**
+ * Image pixels per CSS pixel of drawing in a saved picture.
+ *
+ * Half of a pair, and neither half makes sense alone: the note shows ink at
+ * `1 / INK_DENSITY` of its natural size, so a drawing appears at the size it
+ * was drawn and carries this many pixels for every one the screen has.
+ *
+ * Markdown cannot say how big to show an image - Text renders a size suffix
+ * and an <img> tag as literal text - so an image is laid out at one image
+ * pixel per CSS pixel, and on a 2x screen every pixel is therefore doubled.
+ * Saving at a higher density changes nothing on its own, because the picture
+ * is then shown that much larger as well. Only the two together are a fix.
+ *
+ * Fixed rather than the drawing device's own pixel ratio, which was the other
+ * half of the fault: the same handwriting came out twice the size in the note
+ * if it had been written on the iPad rather than the Mac. A drawing is now the
+ * same file wherever it was made. 2 is crisp on the retina screens this is
+ * for; 3 would cost 2.25x the pixels to improve only phones.
+ */
+export const INK_DENSITY = 2
+
+/**
  * How far outside the samples a saved picture reaches, in CSS pixels.
  *
  * The samples are the stroke's centre line and the nib puts ink either side

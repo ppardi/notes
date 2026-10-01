@@ -65,7 +65,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
-import { INK_COLOR, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
+import { INK_COLOR, INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* How far a finger travels before it is moving the page rather than resting on
    it. A tap, and a hand settling, both report a little movement. */
@@ -799,7 +799,10 @@ export default {
 		 * @return {Promise<Blob>} the PNG
 		 */
 		pictureOf(strokes, bounds) {
-			const ratio = window.devicePixelRatio || 1
+			/* Not this device's pixel ratio: a drawing has to be the same file
+			   wherever it was made, and the note shows it at a size fixed
+			   against this. */
+			const ratio = INK_DENSITY
 			const [, , width, height] = bounds ?? [0, 0, 0, 0]
 			const picture = document.createElement('canvas')
 			/* At least a pixel each way: a canvas of no width cannot be turned

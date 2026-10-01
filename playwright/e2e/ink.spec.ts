@@ -6,6 +6,7 @@
 import type { Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
+import { INK_DENSITY } from '../../src/inkRender.js'
 import { login } from '../support/login.ts'
 import { createNoteViaRequest, deleteAllNotesVia, deleteNoteAttachment, noteAttachment, noteContent, replaceNoteAttachment, setNoteContent, setNoteMode } from '../support/note.ts'
 
@@ -505,9 +506,11 @@ test.describe('Ink', () => {
 		const bytes = await noteAttachment(noteId, src)
 
 		// A PNG says its size in IHDR, the first chunk after the signature.
+		// Measured in CSS pixels of drawing, which is what the picture is
+		// cropped to; the file carries INK_DENSITY pixels for each of them.
 		const size = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-		const width = size.getUint32(16)
-		const height = size.getUint32(20)
+		const width = size.getUint32(16) / INK_DENSITY
+		const height = size.getUint32(20) / INK_DENSITY
 		// drawAndFinish writes one stroke 100 wide and 70 tall, so the picture
 		// is about that plus a margin - and nothing like the canvas it was
 		// drawn on, which is as wide as the window.
@@ -590,9 +593,9 @@ test.describe('Ink', () => {
 
 		// The picture is cropped to what is left. Both lines would span the 200
 		// pixels between them; one line alone is a few pixels tall.
-		expect(size.getUint32(20)).toBeLessThan(50)
+		expect(size.getUint32(20) / INK_DENSITY).toBeLessThan(50)
 		// And it is the line that was not rubbed out, not an empty page.
-		expect(size.getUint32(16)).toBeGreaterThanOrEqual(100)
+		expect(size.getUint32(16) / INK_DENSITY).toBeGreaterThanOrEqual(100)
 	})
 	test('reopens on the ink as it was last saved, not as it was first fetched', async ({ page, request }) => {
 		// The attachment endpoint answers with `max-age=3600` and no ETag, so a
@@ -676,9 +679,9 @@ test.describe('Ink', () => {
 
 		// One picture, taller than the screen it was written on: each line is
 		// on the page below the one before, not on top of it.
-		expect(size.getUint32(20)).toBeGreaterThan(box.height)
+		expect(size.getUint32(20) / INK_DENSITY).toBeGreaterThan(box.height)
 		// And no wider than the lines themselves.
-		expect(size.getUint32(16)).toBeLessThan(300)
+		expect(size.getUint32(16) / INK_DENSITY).toBeLessThan(300)
 	})
 	test('opens the drawing where it was left, every time', async ({ page, request }) => {
 		// The file holds the writing cropped to itself. Without the corner it
@@ -725,5 +728,52 @@ test.describe('Ink', () => {
 			await page.getByRole('button', { name: 'Done' }).click()
 			await expect(page.getByRole('dialog', { name: 'Ink' })).toHaveCount(0)
 		}
+	})
+	test.describe('on a retina screen', () => {
+		test.use({ deviceScaleFactor: 2 })
+
+		test('shows the ink at the size it was drawn, with pixels to spare', async ({ page, request }) => {
+			// Markdown cannot say how big to show an image, so a picture is laid
+			// out at one image pixel per CSS pixel - and on a 2x screen every
+			// pixel of it is then doubled. Cropping the picture to the writing
+			// exposed that: the old whole-screen picture was far wider than the
+			// column, so the browser shrank it and downsampled, and the ink
+			// looked sharper than the screen needed. Ink is saved at a fixed
+			// density now and shown at the reciprocal of it.
+			const noteId = await openInkedNote(page, request)
+			await page.getByRole('button', { name: 'Ink', exact: true }).click()
+			const canvas = page.locator('.ink__canvas--live')
+			await expect(canvas).toBeVisible()
+			await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+			// One stroke, exactly 200 CSS pixels wide.
+			const drawn = 200
+			const box = (await canvas.boundingBox())!
+			const x = box.x + box.width / 4
+			const y = box.y + box.height / 3
+			await page.mouse.move(x, y)
+			await page.mouse.down()
+			await page.mouse.move(x + drawn, y + 60, { steps: 20 })
+			await page.mouse.up()
+			await page.getByRole('button', { name: 'Done' }).click()
+
+			const image = new RegExp(`(\\.attachments\\.${noteId}/ink-[A-Za-z0-9_-]+\\.png)`)
+			await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toMatch(image)
+			const bytes = await noteAttachment(noteId, image.exec(await noteContent(noteId))![1])
+			const pixels = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(16)
+
+			const picture = page.locator('figure[data-component="image-view"] img')
+			await expect(picture).toBeVisible({ timeout: 15000 })
+			const shown = await picture.evaluate((img: HTMLImageElement) => ({
+				css: img.getBoundingClientRect().width,
+				dpr: window.devicePixelRatio,
+			}))
+
+			// Shown at the size it was written, give or take the crop's margin.
+			expect(Math.abs(shown.css - drawn)).toBeLessThan(20)
+			// And with at least one image pixel for every pixel of the screen it
+			// is shown on, so nothing is being stretched.
+			expect(pixels / shown.css).toBeGreaterThanOrEqual(shown.dpr)
+		})
 	})
 })

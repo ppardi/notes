@@ -719,6 +719,14 @@ export default {
    the picture is recoloured, so Text's caption and controls keep theirs. */
 .text-editor:deep(figure[data-component="image-view"][data-src^=".attachments."][data-src*="/ink-"][data-src$=".png"] img) {
 	filter: var(--background-invert-if-dark);
+	/* And is shown at the size it was drawn, which is what makes it sharp.
+	   Markdown cannot say how big to show an image, so a picture is laid out
+	   at one image pixel per CSS pixel and every pixel of it is doubled on a
+	   retina screen. Ink is saved at INK_DENSITY pixels for each CSS pixel of
+	   drawing and shown at the reciprocal of that: the drawing is the size it
+	   was written, with as many pixels as the screen can use. Keep the two in
+	   step - 1 / INK_DENSITY. */
+	zoom: 0.5;
 }
 
 .note-container {
