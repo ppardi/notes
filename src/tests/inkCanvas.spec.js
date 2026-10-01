@@ -655,6 +655,38 @@ describe('the stats readout', () => {
 		}
 	})
 
+	it('counts every pen-down in the second, not just the first', async () => {
+		/* Reported from the iPad: several lifts, and the readout said one. */
+		statsWanted.mockReturnValue(true)
+		vi.useFakeTimers()
+		try {
+			const wrapper = await open({ png: new Blob(), strokes: [] })
+			for (const stroke of [0, 1, 2]) {
+				await pointer(wrapper, 'pointerdown', { offsetX: 10 + stroke * 30 })
+				await pointer(wrapper, 'pointermove', { offsetX: 20 + stroke * 30 })
+				runFrame()
+				await pointer(wrapper, 'pointerup', { offsetX: 20 + stroke * 30 })
+			}
+
+			vi.advanceTimersByTime(1000)
+			await wrapper.vm.$nextTick()
+			expect(wrapper.find('.ink__stats').text()).toMatch(/3 pen-downs so far/)
+
+			/* Kept across seconds, because a pen goes down once or twice in
+			   one and the whole point is to average over many. */
+			await pointer(wrapper, 'pointerdown', { offsetX: 200 })
+			await pointer(wrapper, 'pointermove', { offsetX: 210 })
+			runFrame()
+			await pointer(wrapper, 'pointerup', { offsetX: 210 })
+			vi.advanceTimersByTime(1000)
+			await wrapper.vm.$nextTick()
+
+			expect(wrapper.find('.ink__stats').text()).toMatch(/4 pen-downs so far/)
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+
 	it('holds the last second that had writing in it', async () => {
 		/* The numbers are read after the pen lifts. Wiping them on the first
 		   idle second would leave zeros on screen exactly when someone looks. */

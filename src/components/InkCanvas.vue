@@ -145,7 +145,7 @@ export default {
 		   device that is not in the room. It costs nothing unless it was asked
 		   for, and is meant to be screenshotted and read, not kept. */
 		emptyTally() {
-			return { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0, lagSum: 0, lagMax: 0, batchSum: 0, starts: 0, firstMoveSum: 0, firstMoveMax: 0 }
+			return { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0, lagSum: 0, lagMax: 0, batchSum: 0 }
 		},
 
 		/* How far behind the pen we are, and how much of that was already
@@ -206,7 +206,7 @@ export default {
 				/* Hold the last second that had writing in it. Otherwise the
 				   numbers are wiped the moment the pen lifts, which is exactly
 				   when someone looks at them. */
-				if (this.stats && !t.moves && !t.starts) {
+				if (this.stats && !t.moves) {
 					return
 				}
 				const canvas = this.$refs.canvas
@@ -215,7 +215,7 @@ export default {
 					`${t.ticks}/s frames offered, worst gap ${t.worstGap.toFixed(0)}ms (${this.worstEver.toFixed(0)}ms worst yet)`,
 					`${t.moves}/s moves  ${t.samples}/s samples  ${t.paints}/s paints`,
 					`behind the pen ${(t.lagSum / Math.max(t.moves, 1)).toFixed(0)}ms, worst ${t.lagMax.toFixed(0)}ms; batch spans ${(t.batchSum / Math.max(t.moves, 1)).toFixed(0)}ms`,
-					`${t.starts} pen-downs, first move after ${(t.firstMoveSum / Math.max(t.starts, 1)).toFixed(0)}ms, worst ${t.firstMoveMax.toFixed(0)}ms`,
+					`${this.penDowns ?? 0} pen-downs so far, first move after ${((this.firstMoveSum ?? 0) / Math.max(this.penDowns ?? 0, 1)).toFixed(0)}ms, worst ${(this.firstMoveMax ?? 0).toFixed(0)}ms`,
 					`${(t.moveMs / Math.max(t.moves, 1)).toFixed(3)}ms per move  ${(t.paintMs / Math.max(t.paints, 1)).toFixed(2)}ms per paint`,
 					`${t.moveMs.toFixed(0)}ms + ${t.paintMs.toFixed(0)}ms of every 1000ms in here`,
 					`${this.strokes.length} strokes, ${this.current?.points.length ?? 0} points under the pen`,
@@ -360,9 +360,14 @@ export default {
 					   arrives, and none of the wait is ours. */
 					this.firstMoveOfStroke = false
 					const wait = started - this.strokeStartedAt
-					this.tally.starts += 1
-					this.tally.firstMoveSum += wait
-					this.tally.firstMoveMax = Math.max(this.tally.firstMoveMax, wait)
+					/* Kept for as long as the canvas is open, not reset each
+					   second like the rest. A pen goes down once or twice in a
+					   second, so a one-second window samples the very thing
+					   this is here to measure about once - and the reading
+					   that matters is the average over many lifts. */
+					this.penDowns = (this.penDowns ?? 0) + 1
+					this.firstMoveSum = (this.firstMoveSum ?? 0) + wait
+					this.firstMoveMax = Math.max(this.firstMoveMax ?? 0, wait)
 				}
 			}
 		},
