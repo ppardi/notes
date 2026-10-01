@@ -5,9 +5,13 @@
 
 # Colored ink
 
-Status: design, awaiting approval. Target: the `6.1.x` private build. Extends
+Status: built. Target: the `6.1.x` private build. Extends
 [INK-DESIGN.md](INK-DESIGN.md), which said "color if it is cheap". It is nearly
 cheap, and this file is about the part that is not.
+
+Still open: whether `#b35900` is a pleasant orange on the device. It is the one
+color chosen against a measurement rather than for how it looks, so it is
+Paul's call once he has drawn with it; dropping it costs one line.
 
 ## The problem
 
