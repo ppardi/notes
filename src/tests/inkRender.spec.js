@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { INK_COLOR, traceStroke } from '../inkRender.js'
+import { CROP_MARGIN, INK_COLOR, inkBounds, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* Records what was asked of a canvas, so a test can say what the drawing is
    made of without a canvas to look at. */
@@ -85,5 +85,62 @@ describe('traceStroke', () => {
 		const [hardWidth, hardHeight] = extent(path(0.9))
 		expect(hardWidth).toBeCloseTo(softWidth, 6)
 		expect(hardHeight).toBeCloseTo(softHeight, 6)
+	})
+})
+
+describe('inkBounds', () => {
+	it('is the rectangle the writing is in, not the page it was written on', () => {
+		/* The canvas is the size of the screen and the writing is a few words
+		   somewhere on it. Saved whole, the note is mostly white space. */
+		const strokes = [
+			{ points: [[400, 300, 0.5], [420, 330, 0.5]] },
+			{ points: [[500, 280, 0.5]] },
+		]
+		const [x, y, width, height] = inkBounds(strokes)
+		expect(x).toBe(400 - CROP_MARGIN)
+		expect(y).toBe(280 - CROP_MARGIN)
+		expect(width).toBe(100 + CROP_MARGIN * 2)
+		expect(height).toBe(50 + CROP_MARGIN * 2)
+	})
+
+	it('leaves room for the ink a stroke spreads beyond its samples', () => {
+		/* The samples are the centre line; the nib puts ink either side of it.
+		   A crop taken at the samples would shave the stroke lengthwise. */
+		expect(CROP_MARGIN).toBeGreaterThanOrEqual(STROKE_SIZE)
+	})
+
+	it('has a size even for a single dot', () => {
+		const [, , width, height] = inkBounds([{ points: [[10, 10, 0.5]] }])
+		expect(width).toBeGreaterThan(0)
+		expect(height).toBeGreaterThan(0)
+	})
+
+	it('is nothing at all for a page nobody wrote on', () => {
+		expect(inkBounds([])).toBeNull()
+		expect(inkBounds([{ points: [] }])).toBeNull()
+	})
+})
+
+describe('shiftStrokes', () => {
+	it('moves every sample of every stroke', () => {
+		const strokes = [{ points: [[10, 20, 0.4], [30, 40, 0.6]] }]
+		expect(shiftStrokes(strokes, -5, -10)).toEqual([
+			{ points: [[5, 10, 0.4], [25, 30, 0.6]] },
+		])
+	})
+
+	it('leaves the strokes it was given alone', () => {
+		/* The drawing on screen keeps the coordinates the pen drew it at;
+		   only what is written to the file is moved. */
+		const strokes = [{ points: [[10, 20, 0.4]] }]
+		shiftStrokes(strokes, -5, -10)
+		expect(strokes).toEqual([{ points: [[10, 20, 0.4]] }])
+	})
+
+	it('puts the ink at the margin when it is moved to its own bounds', () => {
+		const strokes = [{ points: [[400, 300, 0.5], [420, 330, 0.5]] }]
+		const [x, y] = inkBounds(strokes)
+		const moved = shiftStrokes(strokes, -x, -y)
+		expect(moved[0].points[0]).toEqual([CROP_MARGIN, CROP_MARGIN, 0.5])
 	})
 })

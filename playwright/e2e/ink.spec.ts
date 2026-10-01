@@ -445,4 +445,29 @@ test.describe('Ink', () => {
 		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		expect((await noteAttachment(noteId, path[0])).equals(plain), 'the file on disk is untouched').toBe(true)
 	})
+
+	test('crops the picture to the writing, not to the screen', async ({ page, request }) => {
+		// A canvas the size of an iPad saved whole is a few words in a field of
+		// white space, and the note is then mostly white space.
+		const noteId = await openInkedNote(page, request)
+		await drawAndFinish(page)
+
+		const image = new RegExp(`(\\.attachments\\.${noteId}/ink-[A-Za-z0-9_-]+\\.png)`)
+		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toMatch(image)
+		const src = image.exec(await noteContent(noteId))![1]
+		const bytes = await noteAttachment(noteId, src)
+
+		// A PNG says its size in IHDR, the first chunk after the signature.
+		const size = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+		const width = size.getUint32(16)
+		const height = size.getUint32(20)
+		// drawAndFinish writes one stroke 100 wide and 70 tall, so the picture
+		// is about that plus a margin - and nothing like the canvas it was
+		// drawn on, which is as wide as the window.
+		expect(width).toBeGreaterThanOrEqual(100)
+		expect(width).toBeLessThan(200)
+		expect(height).toBeGreaterThanOrEqual(70)
+		expect(height).toBeLessThan(200)
+	})
+
 })

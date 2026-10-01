@@ -25,7 +25,7 @@ const loadInk = vi.fn()
 vi.mock('../inkFile.js', () => ({ saveInk: (...a) => saveInk(...a), loadInk: (...a) => loadInk(...a) }))
 
 const InkCanvas = (await import('../components/InkCanvas.vue')).default
-const { INK_COLOR } = await import('../inkRender.js')
+const { CROP_MARGIN, INK_COLOR } = await import('../inkRender.js')
 
 /* Runs whatever is waiting for the next frame. Set up in beforeAll, where the
    queue it drains lives. */
@@ -56,6 +56,7 @@ beforeAll(() => {
 				save() {},
 				restore() {},
 				scale() {},
+				translate() {},
 			})
 		}
 		return contexts.get(this)
@@ -94,9 +95,9 @@ afterEach(() => {
 /* The canvas teleports itself to <body>, which wrapper.find cannot see into;
    stubbing teleport renders it in place. Its position is for the e2e test. */
 /* Mount and let the existing ink (none, unless a test says so) finish loading. */
-async function open(existing = null) {
+async function open(existing = null, options = {}) {
 	loadInk.mockResolvedValue(existing)
-	const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t }, stubs: { teleport: true } } })
+	const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t }, stubs: { teleport: true } }, ...options })
 	await flushPromises()
 	return wrapper
 }
@@ -129,6 +130,12 @@ describe('InkCanvas', () => {
 		expect(wrapper.emitted('saved')).toBeUndefined()
 		expect(wrapper.vm.strokes).toHaveLength(1)
 		expect(wrapper.vm.error).toBeTruthy()
+
+		/* And the page can still be written on. The message says the ink is
+		   still here to try again with, so adding to it has to work. */
+		await pointer(wrapper, 'pointerdown', { offsetX: 50, offsetY: 50 })
+		await pointer(wrapper, 'pointerup')
+		expect(wrapper.vm.strokes).toHaveLength(2)
 	})
 
 	it('saves what was drawn, then closes and reports the id', async () => {
@@ -140,7 +147,10 @@ describe('InkCanvas', () => {
 
 		/* Without this a done() that emitted saved and never saved would pass. */
 		expect(saveInk).toHaveBeenCalledTimes(1)
-		expect(saveInk).toHaveBeenCalledWith(5, 'abc', expect.any(Blob), [{ points: [[1, 1, 0.5]] }])
+		/* The sample was drawn at [1, 1] and the picture is cropped to the
+		   writing, so what is saved is the stroke in the picture's own
+		   coordinates - at the margin, not where the screen had it. */
+		expect(saveInk).toHaveBeenCalledWith(5, 'abc', expect.any(Blob), [{ points: [[CROP_MARGIN, CROP_MARGIN, 0.5]] }])
 		expect(wrapper.emitted('saved')?.[0]?.[0]).toEqual({ id: 'abc' })
 		expect(wrapper.emitted('close')).toHaveLength(1)
 	})
@@ -384,6 +394,101 @@ describe('InkCanvas', () => {
 		})
 	})
 
+	describe('before the existing ink has arrived', () => {
+		/* Mount without letting the load finish, and hand back the resolver.
+		   On the device the reader taps Ink and is already writing by the time
+		   the file has been fetched. */
+		function opening() {
+			let arrive
+			loadInk.mockReturnValue(new Promise((resolve) => {
+				arrive = resolve
+			}))
+			const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t }, stubs: { teleport: true } } })
+			return { wrapper, arrive: async (existing) => {
+				arrive(existing)
+				await flushPromises()
+			} }
+		}
+
+		it('takes the pen, and keeps what was written when the ink arrives', async () => {
+			/* The stroke drawn in this window used to be dropped in silence,
+			   which on the device is "I have to tap twice before it draws". */
+			const { wrapper, arrive } = opening()
+			await pointer(wrapper, 'pointerdown', { offsetX: 40, offsetY: 40 })
+			await pointer(wrapper, 'pointermove', { offsetX: 60, offsetY: 60 })
+			await pointer(wrapper, 'pointerup')
+			expect(wrapper.vm.strokes).toHaveLength(1)
+
+			await arrive({ png: new Blob(), strokes: [{ points: [[1, 1, 0.5]] }] })
+
+			/* The ink that was already in the file is underneath it, not
+			   instead of it. */
+			expect(wrapper.vm.strokes).toHaveLength(2)
+			expect(wrapper.vm.strokes[0].points).toEqual([[1, 1, 0.5]])
+			expect(wrapper.vm.strokes[1].points[0]).toEqual([40, 40, 0.5])
+		})
+
+		it('refuses the default on touch straight away', async () => {
+			/* The guards cannot wait for the load either: Scribble claims the
+			   pen on the touch it is not refused on. */
+			const { wrapper } = opening()
+			const event = new Event('touchstart', { bubbles: true, cancelable: true })
+			wrapper.find('.ink__canvas--live').element.dispatchEvent(event)
+			expect(event.defaultPrevented).toBe(true)
+		})
+
+		it('cannot be saved until the ink has arrived', async () => {
+			/* Saving writes the file by name. Doing it before the load has
+			   answered would replace ink nobody has read yet. */
+			const { wrapper, arrive } = opening()
+			expect(wrapper.find('.ink__bar').findAll('button')[2].attributes('disabled')).toBeDefined()
+			await arrive(null)
+			expect(wrapper.find('.ink__bar').findAll('button')[2].attributes('disabled')).toBeUndefined()
+		})
+	})
+
+	describe('what iPadOS Scribble can reach', () => {
+		it('takes focus off the note, which Scribble writes into', async () => {
+			/* The dialog covers the note, but the note's editor keeps the
+			   focus, and Scribble puts what the pen writes into the focused
+			   text field. Writing over the dialog put handwritten text into
+			   the note behind it. Nothing in this dialog is a text field, so
+			   holding the focus here means there is nothing to write into. */
+			const editor = document.createElement('div')
+			editor.contentEditable = 'true'
+			editor.tabIndex = 0
+			document.body.append(editor)
+			editor.focus()
+			expect(document.activeElement).toBe(editor)
+
+			const wrapper = await open(null, { attachTo: document.body })
+			expect(document.activeElement).toBe(wrapper.find('.ink').element)
+
+			/* And the note has it back when the dialog goes, which is where
+			   the ink is about to be written. */
+			wrapper.unmount()
+			expect(document.activeElement).toBe(editor)
+			editor.remove()
+		})
+
+		it('refuses a written-on gesture over the buttons, and keeps their taps', async () => {
+			/* Writing off to the side of the sheet, over the bar, became
+			   Scribble text in the note behind. The whole dialog refuses
+			   movement; refusing the touch outright would stop the buttons
+			   ever being tapped. */
+			const wrapper = await open()
+			const bar = wrapper.find('.ink__bar').element
+
+			const move = new Event('touchmove', { bubbles: true, cancelable: true })
+			bar.dispatchEvent(move)
+			expect(move.defaultPrevented, 'a gesture over the bar was left to the browser').toBe(true)
+
+			const tap = new Event('touchstart', { bubbles: true, cancelable: true })
+			bar.dispatchEvent(tap)
+			expect(tap.defaultPrevented, 'a tap on the bar was refused').toBe(false)
+		})
+	})
+
 	describe('sizing', () => {
 		it('re-fits when the canvas box changes, and stops watching on unmount', async () => {
 			/* The error message changes the layout under the canvas without the
@@ -539,23 +644,65 @@ describe('InkCanvas drawing', () => {
 		expect(traceStroke).toHaveBeenCalledTimes(2)
 	})
 
-	it('saves the page, which holds every stroke and no prediction', async () => {
+	it('saves a picture of the writing, not of the screen', async () => {
+		/* Both sheets are the size of the device's screen, and a page of
+		   handwriting is a few words somewhere on it. Saved whole, the note
+		   is mostly white space - which is what the reader sees. */
 		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
 		const wrapper = await open({ png: new Blob(), strokes: [] })
-		const sheets = []
+		const pictures = []
 		HTMLCanvasElement.prototype.toBlob = function(cb) {
-			sheets.push(this.className)
+			pictures.push({ className: this.className, width: this.width, height: this.height })
 			cb(new Blob([new Uint8Array([1])]))
 		}
-		await pointer(wrapper, 'pointerdown')
-		await pointer(wrapper, 'pointermove', { offsetX: 40 })
+		await pointer(wrapper, 'pointerdown', { offsetX: 400, offsetY: 300 })
+		await pointer(wrapper, 'pointermove', { offsetX: 420, offsetY: 330 })
 
 		await wrapper.vm.done()
 
-		expect(sheets).toEqual(['ink__canvas ink__canvas--page'])
+		expect(pictures).toHaveLength(1)
+		/* Neither sheet: a picture of its own, the size of what was written. */
+		expect(pictures[0].className).toBe('')
+		expect(pictures[0].width).toBe(Math.ceil(20 + CROP_MARGIN * 2))
+		expect(pictures[0].height).toBe(Math.ceil(30 + CROP_MARGIN * 2))
+		/* The stroke still under the pen was committed before it was drawn. */
 		expect(saveInk).toHaveBeenCalledTimes(1)
-		/* The stroke still under the pen was committed before the read. */
 		expect(saveInk.mock.calls[0][3]).toHaveLength(1)
+	})
+
+	it('writes the strokes in the saved picture\'s own coordinates', async () => {
+		/* The picture is cropped to the writing, so the strokes that drew it
+		   have to be moved with it: reopening draws them from the corner of
+		   the picture, which is where the picture has them. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		await pointer(wrapper, 'pointerdown', { offsetX: 400, offsetY: 300 })
+		await pointer(wrapper, 'pointermove', { offsetX: 420, offsetY: 330 })
+
+		await wrapper.vm.done()
+
+		const saved = saveInk.mock.calls[0][3]
+		expect(saved[0].points).toEqual([[CROP_MARGIN, CROP_MARGIN, 0.5], [20 + CROP_MARGIN, 30 + CROP_MARGIN, 0.5]])
+		/* And what is on screen is left where the pen drew it. */
+		expect(wrapper.vm.strokes[0].points[0]).toEqual([400, 300, 0.5])
+	})
+
+	it('saves a picture with a size even when nothing was written', async () => {
+		/* A canvas of no width cannot be turned into a PNG at all, and the
+		   save would fail on a page the reader simply left blank. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		const pictures = []
+		HTMLCanvasElement.prototype.toBlob = function(cb) {
+			pictures.push({ width: this.width, height: this.height })
+			cb(new Blob([new Uint8Array([1])]))
+		}
+
+		await wrapper.vm.done()
+
+		expect(pictures[0].width).toBeGreaterThan(0)
+		expect(pictures[0].height).toBeGreaterThan(0)
+		expect(saveInk).toHaveBeenCalledTimes(1)
 	})
 
 	it('draws where the browser thinks the pen is going, and never saves it', async () => {
@@ -578,10 +725,10 @@ describe('InkCanvas drawing', () => {
 		expect(saved[0].points).not.toContainEqual([80, 80, 0.5])
 	})
 
-	it('asks for a low-latency sheet to write on, and an ordinary page to read back', async () => {
-		/* The hint exists for drawing on the web and iOS grants it. The page
-		   is read back for the PNG, which is not what a desynchronized canvas
-		   is for. */
+	it('asks for a low-latency sheet to write on, and an ordinary page beneath', async () => {
+		/* The hint exists for drawing on the web and iOS grants it. Only the
+		   sheet under the pen asks for it: the page beneath is written to a
+		   frame at a time, where skipping compositing buys nothing. */
 		const wrapper = await open({ png: new Blob(), strokes: [] })
 		wrapper.vm.paintLive()
 		expect(live(wrapper).options).toEqual({ desynchronized: true })

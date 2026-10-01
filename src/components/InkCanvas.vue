@@ -5,7 +5,12 @@
 
 <template>
 	<Teleport to="body">
-		<div class="ink" role="dialog" :aria-label="t('notes', 'Ink')">
+		<div ref="dialog"
+			class="ink"
+			role="dialog"
+			tabindex="-1"
+			:aria-label="t('notes', 'Ink')"
+		>
 			<div class="ink__stage">
 				<img v-if="backdrop"
 					class="ink__backdrop"
@@ -49,7 +54,7 @@
 import NcButton from '@nextcloud/vue/components/NcButton'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
-import { INK_COLOR, STROKE_SIZE, traceStroke } from '../inkRender.js'
+import { INK_COLOR, inkBounds, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 export default {
 	name: 'InkCanvas',
@@ -81,11 +86,20 @@ export default {
 			ready: false,
 			saving: false,
 			error: '',
+			/* Set when the canvas must change nothing at all: the existing ink
+			   could not be read, so anything drawn here would be saved over
+			   it. A save that failed is not this - that ink is still here to
+			   try again with, and adding to it has to keep working. */
+			refusing: false,
 			backdrop: '',
 		}
 	},
 
 	async mounted() {
+		/* Both before the load: the pen can land before it finishes, and
+		   Scribble claims it on the touch it is not refused on. */
+		this.refuseTouchDefaults()
+		this.claimFocus()
 		/* Rotating an iPad changes the canvas size. Without this the backing
 		   store keeps the old dimensions and every stroke drawn afterwards
 		   lands offset from the pen - on the one device this is built for. */
@@ -105,10 +119,15 @@ export default {
 				   the picture, say so, and stay unready - no input, no save -
 				   exactly as when the load fails. */
 				this.backdrop = URL.createObjectURL(existing.png)
+				this.refusing = true
 				this.error = t('notes', 'The strokes of this ink could not be read, so it cannot be edited. The picture is shown as it is saved; nothing has been changed.')
 				return
 			}
-			this.strokes = existing?.strokes ?? []
+			/* Underneath anything drawn while the file was on its way, rather
+			   than instead of it: the canvas takes the pen from the moment it
+			   is open, and on the device the reader is already writing by the
+			   time this returns. */
+			this.strokes = [...(existing?.strokes ?? []), ...this.strokes]
 			this.ready = true
 			/* After the render that shows it, so the sheets being fitted are
 			   the ones that end up on screen, at the size the dialog gives
@@ -120,11 +139,14 @@ export default {
 			/* We could not tell whether there is ink here already. Saving now
 			   would replace it by name with whatever is drawn on a blank page,
 			   so stay open to say so, but take no input and save nothing. */
+			this.refusing = true
 			this.error = t('notes', 'The existing ink could not be loaded. Close this and try again; nothing has been changed.')
 		}
 	},
 
 	beforeUnmount() {
+		/* The note gets the focus back, which is where the ink is written. */
+		this.returnFocusTo?.focus?.()
 		window.removeEventListener('resize', this.onResize)
 		this.observer?.disconnect()
 		this.releaseTouchGuards()
@@ -145,13 +167,16 @@ export default {
 		 * Refusing the default on touch is what stops the recogniser claiming
 		 * it. The listener has to be non-passive to be allowed to refuse,
 		 * which Vue's own binding does not guarantee, so it is attached here.
-		 * Only the sheet is covered: the buttons below it still need their
-		 * ordinary taps.
+		 *
+		 * The sheet refuses touch outright. The rest of the dialog refuses
+		 * only movement: writing off to the side, over the buttons, became
+		 * Scribble text in the note behind, and a tap still has to reach the
+		 * button it lands on - refusing its touchstart would stop the click.
 		 *
 		 * Reproduced and fixed on the device, with Scribble switched on. */
 		releaseTouchGuards() {
-			for (const [type, handler] of this.touchGuards ?? []) {
-				this.guarded?.removeEventListener(type, handler)
+			for (const [element, type, handler] of this.touchGuards ?? []) {
+				element.removeEventListener(type, handler)
 			}
 			this.touchGuards = null
 			this.guarded = null
@@ -164,11 +189,47 @@ export default {
 			}
 			this.releaseTouchGuards()
 			const refuse = (event) => event.preventDefault()
-			this.touchGuards = [['touchstart', refuse], ['touchmove', refuse]]
+			const dialog = this.$refs.dialog
+			this.touchGuards = [
+				[canvas, 'touchstart', refuse],
+				[canvas, 'touchmove', refuse],
+				...(dialog ? [[dialog, 'touchmove', refuse]] : []),
+			]
 			this.guarded = canvas
-			for (const [type, handler] of this.touchGuards) {
-				canvas.addEventListener(type, handler, { passive: false })
+			for (const [element, type, handler] of this.touchGuards) {
+				element.addEventListener(type, handler, { passive: false })
 			}
+		},
+
+		/* Hold the focus inside the dialog.
+		 *
+		 * iPadOS Scribble writes what the pen writes into the focused text
+		 * field, and the editor behind this dialog keeps the focus: writing
+		 * anywhere the sheet does not cover - off to the side, over the
+		 * buttons - arrived as handwritten text in the note underneath.
+		 * Nothing in here is a text field, so while the focus is in here
+		 * there is nothing for it to write into.
+		 *
+		 * Called again wherever the dialog may have been replaced rather than
+		 * once at mount, for the same reason the touch guards are: the
+		 * element Vue hands back at mount is not the one that ends up on
+		 * screen, and when it is swapped out the focus it was holding falls
+		 * to the body - which leaves the editor as the next text field a
+		 * recogniser would find.
+		 *
+		 * Focus the reader moved themselves, onto a button in the bar, is
+		 * left where they put it. */
+		claimFocus() {
+			const dialog = this.$refs.dialog
+			if (!dialog || dialog.contains(document.activeElement)) {
+				return
+			}
+			/* Once: by the second call the focus is the body's, and handing
+			   that back on close would leave the note with no caret. */
+			if (this.returnFocusTo === undefined) {
+				this.returnFocusTo = document.activeElement
+			}
+			dialog.focus?.()
 		},
 
 		/* A readout of what this canvas is really doing, for diagnosing a
@@ -221,6 +282,7 @@ export default {
 			   element Vue hands back then is not always the one that ends up
 			   on screen. */
 			this.refuseTouchDefaults()
+			this.claimFocus()
 			const ratio = window.devicePixelRatio || 1
 			const [width, height] = this.backingSize()
 			for (const which of ['page', 'canvas']) {
@@ -257,11 +319,21 @@ export default {
 			return true
 		},
 
-		/* Whether input may change the drawing at all: not before the existing
-		   ink has loaded (it would be replaced), and not while saving (a stroke
-		   added now is in one of the PNG and the strokes but not the other). */
+		/* Whether input may change the drawing at all.
+		 *
+		 * Not while saving: a stroke added then is in one of the PNG and the
+		 * strokes but not the other. And not once the canvas has refused the
+		 * ink it was opened on - that message says nothing has been changed,
+		 * so nothing may be.
+		 *
+		 * Waiting for the existing ink to load, as this used to, meant the
+		 * canvas was on screen and took nothing: the reader taps Ink, writes,
+		 * and the stroke is dropped in silence. On the device that is "I have
+		 * to tap twice before the nib registers". Saving still waits - that is
+		 * what would replace ink nobody has read yet - and the strokes that
+		 * arrive are put underneath what was drawn meanwhile. */
 		accepting() {
-			return this.ready && !this.saving
+			return !this.refusing && !this.saving
 		},
 
 		onDown(event) {
@@ -414,6 +486,37 @@ export default {
 			this.paintLive()
 		},
 
+		/* The strokes drawn onto a picture of their own size.
+		 *
+		 * A canvas of its own rather than the page on screen: the page is as
+		 * large as the device, and this is as large as what was written. The
+		 * strokes arrive already moved into the picture's corner, so they are
+		 * traced as they are.
+		 *
+		 * @param {Array<object>} strokes the strokes, in the picture's coordinates
+		 * @param {Array<number> | null} bounds the box they fill, or null for none
+		 * @return {Promise<Blob>} the PNG
+		 */
+		pictureOf(strokes, bounds) {
+			const ratio = window.devicePixelRatio || 1
+			const [, , width, height] = bounds ?? [0, 0, 0, 0]
+			const picture = document.createElement('canvas')
+			/* At least a pixel each way: a canvas of no width cannot be turned
+			   into a PNG at all, and a page the reader left blank would fail
+			   to save rather than saving nothing. */
+			picture.width = Math.max(1, Math.ceil(width * ratio))
+			picture.height = Math.max(1, Math.ceil(height * ratio))
+			const context = picture.getContext('2d')
+			if (context) {
+				context.scale(ratio, ratio)
+				context.fillStyle = INK_COLOR
+				for (const stroke of strokes) {
+					traceStroke(context, stroke.points)
+				}
+			}
+			return new Promise((resolve) => picture.toBlob(resolve, 'image/png'))
+		},
+
 		async done() {
 			if (!this.ready || this.saving) {
 				return
@@ -424,11 +527,17 @@ export default {
 			this.error = ''
 			this.saving = true
 			try {
-				/* Read from the page, not the sheet above it: every stroke has
-				   been committed down to the page by now, and the sheet holds
-				   nothing but a prediction that was never part of the ink. */
-				const png = await new Promise((resolve) => this.$refs.page.toBlob(resolve, 'image/png'))
-				await saveInk(this.noteId, this.inkId, png, this.strokes)
+				/* Not read back from either sheet. Both are the size of the
+				   device's screen and a page of handwriting is a few words
+				   somewhere on it, so a note full of ink saved that way is
+				   mostly white space. The picture is the writing, cropped to
+				   it, and the strokes move with it. */
+				const bounds = inkBounds(this.strokes)
+				const strokes = bounds
+					? shiftStrokes(this.strokes, -bounds[0], -bounds[1])
+					: this.strokes
+				const png = await this.pictureOf(strokes, bounds)
+				await saveInk(this.noteId, this.inkId, png, strokes)
 				this.$emit('saved', { id: this.inkId })
 				this.$emit('close')
 			} catch {

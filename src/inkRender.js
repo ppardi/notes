@@ -31,6 +31,64 @@ export const STROKE_SIZE = 2.5
 
 const STROKE = { size: STROKE_SIZE, thinning: 0, simulatePressure: false }
 
+/**
+ * How far outside the samples a saved picture reaches, in CSS pixels.
+ *
+ * The samples are the stroke's centre line and the nib puts ink either side
+ * of it, so a crop taken at the samples would shave the writing lengthwise.
+ * Beyond that it is margin: ink flush against the edge of a picture reads as
+ * if it were cut off.
+ */
+export const CROP_MARGIN = STROKE_SIZE * 2
+
+/**
+ * The rectangle a set of strokes puts ink in, in CSS pixels.
+ *
+ * What the reader wants in the note is the writing, not the screen it was
+ * written on - a full page saved whole is a few words in a field of white
+ * space.
+ *
+ * @param {Array<{points: Array<Array<number>>}>} strokes the finished strokes
+ * @param {number} margin how far outside the samples to reach
+ * @return {Array<number> | null} [x, y, width, height], or null when nothing is drawn
+ */
+export function inkBounds(strokes, margin = CROP_MARGIN) {
+	let minX = Infinity
+	let minY = Infinity
+	let maxX = -Infinity
+	let maxY = -Infinity
+	for (const stroke of strokes) {
+		for (const [x, y] of stroke.points) {
+			minX = Math.min(minX, x)
+			minY = Math.min(minY, y)
+			maxX = Math.max(maxX, x)
+			maxY = Math.max(maxY, y)
+		}
+	}
+	if (minX === Infinity) {
+		return null
+	}
+	return [minX - margin, minY - margin, maxX - minX + margin * 2, maxY - minY + margin * 2]
+}
+
+/**
+ * The same strokes, moved.
+ *
+ * A copy: what is on screen keeps the coordinates the pen drew it at, and
+ * only what is written to the file is moved to the picture's own corner.
+ *
+ * @param {Array<{points: Array<Array<number>>}>} strokes the strokes to move
+ * @param {number} dx how far right
+ * @param {number} dy how far down
+ * @return {Array<object>} the moved strokes
+ */
+export function shiftStrokes(strokes, dx, dy) {
+	return strokes.map((stroke) => ({
+		...stroke,
+		points: stroke.points.map(([x, y, ...rest]) => [x + dx, y + dy, ...rest]),
+	}))
+}
+
 /* Below this, perfect-freehand has not returned a shape worth curving. */
 const CURVABLE = 4
 
