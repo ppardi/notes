@@ -13,12 +13,26 @@
 #
 #   bash dev/ipad.sh            build, then bust the cache
 #   bash dev/ipad.sh --no-build just bust the cache
+#   bash dev/ipad.sh --dark     also switch the account to the dark theme
+#   bash dev/ipad.sh --light    also switch it back
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CONTAINER="${NOTES_DEV_CONTAINER:-nextcloud-e2e-test-server_NextCloud-Notes}"
 PORT="${NOTES_DEV_PORT:-8089}"
+USER_ID="${NOTES_DEV_USER:-admin}"
 
-if [ "${1:-}" != "--no-build" ]; then
+THEME=""
+BUILD=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-build) BUILD=0 ;;
+    --dark) THEME=dark ;;
+    --light) THEME=light ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
+if [ "$BUILD" = 1 ]; then
   echo "building…"
   cd "$REPO"
   # Webpack reports failures in the body of its output and still exits 0 for
@@ -29,6 +43,20 @@ if [ "${1:-}" != "--no-build" ]; then
     exit 1
   fi
   echo "$BUILD" | grep -E 'compiled' | tail -1
+fi
+
+# The e2e harness pins the theme: @nextcloud/e2e-test-server's configureNextcloud()
+# sets `enforce_theme` to light so its screenshots are deterministic. An enforced
+# theme is merged ahead of the account's own choice and wins, so Appearance
+# settings silently do nothing until it is gone - which is why switching to dark
+# by hand looks broken. Removing it here is safe: re-provisioning the container,
+# or a Playwright run that reconfigures it, puts it back.
+if [ -n "$THEME" ]; then
+  docker exec --user www-data "$CONTAINER" \
+    php occ config:system:delete enforce_theme >/dev/null 2>&1 || true
+  docker exec --user www-data "$CONTAINER" \
+    php occ user:setting "$USER_ID" theming enabled-themes "[\"$THEME\"]" >/dev/null
+  echo "theme: $THEME"
 fi
 
 docker exec --user www-data "$CONTAINER" \
