@@ -322,7 +322,7 @@ Covers Review Focus items 1, 2 and 3.
 
 Append to `src/tests/inkPalette.spec.js`, and add `beforeEach` and `vi` to the
 existing `vitest` import so the first line reads
-`import { beforeEach, describe, expect, it, vi } from 'vitest'`, and add
+`import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'`, and add
 `knownColor, rememberColor, rememberedColor` to the `../inkPalette.js` import:
 
 ```js
@@ -354,6 +354,13 @@ describe('the remembered color', () => {
 		window.localStorage.clear()
 	})
 
+	/* Here rather than at the end of each test body: a restore written as the
+	   last statement of a test does not run when an assertion above it fails,
+	   and the mock then leaks into every test after it. */
+	afterEach(() => {
+		vi.restoreAllMocks()
+	})
+
 	it('is the default until one is chosen', () => {
 		expect(rememberedColor()).toBe(DEFAULT_INK_COLOR)
 	})
@@ -370,22 +377,30 @@ describe('the remembered color', () => {
 
 	it('is the default when storage cannot be read', () => {
 		/* Private browsing throws rather than returning null. The canvas has to
-		   open regardless; a forgotten color is not a reason to fail. */
-		vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+		   open regardless; a forgotten color is not a reason to fail.
+		 *
+		 * Spied on the prototype, not the instance: jsdom's Storage is exotic
+		 * and treats a property defined on the instance as a named-item write,
+		 * so an instance spy never fires and this test would pass without once
+		 * reaching the branch it exists for. The call is asserted for the same
+		 * reason - a test that cannot prove its own injection is not a test. */
+		const reading = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
 			throw new Error('denied')
 		})
+
 		expect(rememberedColor()).toBe(DEFAULT_INK_COLOR)
-		vi.restoreAllMocks()
+		expect(reading).toHaveBeenCalled()
 	})
 
 	it('does not throw when storage cannot be written', () => {
 		/* The color still applies to this session's strokes. Only the
 		   remembering is lost, and that is not worth an error. */
-		vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+		const writing = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
 			throw new Error('quota')
 		})
+
 		expect(() => rememberColor('#0044cc')).not.toThrow()
-		vi.restoreAllMocks()
+		expect(writing).toHaveBeenCalled()
 	})
 })
 ```
