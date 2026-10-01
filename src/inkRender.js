@@ -148,6 +148,89 @@ export function placeInk(strokes, origin, width, height) {
 }
 
 /**
+ * The longest step a drawn path may take, in CSS pixels.
+ *
+ * Chosen against what the Pencil actually reports: on a page of handwriting
+ * the median step was 4.3 px, so an ordinary stroke is left alone and only
+ * the fast ones - which reached 17 px - are filled in.
+ */
+export const SMOOTH_GAP = 6
+
+/**
+ * One point on the curve through four, at t between the middle two.
+ *
+ * A Catmull-Rom spline: it passes through the points it is given rather than
+ * being pulled towards them, which is what lets a filled-in path still be the
+ * path the pen took. Uniform rather than centripetal - at these spacings the
+ * difference is far under a pixel, and the arithmetic is half the size.
+ *
+ * @param {Array<number>} p0 the point before
+ * @param {Array<number>} p1 the start
+ * @param {Array<number>} p2 the end
+ * @param {Array<number>} p3 the point after
+ * @param {number} t how far along, 0 to 1
+ * @return {Array<number>} [x, y, pressure]
+ */
+function between(p0, p1, p2, p3, t) {
+	const t2 = t * t
+	const t3 = t2 * t
+	const at = (a, b, c, d) => 0.5 * ((2 * b) + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (3 * b - a - 3 * c + d) * t3)
+	return [
+		at(p0[0], p1[0], p2[0], p3[0]),
+		at(p0[1], p1[1], p2[1], p3[1]),
+		p1[2] + (p2[2] - p1[2]) * t,
+	]
+}
+
+/**
+ * The same path, stepping a few pixels at a time.
+ *
+ * The pen is not reported continuously: writing fast, the iPad left up to 17
+ * CSS pixels between one reading and the next, and two long segments meeting
+ * is a corner. At a 2.5 px nib that corner is plainly visible, which is what
+ * "a couple of rough corners" was.
+ *
+ * Filled from a curve through the readings, not from the straight line
+ * between them - a straight fill would put more points on the same corner and
+ * change nothing. The readings themselves are all kept and all passed
+ * through, so this rounds the turn without moving where the pen went.
+ *
+ * Done when drawing, never when saving: the file holds what the pen did, and
+ * how smoothly it is drawn is a decision that can be taken again later.
+ *
+ * The steps are cut from the straight line between two readings while what
+ * is drawn is the curve through them, which is longer - so a step comes out a
+ * little over the gap asked for rather than exactly under it.
+ *
+ * @param {Array<Array<number>>} points the stroke's samples
+ * @param {number} maxGap the longest step to leave alone
+ * @return {Array<Array<number>>} the path to draw
+ */
+export function smoothed(points, maxGap = SMOOTH_GAP) {
+	if (points.length < 2) {
+		return points
+	}
+	const out = [points[0]]
+	for (let i = 1; i < points.length; i++) {
+		const p1 = points[i - 1]
+		const p2 = points[i]
+		const steps = Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / maxGap)
+		if (steps > 1) {
+			/* The ends have no point beyond them to curve away from, so they
+			   stand in for their own neighbour and the curve runs straight
+			   into them. */
+			const p0 = points[i - 2] ?? p1
+			const p3 = points[i + 1] ?? p2
+			for (let step = 1; step < steps; step++) {
+				out.push(between(p0, p1, p2, p3, step / steps))
+			}
+		}
+		out.push(p2)
+	}
+	return out
+}
+
+/**
  * Trace one stroke's outline onto a context and fill it.
  *
  * perfect-freehand returns the outline as a polygon. Joining its points with
@@ -162,7 +245,7 @@ export function placeInk(strokes, origin, width, height) {
  * @param {Array<Array<number>>} points the stroke's [x, y, pressure] samples
  */
 export function traceStroke(context, points) {
-	const outline = getStroke(points, STROKE)
+	const outline = getStroke(smoothed(points), STROKE)
 	if (!outline.length) {
 		return
 	}

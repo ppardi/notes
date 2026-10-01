@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CROP_MARGIN, INK_COLOR, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
+import { CROP_MARGIN, INK_COLOR, inkBounds, placeInk, shiftStrokes, SMOOTH_GAP, smoothed, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* Records what was asked of a canvas, so a test can say what the drawing is
    made of without a canvas to look at. */
@@ -191,5 +191,68 @@ describe('placeInk', () => {
 
 	it('has nothing to place for a page with no ink', () => {
 		expect(placeInk([], [10, 10], 800, 600)).toEqual([])
+	})
+})
+
+describe('smoothed', () => {
+	const gapAfter = (points) => points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]))
+
+	it('leaves a path the pen reported closely alone', () => {
+		/* Most of a stroke arrives a pixel or two at a time and needs nothing. */
+		const close = [[0, 0, 0.5], [2, 0, 0.5], [4, 1, 0.5], [6, 1, 0.5]]
+		expect(smoothed(close)).toEqual(close)
+	})
+
+	it('fills a gap the pen left when it moved fast', () => {
+		/* A fast stroke is reported tens of pixels at a time, and two long
+		   segments meeting is a corner - which is what a letter written
+		   quickly came out with. */
+		const fast = [[0, 0, 0.5], [40, 0, 0.5], [60, 40, 0.5]]
+		const filled = smoothed(fast)
+		/* The steps are cut from the straight line between two readings while
+		   the path drawn is the curve through them, which is longer - so the
+		   bound is about the gap, not exactly it. */
+		expect(Math.max(...gapAfter(filled))).toBeLessThan(SMOOTH_GAP * 1.5)
+		expect(filled.length).toBeGreaterThan(fast.length * 3)
+	})
+
+	it('still passes through every place the pen was', () => {
+		/* The filling is between the readings, never instead of them: what the
+		   pen did is what is drawn. */
+		const fast = [[0, 0, 0.5], [40, 0, 0.5], [60, 40, 0.5]]
+		for (const point of fast) {
+			expect(smoothed(fast).some((p) => p[0] === point[0] && p[1] === point[1])).toBe(true)
+		}
+	})
+
+	it('keeps a straight line straight', () => {
+		/* Filling a gap must not put a bulge in a line somebody ruled. */
+		const straight = [[0, 0, 0.5], [50, 0, 0.5], [100, 0, 0.5]]
+		for (const [, y] of smoothed(straight)) {
+			expect(Math.abs(y)).toBeLessThan(0.001)
+		}
+	})
+
+	it('rounds a corner rather than cutting it', () => {
+		/* The filled points belong to a curve through the readings, so the
+		   turn is carried by several points instead of one. */
+		const corner = [[0, 0, 0.5], [40, 0, 0.5], [40, 40, 0.5]]
+		const filled = smoothed(corner)
+		const turn = filled.filter(([x, y]) => x > 30 && y > 0 && y < 30)
+		expect(turn.length).toBeGreaterThan(1)
+	})
+
+	it('carries the pressure across, so a sample keeps its shape', () => {
+		const filled = smoothed([[0, 0, 0.2], [40, 0, 0.8]])
+		for (const point of filled) {
+			expect(point).toHaveLength(3)
+			expect(point[2]).toBeGreaterThanOrEqual(0.2)
+			expect(point[2]).toBeLessThanOrEqual(0.8)
+		}
+	})
+
+	it('has nothing to fill in a dot or an empty stroke', () => {
+		expect(smoothed([])).toEqual([])
+		expect(smoothed([[1, 1, 0.5]])).toEqual([[1, 1, 0.5]])
 	})
 })
