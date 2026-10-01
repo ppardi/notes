@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { describe, expect, it } from 'vitest'
-import { DEFAULT_INK_COLOR, INK_COLORS } from '../inkPalette.js'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_INK_COLOR, INK_COLORS, knownColor, rememberColor, rememberedColor } from '../inkPalette.js'
 
 describe('the palette', () => {
 	it('offers the six measured colors, in order', () => {
@@ -32,5 +32,68 @@ describe('the palette', () => {
 			'blue',
 			'purple',
 		])
+	})
+})
+
+describe('knownColor', () => {
+	it('passes a color from the palette through', () => {
+		expect(knownColor('#cc0000')).toBe('#cc0000')
+	})
+
+	it('refuses one that is not in the palette', () => {
+		/* An ink file can be copied in from anywhere, or edited. What it says
+		   reaches fillStyle, so an arbitrary string must not. */
+		expect(knownColor('#ff00ff')).toBe(DEFAULT_INK_COLOR)
+	})
+
+	it('refuses something that is not a color at all', () => {
+		expect(knownColor('url(http://example.com/x.png)')).toBe(DEFAULT_INK_COLOR)
+		expect(knownColor('')).toBe(DEFAULT_INK_COLOR)
+		expect(knownColor(null)).toBe(DEFAULT_INK_COLOR)
+		expect(knownColor(undefined)).toBe(DEFAULT_INK_COLOR)
+	})
+
+	it('is case insensitive, since hex is', () => {
+		expect(knownColor('#CC0000')).toBe('#cc0000')
+	})
+})
+
+describe('the remembered color', () => {
+	beforeEach(() => {
+		window.localStorage.clear()
+	})
+
+	it('is the default until one is chosen', () => {
+		expect(rememberedColor()).toBe(DEFAULT_INK_COLOR)
+	})
+
+	it('comes back after it is set', () => {
+		rememberColor('#0044cc')
+		expect(rememberedColor()).toBe('#0044cc')
+	})
+
+	it('refuses a stored value that is not in the palette', () => {
+		window.localStorage.setItem('notes-ink-color', '#ff00ff')
+		expect(rememberedColor()).toBe(DEFAULT_INK_COLOR)
+	})
+
+	it('is the default when storage cannot be read', () => {
+		/* Private browsing throws rather than returning null. The canvas has to
+		   open regardless; a forgotten color is not a reason to fail. */
+		vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+			throw new Error('denied')
+		})
+		expect(rememberedColor()).toBe(DEFAULT_INK_COLOR)
+		vi.restoreAllMocks()
+	})
+
+	it('does not throw when storage cannot be written', () => {
+		/* The color still applies to this session's strokes. Only the
+		   remembering is lost, and that is not worth an error. */
+		vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+			throw new Error('quota')
+		})
+		expect(() => rememberColor('#0044cc')).not.toThrow()
+		vi.restoreAllMocks()
 	})
 })

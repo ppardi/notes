@@ -34,3 +34,53 @@ export const INK_COLORS = [
  * way it always has.
  */
 export const DEFAULT_INK_COLOR = INK_COLORS[0].value
+
+/* Where the last choice is kept. Per browser, not per note: the pen is a tool,
+   and a tool stays where it was left. */
+const REMEMBERED = 'notes-ink-color'
+
+/**
+ * The palette's own version of a color, or the default.
+ *
+ * Everything arriving from outside this module goes through here: a stroke read
+ * out of a file, and the value read back from storage. An ink file can be
+ * copied in from anywhere and edited by anything, and what it says would
+ * otherwise reach fillStyle directly - where an unrecognized string silently
+ * draws nothing at all.
+ *
+ * @param {string | null | undefined} value what was found
+ * @return {string} a color this palette offers
+ */
+export function knownColor(value) {
+	const wanted = typeof value === 'string' ? value.toLowerCase() : ''
+	return INK_COLORS.some((color) => color.value === wanted) ? wanted : DEFAULT_INK_COLOR
+}
+
+/**
+ * The color to open the canvas in.
+ *
+ * @return {string} the last color chosen here, or the default
+ */
+export function rememberedColor() {
+	try {
+		return knownColor(window.localStorage.getItem(REMEMBERED))
+	} catch {
+		/* Storage can be unreadable - a private window, or site data blocked.
+		   The canvas still opens; it just opens in black. */
+		return DEFAULT_INK_COLOR
+	}
+}
+
+/**
+ * Keep this color for next time.
+ *
+ * @param {string} value the chosen color
+ */
+export function rememberColor(value) {
+	try {
+		window.localStorage.setItem(REMEMBERED, knownColor(value))
+	} catch {
+		/* Full, or unwritable. The choice still holds for as long as this
+		   canvas is open, which is the part that matters now. */
+	}
+}
