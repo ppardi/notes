@@ -687,6 +687,39 @@ describe('the stats readout', () => {
 		}
 	})
 
+	it('reports the worst single paint, which an average hides', async () => {
+		/* 26 paints a second averaging under a millisecond reads the same
+		   whether every paint was quick or one of them took forty. A stall at
+		   the start of a stroke is exactly the shape an average loses. */
+		statsWanted.mockReturnValue(true)
+		vi.useFakeTimers()
+		try {
+			const wrapper = await open({ png: new Blob(), strokes: [] })
+			await pointer(wrapper, 'pointerdown')
+			let slow = true
+			traceStroke.mockImplementation(() => {
+				if (slow) {
+					slow = false
+					vi.advanceTimersByTime(40)
+				}
+			})
+			await pointer(wrapper, 'pointermove', { offsetX: 40 })
+			runFrame()
+			for (let i = 2; i < 6; i++) {
+				await pointer(wrapper, 'pointermove', { offsetX: 40 + i * 10 })
+				runFrame()
+			}
+
+			vi.advanceTimersByTime(1000)
+			await wrapper.vm.$nextTick()
+
+			expect(wrapper.find('.ink__stats').text()).toMatch(/worst paint \d\d+ms/)
+		} finally {
+			traceStroke.mockReset()
+			vi.useRealTimers()
+		}
+	})
+
 	it('holds the last second that had writing in it', async () => {
 		/* The numbers are read after the pen lifts. Wiping them on the first
 		   idle second would leave zeros on screen exactly when someone looks. */

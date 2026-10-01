@@ -217,6 +217,7 @@ export default {
 					`behind the pen ${(t.lagSum / Math.max(t.moves, 1)).toFixed(0)}ms, worst ${t.lagMax.toFixed(0)}ms; batch spans ${(t.batchSum / Math.max(t.moves, 1)).toFixed(0)}ms`,
 					`${this.penDowns ?? 0} pen-downs so far, first move after ${((this.firstMoveSum ?? 0) / Math.max(this.penDowns ?? 0, 1)).toFixed(0)}ms, worst ${(this.firstMoveMax ?? 0).toFixed(0)}ms`,
 					`${(t.moveMs / Math.max(t.moves, 1)).toFixed(3)}ms per move  ${(t.paintMs / Math.max(t.paints, 1)).toFixed(2)}ms per paint`,
+					`worst move ${(this.worstMove ?? 0).toFixed(0)}ms, worst paint ${(this.worstPaint ?? 0).toFixed(0)}ms, ever`,
 					`${t.moveMs.toFixed(0)}ms + ${t.paintMs.toFixed(0)}ms of every 1000ms in here`,
 					`${this.strokes.length} strokes, ${this.current?.points.length ?? 0} points under the pen`,
 					`canvas ${canvas?.width ?? 0}x${canvas?.height ?? 0} at ${window.devicePixelRatio || 1}x, filter ${filter}`,
@@ -352,7 +353,9 @@ export default {
 			if (this.tally) {
 				this.tally.moves += 1
 				this.tally.samples += samples.length
-				this.tally.moveMs += performance.now() - started
+				const took = performance.now() - started
+				this.tally.moveMs += took
+				this.worstMove = Math.max(this.worstMove ?? 0, took)
 				this.noteLag(event, started, samples)
 				if (this.firstMoveOfStroke) {
 					/* How long the pen was down before the browser said it had
@@ -465,8 +468,14 @@ export default {
 				this.painted = null
 			}
 			if (this.tally) {
+				const took = performance.now() - started
 				this.tally.paints += 1
-				this.tally.paintMs += performance.now() - started
+				this.tally.paintMs += took
+				/* Kept for the session, like the pen-downs: a stall that
+				   happens once a stroke is averaged into nothing by the
+				   twenty-odd quick paints around it, and the stall is what is
+				   felt. */
+				this.worstPaint = Math.max(this.worstPaint ?? 0, took)
 			}
 		},
 
