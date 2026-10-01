@@ -42,7 +42,16 @@ beforeAll(() => {
 				calls: [],
 				rects: [],
 				options,
-				fillStyle: null,
+				/* Every value it was set to, in order. A stroke's color is on
+				   the context only while that stroke is being traced, so the
+				   last value alone says nothing about the ones before it. */
+				fillStyles: [],
+				_fillStyle: null,
+				get fillStyle() { return this._fillStyle },
+				set fillStyle(value) {
+					this._fillStyle = value
+					this.fillStyles.push(value)
+				},
 				clearRect(...rect) {
 					this.calls.push('clearRect')
 					this.rects.push(rect)
@@ -238,7 +247,9 @@ describe('InkCanvas', () => {
 
 	it('opens over the strokes that were saved before', async () => {
 		const wrapper = await open({ png: new Blob(), strokes: [{ points: [[3, 3, 0.5]] }] })
-		expect(wrapper.vm.strokes).toEqual([{ points: [[3, 3, 0.5]] }])
+		/* Each comes in with the color it will be drawn and saved in; this one
+		   was written before strokes had any. */
+		expect(wrapper.vm.strokes).toEqual([{ points: [[3, 3, 0.5]], color: DEFAULT_INK_COLOR }])
 	})
 
 	it('opens the drawing where it was left', async () => {
@@ -1167,11 +1178,100 @@ describe('InkCanvas drawing', () => {
 		expect(page(wrapper).options).toBeUndefined()
 	})
 
-	it('draws in the one color the theme is applied to', async () => {
+	it('draws each stroke in its own color', async () => {
+		const wrapper = await open()
+		wrapper.vm.strokes = [
+			{ points: [[10, 10, 0.5]], color: '#cc0000' },
+			{ points: [[20, 20, 0.5]], color: '#0044cc' },
+		]
+
+		wrapper.vm.renderPage()
+
+		/* The context carries one color at a time, so what is asserted is the
+		   sequence it was set to - the last stroke's color is all that would
+		   survive on the context itself. */
+		expect(page(wrapper).fillStyles).toEqual(['#cc0000', '#0044cc'])
+	})
+
+	it('draws a stroke with no color of its own in the default', async () => {
+		/* Every file written before strokes carried a color. */
+		const wrapper = await open()
+		wrapper.vm.strokes = [{ points: [[10, 10, 0.5]] }]
+
+		wrapper.vm.renderPage()
+
+		expect(page(wrapper).fillStyles).toEqual([DEFAULT_INK_COLOR])
+	})
+
+	it('refuses a color from a file that is not in the palette', async () => {
+		const wrapper = await open()
+		wrapper.vm.strokes = [{ points: [[10, 10, 0.5]], color: '#ff00ff' }]
+
+		wrapper.vm.renderPage()
+
+		expect(page(wrapper).fillStyles).toEqual([DEFAULT_INK_COLOR])
+	})
+
+	it('saves a refused color as the one it was drawn in, not the one it came in with', async () => {
+		/* Validating only on the way to the canvas would leave the picture
+		   black and the metadata beside it still claiming magenta - a file
+		   that disagrees with itself for good. The strokes a canvas holds are
+		   the ones it draws. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open({
+			png: new Blob(),
+			strokes: [{ points: [[10, 10, 0.5]], color: '#ff00ff' }],
+			origin: null,
+		})
+
+		await wrapper.vm.done()
+
+		expect(saveInk.mock.calls[0][3][0].color).toBe(DEFAULT_INK_COLOR)
+	})
+
+	it('gives a stroke loaded without a color one of its own', async () => {
+		/* Every file written before this change. Opening and saving it makes
+		   it say what it has always drawn. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open({
+			png: new Blob(),
+			strokes: [{ points: [[10, 10, 0.5]] }],
+			origin: null,
+		})
+
+		await wrapper.vm.done()
+
+		expect(saveInk.mock.calls[0][3][0].color).toBe(DEFAULT_INK_COLOR)
+	})
+
+	it('stamps the color in force onto the stroke being drawn', async () => {
+		const wrapper = await open()
+		wrapper.vm.color = '#008800'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 30, offsetY: 30 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes[0].color).toBe('#008800')
+	})
+
+	it('saves the strokes with their colors', async () => {
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open()
+		wrapper.vm.strokes = [{ points: [[10, 10, 0.5]], color: '#7733cc' }]
+
+		await wrapper.vm.done()
+
+		const saved = saveInk.mock.calls[0][3]
+		expect(saved[0].color).toBe('#7733cc')
+	})
+
+	it('leaves the color off the context, since a stroke carries its own', async () => {
 		const wrapper = await open({ png: new Blob(), strokes: [] })
 		wrapper.vm.paintLive()
-		expect(live(wrapper).fillStyle).toBe(DEFAULT_INK_COLOR)
-		expect(page(wrapper).fillStyle).toBe(DEFAULT_INK_COLOR)
+		/* fit() no longer sets a color: it belongs to the stroke now, and a
+		   resize has none to lose. */
+		expect(live(wrapper).fillStyles).toEqual([])
+		expect(page(wrapper).fillStyles).toEqual([])
 	})
 
 	it('draws on the canvas that is on screen, not the one it first held', async () => {

@@ -88,7 +88,7 @@ import UndoIcon from 'vue-material-design-icons/UndoVariant.vue'
 import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
-import { DEFAULT_INK_COLOR } from '../inkPalette.js'
+import { DEFAULT_INK_COLOR, knownColor } from '../inkPalette.js'
 import { INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* How far a finger travels before it is moving the page rather than resting on
@@ -128,6 +128,9 @@ export default {
 			   how a mark that was there before is taken out. */
 			history: [],
 			erasing: false,
+			/* What the next stroke will be drawn in. A stroke keeps the color
+			   it was drawn with, so changing this never alters the page. */
+			color: DEFAULT_INK_COLOR,
 			/* How far down the page the top of the screen is. The two sheets
 			   stay the size of the screen and the page is as long as it needs
 			   to be: this is the one number that turns the one into a window
@@ -200,8 +203,15 @@ export default {
 			 * is open, and on the device the reader is already writing by the
 			 * time this returns. */
 			const canvas = this.$refs.canvas
+			/* Every stroke gets a color this palette offers, here at the one
+			   place strokes enter the canvas. A file can be copied in from
+			   anywhere and edited by anything; what it says would otherwise be
+			   drawn as the default and saved back as whatever it claimed, and
+			   a picture that disagrees with the strokes beside it is the one
+			   thing this format must never produce. A stroke from before color
+			   existed gets the default, which is what it has always drawn in. */
 			const placed = placeInk(
-				existing?.strokes ?? [],
+				(existing?.strokes ?? []).map((stroke) => ({ ...stroke, color: knownColor(stroke.color) })),
 				existing?.origin,
 				canvas?.clientWidth ?? 0,
 				canvas?.clientHeight ?? 0,
@@ -366,7 +376,8 @@ export default {
 
 		/* Size both sheets to the box, and set what a context loses whenever
 		   its size is written to: the device-pixel scale, so every coordinate
-		   from here on is a CSS pixel, and the color strokes are filled in. */
+		   from here on is a CSS pixel. The color is not set here - it belongs
+		   to the stroke, and each one is filled in its own. */
 		fit() {
 			const canvas = this.$refs.canvas
 			if (!canvas) {
@@ -389,7 +400,6 @@ export default {
 				const context = this.contextFor(which)
 				if (context) {
 					context.scale(ratio, ratio)
-					context.fillStyle = DEFAULT_INK_COLOR
 				}
 			}
 			this.painted = null
@@ -545,7 +555,10 @@ export default {
 				return
 			}
 			this.predicted = []
-			this.current = { points: withoutRepeats(this.onPage(samplesFrom(event)), null) }
+			this.current = {
+				points: withoutRepeats(this.onPage(samplesFrom(event)), null),
+				color: this.color,
+			}
 			/* Draw it now. The first sample is already in hand, so waiting for
 			   a pointermove to show anything leaves the nib on a blank page
 			   for however long the browser takes to report the first one. */
@@ -670,6 +683,7 @@ export default {
 				if (context) {
 					context.save()
 					context.translate(0, -this.panY)
+					context.fillStyle = this.colorOf(this.current)
 					traceStroke(context, this.current.points)
 					context.restore()
 				}
@@ -729,6 +743,19 @@ export default {
 			return [minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2]
 		},
 
+		/* The color to fill a stroke with.
+		 *
+		 * Validated on the way out rather than on the way in: strokes arrive
+		 * from a file that anything could have written, and this is the last
+		 * place before the value reaches the canvas.
+		 *
+		 * @param {object} stroke the stroke about to be traced
+		 * @return {string} a color the palette offers
+		 */
+		colorOf(stroke) {
+			return knownColor(stroke.color)
+		},
+
 		/* Trace every finished stroke onto the page. Only when what is on it
 		   has stopped being true: a resize, an undo, or ink loaded from the
 		   file. Writing does not come through here, which is the point. */
@@ -747,6 +774,7 @@ export default {
 			context.save()
 			context.translate(0, -this.panY)
 			for (const stroke of this.strokes) {
+				context.fillStyle = this.colorOf(stroke)
 				traceStroke(context, stroke.points)
 			}
 			context.restore()
@@ -782,6 +810,7 @@ export default {
 				const points = this.predicted?.length
 					? [...this.current.points, ...this.predicted]
 					: this.current.points
+				context.fillStyle = this.colorOf(this.current)
 				traceStroke(context, points)
 				this.painted = this.onScreen(this.boundsOf(points))
 			} else {
@@ -842,8 +871,8 @@ export default {
 			const context = picture.getContext('2d')
 			if (context) {
 				context.scale(ratio, ratio)
-				context.fillStyle = DEFAULT_INK_COLOR
 				for (const stroke of strokes) {
+					context.fillStyle = this.colorOf(stroke)
 					traceStroke(context, stroke.points)
 				}
 			}
