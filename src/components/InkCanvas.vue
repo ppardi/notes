@@ -26,6 +26,7 @@
 				<canvas
 					ref="canvas"
 					class="ink__canvas ink__canvas--live"
+					:class="{ 'ink__canvas--erasing': erasing }"
 					@pointerdown="onDown"
 					@pointermove="onMove"
 					@pointerup="onUp"
@@ -33,7 +34,14 @@
 				/>
 			</div>
 			<div class="ink__bar">
-				<NcButton :disabled="!ready || !strokes.length || saving" @click="undo">
+				<NcButton class="ink__tool"
+					:pressed="erasing"
+					:disabled="!accepting()"
+					@click="erasing = !erasing"
+				>
+					{{ t('notes', 'Erase') }}
+				</NcButton>
+				<NcButton :disabled="!history.length || saving" @click="undo">
 					{{ t('notes', 'Undo') }}
 				</NcButton>
 				<NcButton @click="$emit('close')">
@@ -52,6 +60,7 @@
 
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
+import { erasedBy } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
 import { INK_COLOR, inkBounds, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
@@ -80,6 +89,12 @@ export default {
 	data() {
 		return {
 			strokes: [],
+			/* What was done here, so it can be taken back: one entry for each
+			   stroke drawn and each pass of the eraser. Not what was loaded -
+			   Undo reverses what happened on this canvas, and the eraser is
+			   how a mark that was there before is taken out. */
+			history: [],
+			erasing: false,
 			current: null,
 			pointerId: null,
 			pointerType: null,
@@ -340,15 +355,20 @@ export default {
 			if (!this.accepting() || !shouldDraw(event)) {
 				return
 			}
-			/* One stroke at a time. Nothing preempts a stroke in progress now
-			   that a finger cannot start one: what used to arrive first and
-			   have to be undone was the palm. */
-			if (this.current) {
+			/* One gesture at a time. Nothing preempts one in progress now that
+			   a finger cannot start one: what used to arrive first and have to
+			   be undone was the palm. */
+			if (this.current || this.rubbing) {
 				return
 			}
 			this.$refs.canvas?.setPointerCapture?.(event.pointerId)
 			this.pointerId = event.pointerId
 			this.pointerType = event.pointerType
+			if (this.erasing) {
+				this.rubbing = []
+				this.rubOut(samplesFrom(event))
+				return
+			}
 			this.predicted = []
 			this.current = { points: samplesFrom(event) }
 			/* Draw it now. The first sample is already in hand, so waiting for
@@ -358,9 +378,17 @@ export default {
 		},
 
 		onMove(event) {
-			/* Only the pointer that started the stroke extends it. A hand resting
-			   beside the pen keeps reporting moves, and those are not ink. */
-			if (!this.current || event.pointerId !== this.pointerId || !this.accepting()) {
+			/* Only the pointer that started the gesture continues it. A hand
+			   resting beside the pen keeps reporting moves, and those are
+			   neither ink nor erasing. */
+			if (event.pointerId !== this.pointerId || !this.accepting()) {
+				return
+			}
+			if (this.rubbing) {
+				this.rubOut(samplesFrom(event))
+				return
+			}
+			if (!this.current) {
 				return
 			}
 			const samples = samplesFrom(event)
@@ -372,11 +400,56 @@ export default {
 		},
 
 		onUp(event) {
-			/* A hand lifting must not end the pen's stroke. */
-			if (!this.current || event.pointerId !== this.pointerId || !this.accepting()) {
+			/* A hand lifting must not end the pen's gesture. */
+			if (event.pointerId !== this.pointerId || !this.accepting()) {
 				return
 			}
-			this.finishStroke()
+			if (this.rubbing) {
+				this.finishRub()
+				return
+			}
+			if (this.current) {
+				this.finishStroke()
+			}
+		},
+
+		/* Rub out every stroke the eraser has just passed over.
+		 *
+		 * Whole strokes, which is what keeps a stroke the only unit there is:
+		 * the picture and the strokes that drew it cannot come to disagree,
+		 * and both Undo and saving go on working unchanged. The cost is that a
+		 * long mark goes all at once - crossing an underline takes the line.
+		 *
+		 * The page is retraced only when something was actually taken off it.
+		 * Most of an eraser's travel is over blank paper.
+		 *
+		 * @param {Array<Array<number>>} samples where the eraser has been
+		 */
+		rubOut(samples) {
+			let took = false
+			/* Highest place first, so taking one out does not move the next. */
+			for (const at of erasedBy(this.strokes, samples)) {
+				/* Where it was, so undoing puts it back there rather than on
+				   top. Reversed on the way back, which undoes the splices
+				   exactly however many places have moved since. */
+				this.rubbing.push({ at, stroke: this.strokes[at] })
+				this.strokes.splice(at, 1)
+				took = true
+			}
+			if (took) {
+				this.renderPage()
+			}
+		},
+
+		/* One pass of the eraser is one thing to undo, however much it
+		   crossed - a pass that found nothing is not a thing at all. */
+		finishRub() {
+			if (this.rubbing?.length) {
+				this.history.push({ erased: this.rubbing })
+			}
+			this.rubbing = null
+			this.pointerId = null
+			this.pointerType = null
 		},
 
 		/* The finished stroke moves down onto the page as it is committed, so
@@ -384,6 +457,7 @@ export default {
 		finishStroke() {
 			if (this.current) {
 				this.strokes.push(this.current)
+				this.history.push({ drew: this.current })
 				const context = this.contextFor('page')
 				if (context) {
 					traceStroke(context, this.current.points)
@@ -396,8 +470,30 @@ export default {
 			}
 		},
 
+		/* Take back the last thing done here, whichever it was.
+		 *
+		 * Erasing is the one thing this canvas does that destroys work, so it
+		 * has to come back through the same button as everything else - and a
+		 * pass that took three strokes brings all three back, because that is
+		 * the one thing the reader did. */
 		undo() {
-			this.strokes.pop()
+			const last = this.history.pop()
+			if (!last) {
+				return
+			}
+			if (last.drew) {
+				const at = this.strokes.lastIndexOf(last.drew)
+				if (at > -1) {
+					this.strokes.splice(at, 1)
+				}
+			} else {
+				/* Back to front: each place was recorded as it stood when that
+				   stroke was taken out, and putting them back in the reverse
+				   order is what undoes the splices. */
+				for (const { at, stroke } of [...last.erased].reverse()) {
+					this.strokes.splice(at, 0, stroke)
+				}
+			}
 			this.renderPage()
 		},
 
@@ -616,6 +712,11 @@ export default {
 	touch-action: none;
 }
 
+/* Which tool is in hand, where there is a pointer to show it to. */
+.ink__canvas--erasing {
+	cursor: cell;
+}
+
 /* Only the top sheet takes input; the page beneath is never pointed at. */
 .ink__canvas--page {
 	pointer-events: none;
@@ -627,6 +728,11 @@ export default {
 	justify-content: flex-end;
 	padding: var(--default-grid-baseline);
 	border-top: 1px solid var(--color-border);
+}
+
+/* The tool sits apart from the three buttons that end the session. */
+.ink__tool {
+	margin-inline-end: auto;
 }
 
 .ink__error {

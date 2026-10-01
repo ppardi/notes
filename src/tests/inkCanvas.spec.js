@@ -116,6 +116,12 @@ async function pointer(wrapper, type, init) {
 	await wrapper.vm.$nextTick()
 }
 
+/* A button by its label, which is how a reader finds one - and, unlike its
+   place in the bar, does not change when a tool is added beside it. */
+function button(wrapper, label) {
+	return wrapper.findAll('button').find((candidate) => candidate.text() === label)
+}
+
 describe('InkCanvas', () => {
 	it('keeps the strokes and stays open when the save fails', async () => {
 		/* The worst thing this feature can do is lose a page of handwriting to
@@ -184,8 +190,7 @@ describe('InkCanvas', () => {
 			expect(wrapper.vm.strokes).toEqual([])
 
 			/* And Done is refused, even when asked directly. */
-			const buttons = wrapper.findAll('button')
-			expect(buttons[2].attributes('disabled')).toBeDefined()
+			expect(button(wrapper, 'Done').attributes('disabled')).toBeDefined()
 			await wrapper.vm.done()
 			expect(saveInk).not.toHaveBeenCalled()
 			expect(wrapper.emitted('saved')).toBeUndefined()
@@ -193,9 +198,8 @@ describe('InkCanvas', () => {
 
 		it('still lets the person leave', async () => {
 			const wrapper = await unreadable()
-			const buttons = wrapper.findAll('button')
-			expect(buttons[1].attributes('disabled')).toBeUndefined()
-			await buttons[1].trigger('click')
+			expect(button(wrapper, 'Cancel').attributes('disabled')).toBeUndefined()
+			await button(wrapper, 'Cancel').trigger('click')
 			expect(wrapper.emitted('close')).toHaveLength(1)
 		})
 
@@ -219,9 +223,127 @@ describe('InkCanvas', () => {
 
 	it('undoes the last stroke', async () => {
 		const wrapper = await open()
-		wrapper.vm.strokes = [{ points: [[1, 1, 0.5]] }, { points: [[2, 2, 0.5]] }]
+		await pointer(wrapper, 'pointerdown', { offsetX: 1, offsetY: 1 })
+		await pointer(wrapper, 'pointerup')
+		await pointer(wrapper, 'pointerdown', { offsetX: 2, offsetY: 2 })
+		await pointer(wrapper, 'pointerup')
+
 		wrapper.vm.undo()
+
 		expect(wrapper.vm.strokes).toHaveLength(1)
+		expect(wrapper.vm.strokes[0].points[0]).toEqual([1, 1, 0.5])
+	})
+
+	it('has nothing to undo on a page it has only opened', async () => {
+		/* Undo reverses what was done here. The ink that was already in the
+		   file is not something this canvas did, and the eraser is the way to
+		   take out a mark that was there before. */
+		const wrapper = await open({ png: new Blob(), strokes: [{ points: [[3, 3, 0.5]] }] })
+		expect(button(wrapper, 'Undo').attributes('disabled')).toBeDefined()
+	})
+
+	describe('the eraser', () => {
+		/* A line across the page, as the pen draws one. */
+		const line = (y) => ({ points: Array.from({ length: 8 }, (_, i) => [i * 20, y, 0.5]) })
+
+		/* Rub out along a row, the way a hand moves: down, across, up. */
+		async function rubAcross(wrapper, y) {
+			await pointer(wrapper, 'pointerdown', { offsetX: 10, offsetY: y })
+			for (let x = 20; x <= 140; x += 20) {
+				await pointer(wrapper, 'pointermove', { offsetX: x, offsetY: y })
+			}
+			await pointer(wrapper, 'pointerup')
+		}
+
+		it('takes out the stroke it is dragged across, and leaves the rest', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [line(0), line(200), line(400)] })
+			await button(wrapper, 'Erase').trigger('click')
+			expect(wrapper.vm.erasing).toBe(true)
+
+			await rubAcross(wrapper, 200)
+
+			expect(wrapper.vm.strokes).toHaveLength(2)
+			expect(wrapper.vm.strokes.map((stroke) => stroke.points[0][1])).toEqual([0, 400])
+		})
+
+		it('draws nothing while it rubs out', async () => {
+			/* The eraser is not a mark. Nothing of its path is kept and nothing
+			   of it is left on the page. */
+			const wrapper = await open({ png: new Blob(), strokes: [line(200)] })
+			wrapper.vm.erasing = true
+
+			await rubAcross(wrapper, 900)
+
+			expect(wrapper.vm.strokes).toHaveLength(1)
+			expect(wrapper.vm.current).toBeNull()
+		})
+
+		it('puts back what it rubbed out, when undone', async () => {
+			/* Erasing is the one thing here that destroys work, so it has to be
+			   reversible by the same button as everything else. */
+			const wrapper = await open({ png: new Blob(), strokes: [line(0), line(200), line(400)] })
+			wrapper.vm.erasing = true
+			await rubAcross(wrapper, 200)
+			/* Without this the test passes on a canvas that erases nothing. */
+			expect(wrapper.vm.strokes).toHaveLength(2)
+
+			wrapper.vm.undo()
+
+			expect(wrapper.vm.strokes.map((stroke) => stroke.points[0][1])).toEqual([0, 200, 400])
+		})
+
+		it('puts back everything one pass took, in the places they were in', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [line(0), line(4), line(400)] })
+			wrapper.vm.erasing = true
+			await rubAcross(wrapper, 2)
+			expect(wrapper.vm.strokes).toHaveLength(1)
+
+			wrapper.vm.undo()
+
+			expect(wrapper.vm.strokes.map((stroke) => stroke.points[0][1])).toEqual([0, 4, 400])
+		})
+
+		it('counts one pass as one thing to undo, however much it crossed', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [line(0), line(200)] })
+			wrapper.vm.erasing = true
+			await rubAcross(wrapper, 0)
+			await rubAcross(wrapper, 200)
+
+			wrapper.vm.undo()
+			expect(wrapper.vm.strokes).toHaveLength(1)
+			wrapper.vm.undo()
+			expect(wrapper.vm.strokes).toHaveLength(2)
+		})
+
+		it('nothing to undo for a pass that touched nothing', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [line(200)] })
+			wrapper.vm.erasing = true
+			await rubAcross(wrapper, 900)
+			expect(button(wrapper, 'Undo').attributes('disabled')).toBeDefined()
+		})
+
+		it('never rubs out for a finger', async () => {
+			/* The same rule as drawing: a palm resting on the page would
+			   otherwise wipe it. */
+			const wrapper = await open({ png: new Blob(), strokes: [line(200)] })
+			wrapper.vm.erasing = true
+
+			await pointer(wrapper, 'pointerdown', { pointerType: 'touch', offsetX: 10, offsetY: 200 })
+			await pointer(wrapper, 'pointermove', { pointerType: 'touch', offsetX: 60, offsetY: 200 })
+
+			expect(wrapper.vm.strokes).toHaveLength(1)
+		})
+
+		it('saves the page it rubbed out, not the page it opened', async () => {
+			saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+			const wrapper = await open({ png: new Blob(), strokes: [line(0), line(200)] })
+			wrapper.vm.erasing = true
+			await rubAcross(wrapper, 200)
+
+			await wrapper.vm.done()
+
+			expect(saveInk.mock.calls[0][3]).toHaveLength(1)
+		})
 	})
 
 	describe('when the existing ink cannot be loaded', () => {
@@ -247,10 +369,9 @@ describe('InkCanvas', () => {
 			loadInk.mockRejectedValue(new Error('500'))
 			const wrapper = mount(InkCanvas, { props: { noteId: 5, inkId: 'abc' }, global: { mocks: { t }, stubs: { teleport: true } } })
 			await flushPromises()
-			const buttons = wrapper.findAll('button')
-			expect(buttons[0].attributes('disabled')).toBeDefined()
-			expect(buttons[1].attributes('disabled')).toBeUndefined()
-			expect(buttons[2].attributes('disabled')).toBeDefined()
+			expect(button(wrapper, 'Undo').attributes('disabled')).toBeDefined()
+			expect(button(wrapper, 'Cancel').attributes('disabled')).toBeUndefined()
+			expect(button(wrapper, 'Done').attributes('disabled')).toBeDefined()
 		})
 	})
 
@@ -375,10 +496,9 @@ describe('InkCanvas', () => {
 				wrapper.vm.done()
 				await flushPromises()
 
-				const buttons = wrapper.findAll('button')
-				expect(buttons[2].attributes('disabled')).toBeDefined()
-				expect(buttons[1].attributes('disabled')).toBeUndefined()
-				await buttons[1].trigger('click')
+				expect(button(wrapper, 'Done').attributes('disabled')).toBeDefined()
+				expect(button(wrapper, 'Cancel').attributes('disabled')).toBeUndefined()
+				await button(wrapper, 'Cancel').trigger('click')
 				expect(wrapper.emitted('close')).toHaveLength(1)
 			} finally {
 				HTMLCanvasElement.prototype.toBlob = toBlob
@@ -441,9 +561,9 @@ describe('InkCanvas', () => {
 			/* Saving writes the file by name. Doing it before the load has
 			   answered would replace ink nobody has read yet. */
 			const { wrapper, arrive } = opening()
-			expect(wrapper.find('.ink__bar').findAll('button')[2].attributes('disabled')).toBeDefined()
+			expect(button(wrapper, 'Done').attributes('disabled')).toBeDefined()
 			await arrive(null)
-			expect(wrapper.find('.ink__bar').findAll('button')[2].attributes('disabled')).toBeUndefined()
+			expect(button(wrapper, 'Done').attributes('disabled')).toBeUndefined()
 		})
 	})
 
@@ -636,7 +756,11 @@ describe('InkCanvas drawing', () => {
 	})
 
 	it('retraces the page when a stroke is taken off it', async () => {
-		const wrapper = await open({ png: new Blob(), strokes: manyStrokes(3) })
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		for (let i = 1; i <= 3; i++) {
+			await pointer(wrapper, 'pointerdown', { offsetX: i * 10, offsetY: i * 10 })
+			await pointer(wrapper, 'pointerup')
+		}
 		traceStroke.mockClear()
 
 		wrapper.vm.undo()

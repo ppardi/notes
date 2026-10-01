@@ -48,6 +48,25 @@ async function drawAndFinish(page: Page): Promise<void> {
 	await page.getByRole('button', { name: 'Done' }).click()
 }
 
+// How much ink is on the page sheet, which is where loaded strokes are traced.
+// Reading the pixels rather than asking whether Undo is enabled: a button says
+// something was recorded, these say the ink is really on the page - and Undo
+// now reverses only what was done on this canvas, so a page that was merely
+// reopened has nothing to undo.
+async function inkOnThePage(page: Page): Promise<number> {
+	return await page.locator('.ink__canvas--page').evaluate((canvas: HTMLCanvasElement) => {
+		const context = canvas.getContext('2d')!
+		const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
+		let painted = 0
+		for (let i = 3; i < data.length; i += 4) {
+			if (data[i] > 0) {
+				painted++
+			}
+		}
+		return painted
+	})
+}
+
 test.describe('Ink', () => {
 	test('puts the picture into the note', async ({ page, request }) => {
 		const noteId = await openInkedNote(page, request)
@@ -94,9 +113,9 @@ test.describe('Ink', () => {
 
 		await page.locator('figure[data-component="image-view"]').click()
 		await expect(page.locator('.ink__canvas--live')).toBeVisible()
-		// The strokes came back, so this is the same ink and not a new block.
-		// Scoped to the canvas: the editor's own toolbar has an Undo too.
-		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
+		// The strokes came back and were traced, so this is the same ink and
+		// not a new block.
+		await expect.poll(async () => await inkOnThePage(page), { timeout: 10000 }).toBeGreaterThan(0)
 
 		// Finishing again replaces the file; it must not add a second block.
 		// Asserted on the editor's DOM, which changes at once, rather than on the
@@ -116,7 +135,7 @@ test.describe('Ink', () => {
 		await page.locator('figure[data-component="image-view"]').click()
 		await expect(page.locator('.ink__canvas--live')).toBeVisible()
 		// The strokes came back, so the tap reached the same ink and not a new block.
-		await expect(page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Undo' })).toBeEnabled()
+		await expect.poll(async () => await inkOnThePage(page), { timeout: 10000 }).toBeGreaterThan(0)
 	})
 
 	test('leaves an ordinary image alone when it is tapped', async ({ page, request }) => {
@@ -504,5 +523,47 @@ test.describe('Ink', () => {
 		await expect
 			.poll(async () => await picture.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 15000 })
 			.toBeGreaterThan(before + 200)
+	})
+	test('rubs out the stroke the eraser is dragged across', async ({ page, request }) => {
+		const noteId = await openInkedNote(page, request)
+		await page.getByRole('button', { name: 'Ink', exact: true }).click()
+		const canvas = page.locator('.ink__canvas--live')
+		await expect(canvas).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		// Two lines, well apart: one to keep and one to rub out. Drawn from the
+		// middle, because the app header and the navigation sidebar are painted
+		// over the canvas's top and left edges.
+		const box = (await canvas.boundingBox())!
+		const x = box.x + box.width / 3
+		const keep = box.y + box.height / 3
+		const rub = keep + 200
+		for (const y of [keep, rub]) {
+			await page.mouse.move(x, y)
+			await page.mouse.down()
+			await page.mouse.move(x + 100, y, { steps: 10 })
+			await page.mouse.up()
+		}
+
+		const eraser = page.getByRole('dialog', { name: 'Ink' }).getByRole('button', { name: 'Erase' })
+		await eraser.click()
+		await expect(eraser).toHaveAttribute('aria-pressed', 'true')
+		await page.mouse.move(x - 10, rub)
+		await page.mouse.down()
+		await page.mouse.move(x + 110, rub, { steps: 12 })
+		await page.mouse.up()
+		await page.getByRole('button', { name: 'Done' }).click()
+
+		const image = new RegExp(`(\\.attachments\\.${noteId}/ink-[A-Za-z0-9_-]+\\.png)`)
+		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toMatch(image)
+		const src = image.exec(await noteContent(noteId))![1]
+		const bytes = await noteAttachment(noteId, src)
+		const size = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+
+		// The picture is cropped to what is left. Both lines would span the 200
+		// pixels between them; one line alone is a few pixels tall.
+		expect(size.getUint32(20)).toBeLessThan(50)
+		// And it is the line that was not rubbed out, not an empty page.
+		expect(size.getUint32(16)).toBeGreaterThanOrEqual(100)
 	})
 })
