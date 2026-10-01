@@ -36,6 +36,7 @@ import TagCompletion from './TagCompletion.vue'
 import { closeEditor, reopenEditor } from '../editorHandoff.js'
 import { loadInk } from '../inkFile.js'
 import { inkContent, inkIdFromUrl, makeInkId } from '../inkLink.js'
+import { refreshInkPicture } from '../inkRefresh.js'
 import { inkIdFromNode } from '../inkTap.js'
 import logger from '../Logger.js'
 import { queueCommand, refreshNote } from '../NotesService.js'
@@ -238,7 +239,13 @@ export default {
 			if (this.newInk) {
 				this.placeCaretForInk()
 				this.editor?.insertAtCursor?.(inkContent(Number(this.noteId), id))
+				return
 			}
+			/* Which is also why the picture on screen is still the old one:
+			   nothing about the document changed, so Text has no reason to
+			   render the image again and the browser answers for a URL it has
+			   already fetched out of its cache. */
+			refreshInkPicture(this.$refs.editor, Number(this.noteId), id)
 		},
 
 		/**

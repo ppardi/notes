@@ -470,4 +470,39 @@ test.describe('Ink', () => {
 		expect(height).toBeLessThan(200)
 	})
 
+	test('shows the ink that was just saved, without leaving the note', async ({ page, request }) => {
+		// Re-editing writes the file under the name the note already holds, so
+		// nothing about the document changes and the browser - asked for a URL
+		// it has fetched before - answers out of its cache. The reader was left
+		// looking at the picture as it was before they drew on it.
+		await openInkedNote(page, request)
+		await drawAndFinish(page)
+
+		const figure = page.locator('figure[data-component="image-view"]').first()
+		const picture = figure.locator('img')
+		await expect(picture).toBeVisible({ timeout: 15000 })
+		const before = await picture.evaluate((img: HTMLImageElement) => img.naturalWidth)
+		expect(before).toBeGreaterThan(0)
+
+		// Tap the ink to reopen it, and write a good deal wider than before.
+		await picture.click()
+		const canvas = page.locator('.ink__canvas--live')
+		await expect(canvas).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+		const box = (await canvas.boundingBox())!
+		const x = box.x + box.width / 4
+		const y = box.y + box.height / 2
+		await page.mouse.move(x, y)
+		await page.mouse.down()
+		await page.mouse.move(x + 400, y + 40, { steps: 10 })
+		await page.mouse.up()
+		await page.getByRole('button', { name: 'Done' }).click()
+		await expect(page.getByRole('dialog', { name: 'Ink' })).toHaveCount(0)
+
+		// The picture on screen is the one that was just saved: wider, because
+		// the stroke that was just added is wider.
+		await expect
+			.poll(async () => await picture.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 15000 })
+			.toBeGreaterThan(before + 200)
+	})
 })
