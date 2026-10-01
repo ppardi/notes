@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { eventAge, predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
+import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
 
 /**
  * @param {object} fields what the event carries
@@ -90,42 +90,13 @@ describe('shouldDraw', () => {
 	})
 })
 
-describe('eventAge', () => {
-	it('measures an event stamped on the page clock', () => {
-		expect(eventAge(1000, 1042)).toBe(42)
-	})
-
-	it('measures an event stamped on the wall clock', () => {
-		/* timeStamp is meant to be relative to the page's time origin, and is
-		   not everywhere: some engines report epoch milliseconds. Read as a
-		   page time, that gives an age of minus fifty-odd years, which would
-		   be reported as though it meant something. */
-		const now = performance.now()
-		expect(eventAge(Date.now() - 30, now)).toBeGreaterThanOrEqual(29)
-		expect(eventAge(Date.now() - 30, now)).toBeLessThan(120)
-	})
-
-	it('gives nothing rather than nonsense for a stamp it cannot place', () => {
-		expect(eventAge(undefined, 1000)).toBe(0)
-		expect(eventAge(Number.NaN, 1000)).toBe(0)
-		/* From the future, on neither clock. */
-		expect(eventAge(1e15, 1000)).toBe(0)
-	})
-
-	it('gives nothing for an age too large to be an input delay', () => {
-		/* Half a minute behind the pen is not a measurement, it is a mistake. */
-		expect(eventAge(0, 60000)).toBe(0)
-	})
-})
-
 describe('predictedFrom', () => {
 	it('takes where the browser thinks the pen is going', () => {
-		/* Safari has had this since 18.2 and it is meant for exactly this:
-		   ink can be drawn ahead of the samples that have arrived, which is
-		   what hides the delay between the nib and the line. */
+		/* Safari has had this since 18.2: ink can be drawn ahead of the
+		   samples that have arrived, which is the one thing that shortens a
+		   delay rather than merely stopping adding to it. */
 		const ahead = [pointer({ offsetX: 10, offsetY: 11, pressure: 0.4 }), pointer({ offsetX: 20, offsetY: 21, pressure: 0.4 })]
-		const event = pointer({ getPredictedEvents: () => ahead })
-		expect(predictedFrom(event)).toEqual([[10, 11, 0.4], [20, 21, 0.4]])
+		expect(predictedFrom(pointer({ getPredictedEvents: () => ahead }))).toEqual([[10, 11, 0.4], [20, 21, 0.4]])
 	})
 
 	it('gives nothing where the browser will not guess', () => {

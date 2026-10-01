@@ -20,11 +20,6 @@ vi.mock('../inkRender.js', async (original) => ({
 	traceStroke: (...a) => traceStroke(...a),
 }))
 
-/* Whether the readout was asked for is decided at app load, by inkStats.js,
-   which has its own tests. Here it is simply told. */
-const statsWanted = vi.fn(() => false)
-vi.mock('../inkStats.js', () => ({ statsWanted: () => statsWanted() }))
-
 const saveInk = vi.fn()
 const loadInk = vi.fn()
 vi.mock('../inkFile.js', () => ({ saveInk: (...a) => saveInk(...a), loadInk: (...a) => loadInk(...a) }))
@@ -87,7 +82,6 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
-	statsWanted.mockReturnValue(false)
 	traceStroke.mockReset()
 	saveInk.mockReset()
 	loadInk.mockReset()
@@ -293,20 +287,20 @@ describe('InkCanvas', () => {
 		})
 
 		it('refuses the default on touch, so Scribble cannot swallow the pen', async () => {
-		/* iPadOS Scribble claims pen input over a canvas and the page is handed
-		   nothing at all - no pointerdown, no pointermove - until the pen is
-		   lifted and put down again. A WebKit regression since iPadOS 14, and
-		   refusing the default on touch is what stops the recogniser taking
-		   it. Reproduced and fixed on the device, with Scribble on. */
-		const wrapper = await open()
-		for (const type of ['touchstart', 'touchmove']) {
-			const event = new Event(type, { bubbles: true, cancelable: true })
-			wrapper.find('.ink__canvas--live').element.dispatchEvent(event)
-			expect(event.defaultPrevented, `${type} was left to the browser`).toBe(true)
-		}
-	})
+			/* iPadOS Scribble claims pen input over a canvas and the page is
+			   handed nothing at all - no pointerdown, no pointermove - until
+			   the pen is lifted and put down again. A WebKit regression since
+			   iPadOS 14, and refusing the default on touch is what stops the
+			   recogniser taking it. Proven on the device, Scribble switched on. */
+			const wrapper = await open()
+			for (const type of ['touchstart', 'touchmove']) {
+				const event = new Event(type, { bubbles: true, cancelable: true })
+				wrapper.find('.ink__canvas--live').element.dispatchEvent(event)
+				expect(event.defaultPrevented, `${type} was left to the browser`).toBe(true)
+			}
+		})
 
-	it('never draws for a finger, on a page nothing has been written on', async () => {
+		it('never draws for a finger, on a page nothing has been written on', async () => {
 			/* The case that used to get through: no pen has been seen yet, so
 			   the resting hand was let through and drew the first stroke. */
 			const wrapper = await open()
@@ -613,149 +607,5 @@ describe('InkCanvas drawing', () => {
 		expect(canvas.width).toBe(800 * (window.devicePixelRatio || 1))
 		/* The page went with it, so it is put back. */
 		expect(traceStroke).toHaveBeenCalledTimes(3)
-	})
-})
-
-describe('the stats readout', () => {
-	it('is not there, and costs nothing, unless it was asked for', async () => {
-		const wrapper = await open({ png: new Blob(), strokes: [] })
-		expect(wrapper.find('.ink__stats').exists()).toBe(false)
-		/* Nothing to tally means the timing calls are never reached. */
-		expect(wrapper.vm.tally).toBeUndefined()
-	})
-
-	it('reports what the canvas is doing when it was asked for', async () => {
-		statsWanted.mockReturnValue(true)
-		vi.useFakeTimers()
-		try {
-			const wrapper = await open({ png: new Blob(), strokes: [] })
-			await pointer(wrapper, 'pointerdown')
-			await pointer(wrapper, 'pointermove', { offsetX: 40 })
-			runFrame()
-
-			vi.advanceTimersByTime(1000)
-			await wrapper.vm.$nextTick()
-
-			const shown = wrapper.find('.ink__stats').text()
-			expect(shown).toMatch(/\d+\/s frames offered, worst gap \d+ms/)
-			expect(shown).toMatch(/behind the pen \d+ms, worst \d+ms; batch spans \d+ms/)
-			expect(shown).toMatch(/1\/s moves\s+1\/s samples\s+\d+\/s paints/)
-			expect(shown).toMatch(/ms per move/)
-			expect(shown).toMatch(/0 strokes, \d+ points under the pen/)
-			expect(shown).toMatch(/canvas \d+x\d+ at \d+x, filter /)
-		} finally {
-			vi.useRealTimers()
-		}
-	})
-
-	it('reports how far behind the pen it is, from the event itself', async () => {
-		/* The one number that says whether the delay is before us or after us.
-		   An event that happened 40ms ago was already late when it arrived. */
-		statsWanted.mockReturnValue(true)
-		vi.useFakeTimers()
-		try {
-			const wrapper = await open({ png: new Blob(), strokes: [] })
-			await pointer(wrapper, 'pointerdown')
-			const late = performance.now() - 40
-			await pointer(wrapper, 'pointermove', { offsetX: 40, timeStamp: late })
-			runFrame()
-			vi.advanceTimersByTime(1000)
-			await wrapper.vm.$nextTick()
-
-			const shown = wrapper.find('.ink__stats').text()
-			expect(shown).toMatch(/behind the pen (3[5-9]|4[0-9])ms/)
-		} finally {
-			vi.useRealTimers()
-		}
-	})
-
-	it('counts every pen-down in the second, not just the first', async () => {
-		/* Reported from the iPad: several lifts, and the readout said one. */
-		statsWanted.mockReturnValue(true)
-		vi.useFakeTimers()
-		try {
-			const wrapper = await open({ png: new Blob(), strokes: [] })
-			for (const stroke of [0, 1, 2]) {
-				await pointer(wrapper, 'pointerdown', { offsetX: 10 + stroke * 30 })
-				await pointer(wrapper, 'pointermove', { offsetX: 20 + stroke * 30 })
-				runFrame()
-				await pointer(wrapper, 'pointerup', { offsetX: 20 + stroke * 30 })
-			}
-
-			vi.advanceTimersByTime(1000)
-			await wrapper.vm.$nextTick()
-			expect(wrapper.find('.ink__stats').text()).toMatch(/3 pen-downs so far/)
-
-			/* Kept across seconds, because a pen goes down once or twice in
-			   one and the whole point is to average over many. */
-			await pointer(wrapper, 'pointerdown', { offsetX: 200 })
-			await pointer(wrapper, 'pointermove', { offsetX: 210 })
-			runFrame()
-			await pointer(wrapper, 'pointerup', { offsetX: 210 })
-			vi.advanceTimersByTime(1000)
-			await wrapper.vm.$nextTick()
-
-			expect(wrapper.find('.ink__stats').text()).toMatch(/4 pen-downs so far/)
-		} finally {
-			vi.useRealTimers()
-		}
-	})
-
-	it('reports the worst single paint, which an average hides', async () => {
-		/* 26 paints a second averaging under a millisecond reads the same
-		   whether every paint was quick or one of them took forty. A stall at
-		   the start of a stroke is exactly the shape an average loses. */
-		statsWanted.mockReturnValue(true)
-		vi.useFakeTimers()
-		try {
-			const wrapper = await open({ png: new Blob(), strokes: [] })
-			await pointer(wrapper, 'pointerdown')
-			let slow = true
-			traceStroke.mockImplementation(() => {
-				if (slow) {
-					slow = false
-					vi.advanceTimersByTime(40)
-				}
-			})
-			await pointer(wrapper, 'pointermove', { offsetX: 40 })
-			runFrame()
-			for (let i = 2; i < 6; i++) {
-				await pointer(wrapper, 'pointermove', { offsetX: 40 + i * 10 })
-				runFrame()
-			}
-
-			vi.advanceTimersByTime(1000)
-			await wrapper.vm.$nextTick()
-
-			expect(wrapper.find('.ink__stats').text()).toMatch(/worst paint \d\d+ms/)
-		} finally {
-			traceStroke.mockReset()
-			vi.useRealTimers()
-		}
-	})
-
-	it('holds the last second that had writing in it', async () => {
-		/* The numbers are read after the pen lifts. Wiping them on the first
-		   idle second would leave zeros on screen exactly when someone looks. */
-		statsWanted.mockReturnValue(true)
-		vi.useFakeTimers()
-		try {
-			const wrapper = await open({ png: new Blob(), strokes: [] })
-			await pointer(wrapper, 'pointerdown')
-			await pointer(wrapper, 'pointermove', { offsetX: 40 })
-			runFrame()
-			vi.advanceTimersByTime(1000)
-			await wrapper.vm.$nextTick()
-			const written = wrapper.find('.ink__stats').text()
-			expect(written).toMatch(/1\/s moves/)
-
-			await pointer(wrapper, 'pointerup')
-			vi.advanceTimersByTime(3000)
-			await wrapper.vm.$nextTick()
-
-			expect(wrapper.find('.ink__stats').text()).toBe(written)
-		} finally {
-			vi.useRealTimers()
-		}
 	})
 })

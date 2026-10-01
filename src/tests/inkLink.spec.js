@@ -5,7 +5,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest'
 import * as inkLink from '../inkLink.js'
-import { INK_FILE_PATTERN, inkAttachmentPath, inkContent, inkFileName, inkIdFromUrl, inkLinkUrl, makeInkId } from '../inkLink.js'
+import { INK_FILE_PATTERN, inkAttachmentPath, inkContent, inkFileName, inkIdFromUrl, makeInkId } from '../inkLink.js'
 
 beforeAll(() => {
 	globalThis.t = (app, text, params) => Object.entries(params ?? {})
@@ -27,10 +27,6 @@ describe('ink names', () => {
 })
 
 describe('ink links', () => {
-	it('reads the id back out of its own URL', () => {
-		expect(inkIdFromUrl(inkLinkUrl('abc123'))).toBe('abc123')
-	})
-
 	it('reads the id out of an absolute URL', () => {
 		/* openLinkHandler is handed the resolved href, not the relative path
 		   the document holds, so matching the whole string would never fire. */
@@ -76,21 +72,23 @@ describe('what the module offers', () => {
 			'inkContent',
 			'inkFileName',
 			'inkIdFromUrl',
-			'inkLinkUrl',
 			'makeInkId',
 		])
 	})
 })
 
 describe('what goes into the editor', () => {
-	it('is an image block and a separate paragraph holding the link', () => {
-		const [image, paragraph] = inkContent(85110, 'abc123')
-		expect(image.type).toBe('image')
-		expect(image.attrs.src).toBe('.attachments.85110/ink-abc123.png')
-		expect(paragraph.type).toBe('paragraph')
-		expect(paragraph.content[0].marks[0].attrs.href).toBe(inkLinkUrl('abc123'))
-		/* The link is never a mark on the image: Text would discard it. */
-		expect(image.marks).toBeUndefined()
+	it('is the picture, and nothing else', () => {
+		/* An "Edit ink" link used to follow it as a second way back into the
+		   canvas. Text's own link bubble claims a click on a link inside the
+		   editor, so it never worked; tapping the picture does. A line of text
+		   under every picture that does nothing is worse than no line. */
+		const nodes = inkContent(85110, 'abc123')
+		expect(nodes).toHaveLength(1)
+		expect(nodes[0].type).toBe('image')
+		expect(nodes[0].attrs.src).toBe('.attachments.85110/ink-abc123.png')
+		/* Never a mark on the image: Text would discard it. */
+		expect(nodes[0].marks).toBeUndefined()
 	})
 })
 

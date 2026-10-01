@@ -41,7 +41,6 @@
 			<p v-if="error" class="ink__error" role="alert">
 				{{ error }}
 			</p>
-			<pre v-if="stats" class="ink__stats">{{ stats }}</pre>
 		</div>
 	</Teleport>
 </template>
@@ -49,9 +48,8 @@
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
 import { loadInk, saveInk } from '../inkFile.js'
-import { eventAge, predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
+import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
 import { INK_COLOR, STROKE_SIZE, traceStroke } from '../inkRender.js'
-import { statsWanted } from '../inkStats.js'
 
 export default {
 	name: 'InkCanvas',
@@ -84,12 +82,10 @@ export default {
 			saving: false,
 			error: '',
 			backdrop: '',
-			stats: '',
 		}
 	},
 
 	async mounted() {
-		this.startStats()
 		/* Rotating an iPad changes the canvas size. Without this the backing
 		   store keeps the old dimensions and every stroke drawn afterwards
 		   lands offset from the pen - on the one device this is built for. */
@@ -131,11 +127,7 @@ export default {
 	beforeUnmount() {
 		window.removeEventListener('resize', this.onResize)
 		this.observer?.disconnect()
-		clearInterval(this.statsTimer)
 		this.releaseTouchGuards()
-		if (this.ticker) {
-			cancelAnimationFrame(this.ticker)
-		}
 		if (this.backdrop) {
 			URL.revokeObjectURL(this.backdrop)
 		}
@@ -182,87 +174,6 @@ export default {
 		/* A readout of what this canvas is really doing, for diagnosing a
 		   device that is not in the room. It costs nothing unless it was asked
 		   for, and is meant to be screenshotted and read, not kept. */
-		emptyTally() {
-			return { moves: 0, samples: 0, paints: 0, moveMs: 0, paintMs: 0, ticks: 0, worstGap: 0, lagSum: 0, lagMax: 0, batchSum: 0 }
-		},
-
-		/* How far behind the pen we are, and how much of that was already
-		   spent before the event reached us.
-		 *
-		 * Every pointer event carries the moment it happened, so the distance
-		 * from that to now is the delay the hand actually feels - and none of
-		 * it is ours until this line runs. The batch span is how old the
-		 * oldest sample in the event is: the digitizer's samples arrive many
-		 * at a time, and the first of them has been waiting that long.
-		 *
-		 * This is the number that says whether the delay is before us or
-		 * after us, which nothing else here could tell apart.
-		 *
-		 * Takes the samples already read rather than asking for them again:
-		 * getCoalescedEvents builds the whole batch afresh on every call, and
-		 * asking twice a move doubled that - only while the readout was on,
-		 * so measuring made what it measured worse.
-		 *
-		 * @param {PointerEvent} event the move
-		 * @param {number} now the time its handling began
-		 * @param {Array<Array<number>>} samples the batch it carried
-		 */
-		noteLag(event, now, samples) {
-			const lag = eventAge(event.timeStamp, now)
-			this.tally.lagSum += lag
-			this.tally.lagMax = Math.max(this.tally.lagMax, lag)
-			/* The oldest sample has been waiting the length of the batch; at
-			   the rate they arrive, one frame each is the closest estimate
-			   without asking for their stamps again. */
-			this.tally.batchSum += lag + Math.max(samples.length - 1, 0) * (1000 / 60)
-		},
-
-		startStats() {
-			if (!statsWanted()) {
-				return
-			}
-			this.tally = this.emptyTally()
-			/* The cadence the browser is actually giving us, measured apart
-			   from our own painting. If this collapses while the time spent
-			   in here stays near nothing, the cost is the platform's - the
-			   compositor, the filter over a full-screen canvas - and not the
-			   drawing. That is the one thing the numbers below cannot say on
-			   their own. */
-			let last = performance.now()
-			this.worstEver = 0
-			const tick = (now) => {
-				this.tally.ticks += 1
-				this.tally.worstGap = Math.max(this.tally.worstGap, now - last)
-				this.worstEver = Math.max(this.worstEver, now - last)
-				last = now
-				this.ticker = requestAnimationFrame(tick)
-			}
-			this.ticker = requestAnimationFrame(tick)
-			this.statsTimer = setInterval(() => {
-				const t = this.tally
-				this.tally = this.emptyTally()
-				/* Hold the last second that had writing in it. Otherwise the
-				   numbers are wiped the moment the pen lifts, which is exactly
-				   when someone looks at them. */
-				if (this.stats && !t.moves) {
-					return
-				}
-				const canvas = this.$refs.canvas
-				const filter = canvas ? window.getComputedStyle(canvas).filter : 'none'
-				this.stats = [
-					`${t.ticks}/s frames offered, worst gap ${t.worstGap.toFixed(0)}ms (${this.worstEver.toFixed(0)}ms worst yet)`,
-					`${t.moves}/s moves  ${t.samples}/s samples  ${t.paints}/s paints`,
-					`behind the pen ${(t.lagSum / Math.max(t.moves, 1)).toFixed(0)}ms, worst ${t.lagMax.toFixed(0)}ms; batch spans ${(t.batchSum / Math.max(t.moves, 1)).toFixed(0)}ms`,
-					`${this.penDowns ?? 0} pen-downs so far, first move after ${((this.firstMoveSum ?? 0) / Math.max(this.penDowns ?? 0, 1)).toFixed(0)}ms, worst ${(this.firstMoveMax ?? 0).toFixed(0)}ms`,
-					`${(t.moveMs / Math.max(t.moves, 1)).toFixed(3)}ms per move  ${(t.paintMs / Math.max(t.paints, 1)).toFixed(2)}ms per paint`,
-					`worst move ${(this.worstMove ?? 0).toFixed(0)}ms, worst paint ${(this.worstPaint ?? 0).toFixed(0)}ms, ever`,
-					`${t.moveMs.toFixed(0)}ms + ${t.paintMs.toFixed(0)}ms of every 1000ms in here`,
-					`${this.strokes.length} strokes, ${this.current?.points.length ?? 0} points under the pen`,
-					`canvas ${canvas?.width ?? 0}x${canvas?.height ?? 0} at ${window.devicePixelRatio || 1}x, filter ${filter}`,
-				].join('\n')
-			}, 1000)
-		},
-
 		/* Painting notices the new size and refits for it, which redraws the
 		   page as part of doing so. */
 		onResize() {
@@ -369,14 +280,9 @@ export default {
 			this.predicted = []
 			this.current = { points: samplesFrom(event) }
 			/* Draw it now. The first sample is already in hand, so waiting for
-			   a pointermove to show anything leaves the nib sitting on a blank
-			   page for however long the browser takes to report the first one
-			   - which is the whole of what a stroke's start feels like. */
+			   a pointermove to show anything leaves the nib on a blank page
+			   for however long the browser takes to report the first one. */
 			this.paintNow()
-			if (this.tally) {
-				this.strokeStartedAt = performance.now()
-				this.firstMoveOfStroke = true
-			}
 		},
 
 		onMove(event) {
@@ -385,36 +291,12 @@ export default {
 			if (!this.current || event.pointerId !== this.pointerId || !this.accepting()) {
 				return
 			}
-			const started = this.tally ? performance.now() : 0
 			const samples = samplesFrom(event)
 			this.current.points.push(...samples)
 			/* Drawn, never kept: the file holds what the pen did, not what it
 			   was expected to do. */
 			this.predicted = predictedFrom(event)
 			this.requestPaint()
-			if (this.tally) {
-				this.tally.moves += 1
-				this.tally.samples += samples.length
-				const took = performance.now() - started
-				this.tally.moveMs += took
-				this.worstMove = Math.max(this.worstMove ?? 0, took)
-				this.noteLag(event, started, samples)
-				if (this.firstMoveOfStroke) {
-					/* How long the pen was down before the browser said it had
-					   moved. Nothing can be drawn along a stroke until this
-					   arrives, and none of the wait is ours. */
-					this.firstMoveOfStroke = false
-					const wait = started - this.strokeStartedAt
-					/* Kept for as long as the canvas is open, not reset each
-					   second like the rest. A pen goes down once or twice in a
-					   second, so a one-second window samples the very thing
-					   this is here to measure about once - and the reading
-					   that matters is the average over many lifts. */
-					this.penDowns = (this.penDowns ?? 0) + 1
-					this.firstMoveSum = (this.firstMoveSum ?? 0) + wait
-					this.firstMoveMax = Math.max(this.firstMoveMax ?? 0, wait)
-				}
-			}
 		},
 
 		onUp(event) {
@@ -489,7 +371,6 @@ export default {
 		 * on this iPad the whole sheet is two and a half million pixels, and
 		 * a word occupies a few thousand of them. */
 		paintLive() {
-			const started = this.tally ? performance.now() : 0
 			if (!this.ensureFitted()) {
 				return
 			}
@@ -508,16 +389,6 @@ export default {
 				this.painted = this.boundsOf(points)
 			} else {
 				this.painted = null
-			}
-			if (this.tally) {
-				const took = performance.now() - started
-				this.tally.paints += 1
-				this.tally.paintMs += took
-				/* Kept for the session, like the pen-downs: a stall that
-				   happens once a stroke is averaged into nothing by the
-				   twenty-odd quick paints around it, and the stall is what is
-				   felt. */
-				this.worstPaint = Math.max(this.worstPaint ?? 0, took)
 			}
 		},
 
@@ -655,19 +526,4 @@ export default {
 	text-align: center;
 }
 
-/* Over the top-left of the page, where writing rarely starts. Takes no
-   pointer input, so it can never eat a stroke. */
-.ink__stats {
-	position: absolute;
-	inset-block-start: 0;
-	inset-inline-start: 0;
-	margin: 0;
-	padding: var(--default-grid-baseline);
-	border-end-end-radius: var(--border-radius);
-	background: var(--color-background-hover);
-	color: var(--color-text-maxcontrast);
-	font-size: 11px;
-	line-height: 1.4;
-	pointer-events: none;
-}
 </style>

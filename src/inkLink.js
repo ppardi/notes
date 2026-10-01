@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { generateUrl } from '@nextcloud/router'
 import { makeId } from './id.js'
 
 /* The id alphabet, repeated here as a guard: the id reaches a file name, and a
@@ -39,14 +38,6 @@ export function inkAttachmentPath(noteId, id) {
 }
 
 /**
- * @param {string} id the ink's id
- * @return {string} the link that reopens it
- */
-export function inkLinkUrl(id) {
-	return generateUrl(`/apps/notes/ink/${id}`)
-}
-
-/**
  * The ink id a URL names, if it names one.
  *
  * Matches on the path's tail: the document holds a relative path, while
@@ -76,12 +67,16 @@ export function inkIdFromUrl(url) {
  * What one ink block looks like in the note, as the document nodes Text's
  * editor takes.
  *
- * Two blocks, not one: Text discards a link wrapped around an image, in the
- * DOM and out of the markdown on the first save.
+ * The picture alone. It used to carry an "Edit ink" link beneath it as a
+ * second way back into the canvas, on the reasoning that recognising Text's
+ * own image node was not a promise Text had made. The link never worked:
+ * Text's own link bubble claims a click on a link inside the editor, so the
+ * handler behind it was never reached. Tapping the ink does work, and a line
+ * of text under every picture that does nothing is worse than no line at all.
  *
  * Nodes rather than markdown, because the editor's insertAtCursor reads a
- * string as HTML: markdown would land in the note as literal, backslash-escaped
- * text rather than as an image and a link.
+ * string as HTML: markdown would land in the note as literal,
+ * backslash-escaped text rather than as a picture.
  *
  * @param {number} noteId the note
  * @param {string} id the ink's id
@@ -92,14 +87,6 @@ export function inkContent(noteId, id) {
 		{
 			type: 'image',
 			attrs: { src: inkAttachmentPath(noteId, id), alt: t('notes', 'Ink') },
-		},
-		{
-			type: 'paragraph',
-			content: [{
-				type: 'text',
-				text: t('notes', 'Edit ink'),
-				marks: [{ type: 'link', attrs: { href: inkLinkUrl(id) } }],
-			}],
 		},
 	]
 }

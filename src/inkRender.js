@@ -20,9 +20,14 @@ export const INK_COLOR = '#000000'
    while a stylus reports real pressure and drew a line that swelled and
    tapered - a fountain pen where a pen was wanted. The nib is the same width
    however hard it is pressed, on every device. */
-/** The nib's width in CSS pixels, exported so a caller can tell how far a
- *  stroke's ink spreads beyond the points it was drawn from. */
-export const STROKE_SIZE = 6
+/**
+ * The nib's width in CSS pixels, exported so a caller can tell how far a
+ * stroke's ink spreads beyond the points it was drawn from.
+ *
+ * A drafting pen rather than a marker. This is the one number to change if
+ * the line wants to be finer or heavier; everything else follows from it.
+ */
+export const STROKE_SIZE = 2.5
 
 const STROKE = { size: STROKE_SIZE, thinning: 0, simulatePressure: false }
 

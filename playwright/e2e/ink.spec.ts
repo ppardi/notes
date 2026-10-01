@@ -49,7 +49,7 @@ async function drawAndFinish(page: Page): Promise<void> {
 }
 
 test.describe('Ink', () => {
-	test('puts an image and a link into the note', async ({ page, request }) => {
+	test('puts the picture into the note', async ({ page, request }) => {
 		const noteId = await openInkedNote(page, request)
 		await drawAndFinish(page)
 
@@ -57,11 +57,11 @@ test.describe('Ink', () => {
 		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toMatch(image)
 		const after = await noteContent(noteId)
 
-		expect(after).toMatch(/\]\(.*\/apps\/notes\/ink\/[A-Za-z0-9_-]+\)/)
-
-		// The image and its link are two blocks, never one inside the other.
+		// The picture alone. The "Edit ink" line that used to follow it never
+		// worked: Text's link bubble claims a click on a link in the editor.
+		expect(after).not.toMatch(/apps\/notes\/ink\//)
+		// And never wrapped in a link, which Text would discard anyway.
 		expect(after).not.toMatch(/\[!\[/)
-		expect(after).toMatch(/!\[[^\]]*\]\([^)]*\)\n\n\[[^\]]*\]\([^)]*\/apps\/notes\/ink\/[^)]*\)/)
 
 		// The title stays the first line, and the ink comes after what was typed.
 		expect(after.split('\n')[0]).toBe('# Inked')
@@ -86,13 +86,13 @@ test.describe('Ink', () => {
 		expect(after.indexOf('![')).toBeGreaterThan(after.indexOf('Typed already.'))
 	})
 
-	test('reopens the ink from its link, with the strokes still there', async ({ page, request }) => {
+	test('reopens the ink, with the strokes still there', async ({ page, request }) => {
 		const noteId = await openInkedNote(page, request)
 		await drawAndFinish(page)
 		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
 
-		await page.getByRole('link', { name: 'Edit ink' }).click()
+		await page.locator('figure[data-component="image-view"]').click()
 		await expect(page.locator('.ink__canvas--live')).toBeVisible()
 		// The strokes came back, so this is the same ink and not a new block.
 		// Scoped to the canvas: the editor's own toolbar has an Undo too.
@@ -106,7 +106,6 @@ test.describe('Ink', () => {
 		// By alt text: the editor draws other images of its own, such as the
 		// icon beside a link.
 		await expect(page.locator('.ProseMirror img[alt="Ink"]')).toHaveCount(1)
-		await expect(page.getByRole('link', { name: 'Edit ink' })).toHaveCount(1)
 	})
 
 	test('reopens the ink when the ink itself is tapped', async ({ page, request }) => {
@@ -370,16 +369,16 @@ test.describe('Ink', () => {
 		const path = (await noteContent(noteId)).match(/\.attachments\.\d+\/(ink-[A-Za-z0-9_-]+\.png)/)![0]
 		await deleteNoteAttachment(noteId, path)
 
-		await page.getByRole('link', { name: 'Edit ink' }).click()
+		await page.locator('figure[data-component="image-view"]').click()
 		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await expect(page.getByText(/picture for this ink could not be found/i)).toBeVisible()
-		// A missing file is not proof of deletion, and the link may be all that is left.
+		// A missing file is not proof of deletion.
 		await expect(page.getByText(/no longer|delete the link/i)).toHaveCount(0)
 	})
 
-	test('keeps the image and the link through an edit', async ({ page, request }) => {
-		/* Text discards a link wrapped around an image on the first save. These
-		   are two blocks precisely so they survive; assert that they do. */
+	test('keeps the picture through an edit', async ({ page, request }) => {
+		/* Text rewrites the whole note on every save, so the one thing ink
+		   leaves behind has to survive being typed around. */
 		const noteId = await openInkedNote(page, request)
 		await drawAndFinish(page)
 		await expect(page.locator('.ink__canvas--live')).toBeHidden()
@@ -391,7 +390,10 @@ test.describe('Ink', () => {
 
 		const after = await noteContent(noteId)
 		expect(after).toMatch(/!\[[^\]]*\]\(\.attachments\.\d+\/ink-[A-Za-z0-9_-]+\.png\)/)
-		expect(after).toMatch(/\]\(.*\/apps\/notes\/ink\/[A-Za-z0-9_-]+\)/)
+		/* And nothing else: the "Edit ink" line that used to follow it never
+		   worked, because Text's link bubble claims a click on a link inside
+		   the editor. */
+		expect(after).not.toMatch(/apps\/notes\/ink\//)
 	})
 
 	test('says so when the ink cannot be read at all', async ({ page, request }) => {
@@ -404,7 +406,7 @@ test.describe('Ink', () => {
 		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toContain('![')
 
 		await page.route('**/attachment?*', (route) => route.fulfill({ status: 500 }))
-		await page.getByRole('link', { name: 'Edit ink' }).click()
+		await page.locator('figure[data-component="image-view"]').click()
 		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 		await expect(page.getByText(/could not be opened/i)).toBeVisible()
 		// Not told the ink is gone: it may well still be there.
@@ -425,7 +427,7 @@ test.describe('Ink', () => {
 		const plain = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
 		await replaceNoteAttachment(noteId, path[1], plain)
 
-		await page.getByRole('link', { name: 'Edit ink' }).click()
+		await page.locator('figure[data-component="image-view"]').click()
 		await expect(page.locator('.ink__canvas--live')).toBeVisible()
 		await expect(page.locator('.ink__backdrop')).toBeVisible()
 		await expect(page.getByText(/strokes of this ink could not be read/i)).toBeVisible()

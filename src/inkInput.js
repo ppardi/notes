@@ -65,35 +65,3 @@ export function predictedFrom(event) {
 export function shouldDraw(event) {
 	return event.pointerType !== 'touch'
 }
-
-/* Longer than this behind the pen is not a measurement, it is a mistake -
-   a stamp on a clock we did not recognise, or a tab that was asleep. */
-const PLAUSIBLE_MS = 10000
-
-/**
- * How long ago an event happened, in milliseconds.
- *
- * timeStamp is meant to be relative to the page's time origin, the same clock
- * as performance.now(). It is not everywhere: some engines report epoch
- * milliseconds instead, and read as a page time that gives an age of minus
- * fifty-odd years - which would go into the readout looking like a number.
- * So both readings are tried and the one that could be an input delay wins.
- *
- * @param {number} timeStamp the event's stamp
- * @param {number} now performance.now() when it was handled
- * @return {number} its age, or 0 where neither clock makes sense of it
- */
-export function eventAge(timeStamp, now) {
-	if (!Number.isFinite(timeStamp)) {
-		return 0
-	}
-	const onPageClock = now - timeStamp
-	if (onPageClock >= 0 && onPageClock < PLAUSIBLE_MS) {
-		return onPageClock
-	}
-	const onWallClock = Date.now() - timeStamp
-	if (onWallClock >= 0 && onWallClock < PLAUSIBLE_MS) {
-		return onWallClock
-	}
-	return 0
-}
