@@ -215,7 +215,11 @@ export default {
 		 */
 		colorChoices() {
 			const named = {
-				ink: t('notes', 'Black'),
+				/* Not "Black": this one is the ink the theme is applied to, and
+				   on a dark theme it draws white. A swatch labelled black
+				   beside a white dot is wrong in the one place the label is
+				   all a reader has. */
+				ink: t('notes', 'Ink'),
 				red: t('notes', 'Red'),
 				orange: t('notes', 'Orange'),
 				green: t('notes', 'Green'),

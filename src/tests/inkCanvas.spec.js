@@ -950,8 +950,10 @@ describe('InkCanvas', () => {
 	it('names every color, so the picker is not six unlabeled squares', async () => {
 		const wrapper = await open()
 
+		/* "Ink" rather than "Black" for the default: it is the one the theme is
+		   applied to, and it draws white on a dark theme. */
 		expect(wrapper.vm.colorChoices.map((choice) => choice.label))
-			.toEqual(['Black', 'Red', 'Orange', 'Green', 'Blue', 'Purple'])
+			.toEqual(['Ink', 'Red', 'Orange', 'Green', 'Blue', 'Purple'])
 	})
 
 	it('marks which color is in use', async () => {
