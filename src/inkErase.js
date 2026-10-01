@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { STROKE_SIZE } from './inkRender.js'
+import { INK_COLOR, STROKE_SIZE } from './inkRender.js'
 
 /**
  * The eraser's width in CSS pixels.
@@ -50,56 +50,162 @@ function toSegment(x, y, ax, ay, bx, by) {
 }
 
 /**
- * Whether an eraser at this point is on this stroke.
+ * Which side of a line a point falls on.
  *
- * Measured to the segments between the samples, not to the samples alone: a
- * straight line can be two samples a long way apart, and an eraser dragged
- * through the middle of it would otherwise pass through the mark without
- * touching anything.
+ * @param {number} ax the line
+ * @param {number} ay the line
+ * @param {number} bx the line
+ * @param {number} by the line
+ * @param {number} x the point
+ * @param {number} y the point
+ * @return {number} positive one side, negative the other, zero on it
+ */
+function side(ax, ay, bx, by, x, y) {
+	return (bx - ax) * (y - ay) - (by - ay) * (x - ax)
+}
+
+/**
+ * How far one segment is from another, squared.
+ *
+ * Two segments that cross are nought apart, and no measurement from an end
+ * point will say so: think of an X, where every end is a long way from the
+ * other stroke and yet they meet in the middle. That is not a corner case
+ * here - it is what rubbing out a line looks like - so crossing is tested
+ * first, and only segments that do not cross are measured end to end.
+ *
+ * @param {number} ax one segment
+ * @param {number} ay one segment
+ * @param {number} bx one segment
+ * @param {number} by one segment
+ * @param {number} cx the other
+ * @param {number} cy the other
+ * @param {number} dx the other
+ * @param {number} dy the other
+ * @return {number} the squared distance
+ */
+function betweenSegments(ax, ay, bx, by, cx, cy, dx, dy) {
+	const a = side(cx, cy, dx, dy, ax, ay)
+	const b = side(cx, cy, dx, dy, bx, by)
+	const c = side(ax, ay, bx, by, cx, cy)
+	const d = side(ax, ay, bx, by, dx, dy)
+	if ((a > 0) !== (b > 0) && (c > 0) !== (d > 0)) {
+		return 0
+	}
+	return Math.min(
+		toSegment(ax, ay, cx, cy, dx, dy),
+		toSegment(bx, by, cx, cy, dx, dy),
+		toSegment(cx, cy, ax, ay, bx, by),
+		toSegment(dx, dy, ax, ay, bx, by),
+	)
+}
+
+/**
+ * The box a path's eraser can reach, so a stroke nowhere near it costs little.
+ *
+ * @param {Array<Array<number>>} path the points
+ * @param {number} reach how far outside them to go
+ * @return {Array<number>} [left, top, right, bottom]
+ */
+function reachOf(path, reach) {
+	let left = Infinity
+	let top = Infinity
+	let right = -Infinity
+	let bottom = -Infinity
+	for (const [x, y] of path) {
+		left = Math.min(left, x)
+		top = Math.min(top, y)
+		right = Math.max(right, x)
+		bottom = Math.max(bottom, y)
+	}
+	return [left - reach, top - reach, right + reach, bottom + reach]
+}
+
+/**
+ * Whether an eraser dragged along this path is on this stroke.
+ *
+ * Segment against segment, both ways round: a stroke can be two samples a
+ * long way apart, and so can the eraser's path.
  *
  * @param {{points: Array<Array<number>>}} stroke the stroke
- * @param {number} x where the eraser is
- * @param {number} y where the eraser is
- * @param {number} reach how close counts as touching
+ * @param {Array<Array<number>>} path where the eraser has been
+ * @param {number} near how close counts as touching, squared
+ * @param {Array<number>} within the box the eraser can reach
  * @return {boolean} whether it is on it
  */
-function onStroke(stroke, x, y, reach) {
+function onStroke(stroke, path, near, within) {
 	const points = stroke.points
-	const near = reach * reach
-	if (points.length === 1) {
-		const [ax, ay] = points[0]
-		return toSegment(x, y, ax, ay, ax, ay) <= near
-	}
-	for (let i = 1; i < points.length; i++) {
-		const [ax, ay] = points[i - 1]
+	for (let i = 0; i < points.length; i++) {
+		/* The first turn of the loop is the first sample against itself, which
+		   is how a stroke of one point - a dot - is measured at all. */
+		const [ax, ay] = points[Math.max(0, i - 1)]
 		const [bx, by] = points[i]
-		if (toSegment(x, y, ax, ay, bx, by) <= near) {
-			return true
+		/* Nearly every segment of a written page is nowhere near the eraser,
+		   and this is what keeps the cost of the ones that are not down. */
+		if (Math.max(ax, bx) < within[0] || Math.min(ax, bx) > within[2]
+			|| Math.max(ay, by) < within[1] || Math.min(ay, by) > within[3]) {
+			continue
+		}
+		for (let j = 0; j < path.length; j++) {
+			const [cx, cy] = path[Math.max(0, j - 1)]
+			const [dx, dy] = path[j]
+			if (betweenSegments(ax, ay, bx, by, cx, cy, dx, dy) <= near) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
 /**
- * The strokes an eraser passing through these points rubs out.
+ * The strokes an eraser dragged along this path rubs out.
  *
  * Whole strokes, which is what makes an eraser something that can be undone
  * and saved: a stroke stays the only unit there is, so the picture and the
  * strokes that drew it can never come to disagree. The cost is that a long
  * mark goes all at once - crossing an underline takes the whole line.
  *
+ * The path, not the points on it. The pen is reported tens of pixels at a
+ * time, and a thin line crossed between two reports is a line the reader
+ * watched the eraser go through and not take - so they went over it again,
+ * and again. Measuring the samples alone measures where the eraser was seen,
+ * not where it went.
+ *
  * @param {Array<{points: Array<Array<number>>}>} strokes the page
- * @param {Array<Array<number>>} points where the eraser has been this time
+ * @param {Array<Array<number>>} path where the eraser has been this time
  * @param {number} reach how close counts as touching
  * @return {Array<number>} their places on the page, highest first, so that
  *   taking one out does not move the next one
  */
-export function erasedBy(strokes, points, reach = ERASER_REACH) {
+export function erasedBy(strokes, path, reach = ERASER_REACH) {
+	if (!path.length) {
+		return []
+	}
+	const near = reach * reach
+	const within = reachOf(path, reach)
 	const hit = []
 	for (let at = strokes.length - 1; at >= 0; at--) {
-		if (points.some(([x, y]) => onStroke(strokes[at], x, y, reach))) {
+		if (onStroke(strokes[at], path, near, within)) {
 			hit.push(at)
 		}
 	}
 	return hit
+}
+
+/**
+ * Draw the eraser where it is, so it can be aimed.
+ *
+ * An outline rather than a disc: what matters is seeing which marks are inside
+ * it, and a filled circle hides exactly that. In the ink's own colour, because
+ * the sheet it is drawn on is the one the theme is applied to.
+ *
+ * @param {CanvasRenderingContext2D} context where to draw
+ * @param {number} x where the eraser is
+ * @param {number} y where the eraser is
+ */
+export function traceEraser(context, x, y) {
+	context.beginPath()
+	context.arc(x, y, ERASER_SIZE / 2, 0, Math.PI * 2)
+	context.lineWidth = 1
+	context.strokeStyle = INK_COLOR
+	context.stroke()
 }

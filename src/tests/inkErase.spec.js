@@ -55,6 +55,28 @@ describe('erasedBy', () => {
 		expect(erasedBy(strokes, [[50, 0, 0.5]])).toEqual([2, 0])
 	})
 
+	it('rubs out a line its path crossed between two samples', () => {
+		/* The pen is not reported continuously. A swipe reports samples tens of
+		   pixels apart, and a thin line crossed between two of them was a line
+		   the reader watched the eraser go straight through and not take - so
+		   they went over it again, and again. Testing the samples alone is
+		   testing where the eraser was photographed, not where it went. */
+		const upright = { points: [[50, -100, 0.5], [50, 100, 0.5]] }
+		const swipe = [[20, 0, 0.5], [80, 0, 0.5]]
+		expect(erasedBy([upright], swipe)).toEqual([0])
+	})
+
+	it('rubs out a line its path passed close by between two samples', () => {
+		/* Not only a crossing: alongside, within the reach, counts too. */
+		const along = { points: [[0, 3, 0.5], [100, 3, 0.5]] }
+		expect(erasedBy([along], [[0, 0, 0.5], [100, 0, 0.5]])).toEqual([0])
+	})
+
+	it('leaves a line its path did not come near', () => {
+		const far = { points: [[50, 300, 0.5], [50, 400, 0.5]] }
+		expect(erasedBy([far], [[20, 0, 0.5], [80, 0, 0.5]])).toEqual([])
+	})
+
 	it('names a stroke once however many samples are on it', () => {
 		const strokes = [line(0, 0, 100, 0)]
 		expect(erasedBy(strokes, [[40, 0, 0.5], [50, 0, 0.5], [60, 0, 0.5]])).toEqual([0])

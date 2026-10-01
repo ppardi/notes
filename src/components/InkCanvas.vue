@@ -60,7 +60,7 @@
 
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
-import { erasedBy } from '../inkErase.js'
+import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
 import { INK_COLOR, inkBounds, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
@@ -277,12 +277,23 @@ export default {
 		 * @return {CanvasRenderingContext2D | null} its context
 		 */
 		contextFor(which) {
-			this.contexts = this.contexts ?? {}
-			if (!this.contexts[which]) {
-				const surface = this.$refs[which]
-				this.contexts[which] = surface?.getContext('2d', which === 'canvas' ? { desynchronized: true } : undefined) ?? null
+			const surface = this.$refs[which]
+			if (!surface) {
+				return null
 			}
-			return this.contexts[which]
+			this.contexts = this.contexts ?? {}
+			/* Kept against the element, not merely under the name. Vue replaces
+			   the dialog's elements on a re-render - the same thing that moves
+			   the focus and the touch guards - and a context held by name alone
+			   went on drawing onto a canvas that was no longer on screen.
+			   Everything painted afterwards went nowhere, in silence. */
+			if (this.contexts[which]?.surface !== surface) {
+				this.contexts[which] = {
+					surface,
+					context: surface.getContext('2d', which === 'canvas' ? { desynchronized: true } : undefined) ?? null,
+				}
+			}
+			return this.contexts[which].context
 		},
 
 		/* Size both sheets to the box, and set what a context loses whenever
@@ -366,6 +377,10 @@ export default {
 			this.pointerType = event.pointerType
 			if (this.erasing) {
 				this.rubbing = []
+				/* A pass starts where the pen lands, joined to nothing: the
+				   line back to where it was last lifted would rub out whatever
+				   it happened to cross. */
+				this.rubbedFrom = null
 				this.rubOut(samplesFrom(event))
 				return
 			}
@@ -426,9 +441,15 @@ export default {
 		 * @param {Array<Array<number>>} samples where the eraser has been
 		 */
 		rubOut(samples) {
+			/* Carried across reports, so the path is the one the eraser took
+			   rather than a string of places it was seen in. The browser can
+			   leave tens of pixels between one report and the next, and a line
+			   crossed in that gap is a line the reader watched it go through. */
+			const path = this.rubbedFrom ? [this.rubbedFrom, ...samples] : samples
+			this.rubbedFrom = samples[samples.length - 1] ?? this.rubbedFrom
 			let took = false
 			/* Highest place first, so taking one out does not move the next. */
-			for (const at of erasedBy(this.strokes, samples)) {
+			for (const at of erasedBy(this.strokes, path)) {
 				/* Where it was, so undoing puts it back there rather than on
 				   top. Reversed on the way back, which undoes the splices
 				   exactly however many places have moved since. */
@@ -439,6 +460,9 @@ export default {
 			if (took) {
 				this.renderPage()
 			}
+			/* Whether or not anything went: the eraser's own outline follows
+			   the pen, which is what makes it something that can be aimed. */
+			this.requestPaint()
 		},
 
 		/* One pass of the eraser is one thing to undo, however much it
@@ -448,8 +472,11 @@ export default {
 				this.history.push({ erased: this.rubbing })
 			}
 			this.rubbing = null
+			this.rubbedFrom = null
 			this.pointerId = null
 			this.pointerType = null
+			/* Takes the outline off the page with it. */
+			this.paintNow()
 		},
 
 		/* The finished stroke moves down onto the page as it is committed, so
@@ -555,6 +582,12 @@ export default {
 					: this.current.points
 				traceStroke(context, points)
 				this.painted = this.boundsOf(points)
+			} else if (this.rubbing && this.rubbedFrom) {
+				const [x, y] = this.rubbedFrom
+				traceEraser(context, x, y)
+				/* A box around the ring with room for its own line, cleared
+				   the same way a stroke's box is. */
+				this.painted = [x - ERASER_SIZE, y - ERASER_SIZE, ERASER_SIZE * 2, ERASER_SIZE * 2]
 			} else {
 				this.painted = null
 			}

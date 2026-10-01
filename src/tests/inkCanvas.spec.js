@@ -47,6 +47,12 @@ beforeAll(() => {
 					this.rects.push(rect)
 				},
 				drawImage() { this.calls.push('drawImage') },
+				arcs: [],
+				arc(...a) {
+					this.calls.push('arc')
+					this.arcs.push(a)
+				},
+				stroke() { this.calls.push('stroke') },
 				fill() {},
 				beginPath() {},
 				closePath() {},
@@ -320,6 +326,52 @@ describe('InkCanvas', () => {
 			wrapper.vm.erasing = true
 			await rubAcross(wrapper, 900)
 			expect(button(wrapper, 'Undo').attributes('disabled')).toBeDefined()
+		})
+
+		it('rubs out a line crossed between one report and the next', async () => {
+			/* The browser does not report the pen continuously, and a report
+			   can be tens of pixels from the one before it. A line crossed in
+			   that gap is a line the reader watched the eraser go through -
+			   going over it repeatedly until it went was the symptom. */
+			const upright = { points: [[300, 0, 0.5], [300, 400, 0.5]] }
+			const wrapper = await open({ png: new Blob(), strokes: [upright] })
+			wrapper.vm.erasing = true
+
+			await pointer(wrapper, 'pointerdown', { offsetX: 240, offsetY: 200 })
+			await pointer(wrapper, 'pointermove', { offsetX: 360, offsetY: 200 })
+
+			expect(wrapper.vm.strokes).toHaveLength(0)
+		})
+
+		it('does not join one pass to the one before it', async () => {
+			/* The path is continuous within a pass, not across a lift: the
+			   straight line from where the eraser was last put down would rub
+			   out everything it happened to cross. */
+			const wrapper = await open({ png: new Blob(), strokes: [{ points: [[300, 0, 0.5], [300, 400, 0.5]] }] })
+			wrapper.vm.erasing = true
+
+			await pointer(wrapper, 'pointerdown', { offsetX: 240, offsetY: 200 })
+			await pointer(wrapper, 'pointerup')
+			await pointer(wrapper, 'pointerdown', { offsetX: 360, offsetY: 200 })
+
+			expect(wrapper.vm.strokes).toHaveLength(1)
+		})
+
+		it('shows where the eraser is, so it can be aimed', async () => {
+			/* Rubbing out with nothing under the pen to show for it is aiming
+			   blind: the reader cannot tell whether they are on the mark. */
+			const wrapper = await open({ png: new Blob(), strokes: [] })
+			wrapper.vm.erasing = true
+
+			await pointer(wrapper, 'pointerdown', { offsetX: 40, offsetY: 50 })
+			runFrame()
+
+			const live = wrapper.find('.ink__canvas--live').element.getContext('2d')
+			expect(live.arcs.at(-1)?.slice(0, 2)).toEqual([40, 50])
+
+			/* And it is gone when the pen comes off the page. */
+			await pointer(wrapper, 'pointerup')
+			expect(live.calls.at(-1)).toBe('clearRect')
 		})
 
 		it('never rubs out for a finger', async () => {
@@ -864,6 +916,26 @@ describe('InkCanvas drawing', () => {
 		wrapper.vm.paintLive()
 		expect(live(wrapper).fillStyle).toBe(INK_COLOR)
 		expect(page(wrapper).fillStyle).toBe(INK_COLOR)
+	})
+
+	it('draws on the canvas that is on screen, not the one it first held', async () => {
+		/* Vue replaces the dialog's elements on a re-render - the same thing
+		   that moves the focus and the touch guards - and the context was kept
+		   under the name of the sheet rather than against the element. Picking
+		   the eraser up and putting it down is such a re-render: afterwards
+		   every stroke was traced onto a canvas that had been taken off the
+		   screen, so writing did nothing at all, in silence. */
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		wrapper.vm.erasing = true
+		await wrapper.vm.$nextTick()
+		wrapper.vm.erasing = false
+		await wrapper.vm.$nextTick()
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+
+		const onScreen = wrapper.find('.ink__canvas--live').element.getContext('2d')
+		expect(traceStroke).toHaveBeenCalled()
+		expect(traceStroke.mock.calls.at(-1)[0]).toBe(onScreen)
 	})
 
 	it('fits a canvas it was given after the dialog was laid out', async () => {
