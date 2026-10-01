@@ -884,7 +884,7 @@ test.describe('Ink', () => {
 		// choices are radio items, so they are not buttons: and "Red" as a
 		// button name would also match Text's "Redo".
 		await page.getByRole('button', { name: /^Color:/ }).click()
-		await page.getByRole('menuitemradio', { name: 'Red' }).click()
+		await page.getByRole('menuitemradio', { name: 'Red', exact: true }).click()
 
 		const box = (await canvas.boundingBox())!
 		const x = box.x + box.width / 2
@@ -965,11 +965,11 @@ test.describe('Ink', () => {
 		// The menu is teleported out of the bar, so its swatches are found from
 		// the page; opening it also puts the six choices' swatches in reach.
 		await page.getByRole('button', { name: /^Color:/ }).click()
-		await expect(page.getByRole('menuitemradio', { name: 'Red' })).toBeVisible()
-		const choice = page.getByRole('menuitemradio', { name: 'Red' }).locator('.ink__swatch')
+		await expect(page.getByRole('menuitemradio', { name: 'Red', exact: true })).toBeVisible()
+		const choice = page.getByRole('menuitemradio', { name: 'Red', exact: true }).locator('.ink__swatch')
 		await expect(choice).toHaveCount(1)
 		await page.keyboard.press('Escape')
-		await expect(page.getByRole('menuitemradio', { name: 'Red' })).toBeHidden()
+		await expect(page.getByRole('menuitemradio', { name: 'Red', exact: true })).toBeHidden()
 
 		const surfaces = {
 			canvas: page.locator('.ink__canvas--live'),
@@ -977,15 +977,22 @@ test.describe('Ink', () => {
 		}
 
 		const filterOf = async (locator: typeof trigger) => await locator.evaluate((el) => getComputedStyle(el).filter)
-		const sizeOf = async (locator: typeof trigger) => await locator.evaluate((el) => {
-			const style = getComputedStyle(el)
-			return { width: style.width, height: style.height }
-		})
+		// The painted box, not the declared width and height: an element that is
+		// hidden or clipped away still reports the size it was given, and has no
+		// box to show anything with. A swatch paints its color only inside a box
+		// of some size, so the box has to be at least the 16px it is given. It
+		// is measured with `at least` because the border is drawn outside that
+		// size, which makes the box a little larger than 16.
+		const expectSwatchBox = async (locator: typeof trigger, name: string) => {
+			const box = await locator.boundingBox()
+			expect(box, name).not.toBeNull()
+			expect(box!.width, name).toBeGreaterThanOrEqual(16)
+			expect(box!.height, name).toBeGreaterThanOrEqual(16)
+		}
 
-		// The trigger is the only thing in the bar that shows the color in use,
-		// and before it had a size it was an empty span: no dimensions and no
-		// visible icon. A non-zero rendered size is what says it shows anything.
-		expect(await sizeOf(trigger)).toEqual({ width: '16px', height: '16px' })
+		// The trigger is the only thing in the bar that shows the color in use.
+		await expect(trigger, 'trigger swatch').toBeVisible()
+		await expectSwatchBox(trigger, 'trigger swatch')
 
 		// The light theme applies no filter at all.
 		for (const [name, locator] of Object.entries(surfaces)) {
@@ -1009,6 +1016,6 @@ test.describe('Ink', () => {
 		await page.getByRole('button', { name: /^Color:/ }).click()
 		await expect(choice).toBeVisible()
 		expect(await filterOf(choice), 'menu swatch').toBe('invert(1) hue-rotate(180deg)')
-		expect(await sizeOf(choice)).toEqual({ width: '16px', height: '16px' })
+		await expectSwatchBox(choice, 'menu swatch')
 	})
 })
