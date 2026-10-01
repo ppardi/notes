@@ -132,6 +132,7 @@ export default {
 		window.removeEventListener('resize', this.onResize)
 		this.observer?.disconnect()
 		clearInterval(this.statsTimer)
+		this.releaseTouchGuards()
 		if (this.ticker) {
 			cancelAnimationFrame(this.ticker)
 		}
@@ -141,6 +142,43 @@ export default {
 	},
 
 	methods: {
+		/* Keep iPadOS Scribble from taking the pen.
+		 *
+		 * Scribble is handwriting-to-text, and its recogniser claims pen input
+		 * over a canvas: the page is handed nothing at all - no pointerdown,
+		 * no pointermove - and stays that way while the pen is moved, until it
+		 * is lifted and put down again. A WebKit regression since iPadOS 14,
+		 * reported for years against drawing on the web.
+		 *
+		 * Refusing the default on touch is what stops the recogniser claiming
+		 * it. The listener has to be non-passive to be allowed to refuse,
+		 * which Vue's own binding does not guarantee, so it is attached here.
+		 * Only the sheet is covered: the buttons below it still need their
+		 * ordinary taps.
+		 *
+		 * Reproduced and fixed on the device, with Scribble switched on. */
+		releaseTouchGuards() {
+			for (const [type, handler] of this.touchGuards ?? []) {
+				this.guarded?.removeEventListener(type, handler)
+			}
+			this.touchGuards = null
+			this.guarded = null
+		},
+
+		refuseTouchDefaults() {
+			const canvas = this.$refs.canvas
+			if (!canvas || this.guarded === canvas) {
+				return
+			}
+			this.releaseTouchGuards()
+			const refuse = (event) => event.preventDefault()
+			this.touchGuards = [['touchstart', refuse], ['touchmove', refuse]]
+			this.guarded = canvas
+			for (const [type, handler] of this.touchGuards) {
+				canvas.addEventListener(type, handler, { passive: false })
+			}
+		},
+
 		/* A readout of what this canvas is really doing, for diagnosing a
 		   device that is not in the room. It costs nothing unless it was asked
 		   for, and is meant to be screenshotted and read, not kept. */
@@ -268,6 +306,10 @@ export default {
 			if (!canvas) {
 				return
 			}
+			/* Follows the canvas rather than being set once at mount: the
+			   element Vue hands back then is not always the one that ends up
+			   on screen. */
+			this.refuseTouchDefaults()
 			const ratio = window.devicePixelRatio || 1
 			const [width, height] = this.backingSize()
 			for (const which of ['page', 'canvas']) {

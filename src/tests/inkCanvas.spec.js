@@ -292,7 +292,21 @@ describe('InkCanvas', () => {
 			expect(wrapper.vm.strokes[0].points.map(([x]) => x)).toEqual([10, 20])
 		})
 
-		it('never draws for a finger, on a page nothing has been written on', async () => {
+		it('refuses the default on touch, so Scribble cannot swallow the pen', async () => {
+		/* iPadOS Scribble claims pen input over a canvas and the page is handed
+		   nothing at all - no pointerdown, no pointermove - until the pen is
+		   lifted and put down again. A WebKit regression since iPadOS 14, and
+		   refusing the default on touch is what stops the recogniser taking
+		   it. Reproduced and fixed on the device, with Scribble on. */
+		const wrapper = await open()
+		for (const type of ['touchstart', 'touchmove']) {
+			const event = new Event(type, { bubbles: true, cancelable: true })
+			wrapper.find('.ink__canvas--live').element.dispatchEvent(event)
+			expect(event.defaultPrevented, `${type} was left to the browser`).toBe(true)
+		}
+	})
+
+	it('never draws for a finger, on a page nothing has been written on', async () => {
 			/* The case that used to get through: no pen has been seen yet, so
 			   the resting hand was let through and drew the first stroke. */
 			const wrapper = await open()
