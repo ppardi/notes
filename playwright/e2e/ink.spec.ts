@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { INK_DENSITY } from '../../src/inkRender.js'
@@ -113,6 +113,44 @@ async function inkColorsOnThePage(page: Page): Promise<string[]> {
 			// none at all. The caller asserts that something opaque was found,
 			// so a nib thinned past this fails loudly rather than reporting an
 			// empty page.
+			if (data[i + 3] < 250) {
+				continue
+			}
+			const hex = '#' + [data[i], data[i + 1], data[i + 2]]
+				.map((v) => v.toString(16).padStart(2, '0')).join('')
+			counts.set(hex, (counts.get(hex) ?? 0) + 1)
+		}
+		return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([hex]) => hex)
+	})
+}
+
+// Which colors are actually in the saved PNG, most-used first: the picture the
+// note shows, read from the <img> rather than from the dialog's page sheet. The
+// sheet is rendered again from the strokes stored beside the picture, so it
+// can only vouch for them; the PNG is the one artifact every other Nextcloud
+// client sees, and a raster that had gone black while its strokes still said
+// red would pass everything that reads the sheet.
+//
+// Drawing the image into a canvas of our own reads its source pixels. The
+// CSS `filter` the theme puts on the <img> is applied when the element is
+// composited and is not part of the image, so it is not in what is read back
+// here: this is the color in the file whatever the theme.
+async function inkColorsInTheNoteImage(image: Locator): Promise<string[]> {
+	return await image.evaluate(async (img: HTMLImageElement) => {
+		// A picture still loading has no pixels yet, which would read as an
+		// empty drawing rather than as a wait.
+		await img.decode()
+		const canvas = document.createElement('canvas')
+		canvas.width = img.naturalWidth
+		canvas.height = img.naturalHeight
+		const context = canvas.getContext('2d')!
+		context.drawImage(img, 0, 0)
+		const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
+		const counts = new Map<string, number>()
+		for (let i = 0; i < data.length; i += 4) {
+			// Fully-opaque pixels only, for the reason given for the page
+			// sheet above: an antialiased edge is a blend with the transparent
+			// ground. The caller asserts that some were found.
 			if (data[i + 3] < 250) {
 				continue
 			}
@@ -895,9 +933,18 @@ test.describe('Ink', () => {
 		await page.mouse.up()
 		await page.getByRole('button', { name: 'Done' }).click()
 
+		// The picture in the note, before it is opened: this is the file as
+		// every other client will show it.
+		const picture = page.locator('figure[data-component="image-view"] img').first()
+		await expect(picture).toBeVisible()
+		const fileColors = await inkColorsInTheNoteImage(picture)
+		// Said separately, so a thinner nib fails as "no opaque pixels" and not as
+		// a wrong color.
+		expect(fileColors.length, 'no fully-opaque pixels in the saved PNG').toBeGreaterThan(0)
+		expect(fileColors).toContain('#cc0000')
+
 		// Reopen the drawing and read what is on the page sheet.
-		await expect(page.locator('figure[data-component="image-view"] img').first()).toBeVisible()
-		await page.locator('figure[data-component="image-view"] img').first().click()
+		await picture.click()
 		await expect(page.locator('.ink__canvas--page')).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
 
@@ -978,11 +1025,13 @@ test.describe('Ink', () => {
 
 		const filterOf = async (locator: typeof trigger) => await locator.evaluate((el) => getComputedStyle(el).filter)
 		// The painted box, not the declared width and height: an element that is
-		// hidden or clipped away still reports the size it was given, and has no
-		// box to show anything with. A swatch paints its color only inside a box
-		// of some size, so the box has to be at least the 16px it is given. It
-		// is measured with `at least` because the border is drawn outside that
-		// size, which makes the box a little larger than 16.
+		// hidden or collapsed to nothing still reports the size it was given, and
+		// has no box to show anything with. A swatch paints its color only inside
+		// a box of some size, so the box has to be at least the 16px it is given.
+		// The box is measured with `at least` because the border is drawn outside
+		// that size, which makes it a little larger than 16. This establishes
+		// that the swatch is shown with a box; a swatch cut off by an ancestor's
+		// overflow keeps its full box, so clipping is not something it detects.
 		const expectSwatchBox = async (locator: typeof trigger, name: string) => {
 			const box = await locator.boundingBox()
 			expect(box, name).not.toBeNull()

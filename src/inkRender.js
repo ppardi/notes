@@ -231,6 +231,11 @@ export function smoothed(points, maxGap = SMOOTH_GAP) {
  * the curve comes back round to where it started and the closing join is as
  * smooth as the rest.
  *
+ * The fill is whatever `fillStyle` the context carries, so the caller must set
+ * it before calling: a stroke traced without one is drawn in the last color
+ * the context held, which for the picture saved to the file is a wrong color
+ * in the one artifact every other client sees.
+ *
  * @param {CanvasRenderingContext2D} context where to trace
  * @param {Array<Array<number>>} points the stroke's [x, y, pressure] samples
  */

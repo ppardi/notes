@@ -1031,7 +1031,10 @@ describe('InkCanvas', () => {
 
 		wrapper.vm.claimFocus()
 
-		expect(document.activeElement).not.toBe(elsewhere)
+		/* On the dialog itself, not merely off the button: focus that fell to
+		   the body would also be "not elsewhere", and is the state this test
+		   exists to rule out. */
+		expect(document.activeElement).toBe(wrapper.find('[role="dialog"]').element)
 		elsewhere.remove()
 		wrapper.unmount()
 	})
@@ -1311,6 +1314,36 @@ describe('InkCanvas drawing', () => {
 		expect(page(wrapper).fillStyles).toEqual(['#cc0000', '#0044cc'])
 	})
 
+	it('paints the stroke under the pen in its own color', async () => {
+		/* The sheet under the pen is where a stroke is seen while it is being
+		   written. Without its own fill the stroke would take whatever color
+		   the context last carried, and snap to the right one only when the
+		   pen lifted and the page redrew it. */
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		wrapper.vm.current = { points: [[10, 10, 0.5], [20, 20, 0.5]], color: '#cc0000' }
+
+		wrapper.vm.paintLive()
+
+		expect(live(wrapper).fillStyles).toEqual(['#cc0000'])
+	})
+
+	it('commits a finished stroke to the page in the color it was drawn in', async () => {
+		/* Lifting the pen moves the stroke from the live sheet down onto the
+		   page, traced there once and never redrawn. If that trace carried no
+		   color of its own, the stroke would change color the moment it was
+		   finished. */
+		const wrapper = await open()
+		wrapper.vm.chooseColor('#cc0000')
+		await wrapper.vm.$nextTick()
+		const beneath = page(wrapper)
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 30, offsetY: 30 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes).toHaveLength(1)
+		expect(beneath.fillStyles).toEqual(['#cc0000'])
+	})
+
 	it('draws a stroke with no color of its own in the default', async () => {
 		/* Every file written before strokes carried a color. */
 		const wrapper = await open()
@@ -1353,8 +1386,13 @@ describe('InkCanvas drawing', () => {
 			return element
 		})
 
-		await wrapper.vm.done()
-		spy.mockRestore()
+		/* Restored in a finally: a done() that rejected would otherwise leave a
+		   patched document.createElement behind for every later test. */
+		try {
+			await wrapper.vm.done()
+		} finally {
+			spy.mockRestore()
+		}
 
 		/* Vue also remakes the dialog's own two sheets while saving; the
 		   picture is the one canvas that is none of them. */
