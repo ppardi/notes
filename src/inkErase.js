@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { INK_COLOR, STROKE_SIZE } from './inkRender.js'
+import { STROKE_SIZE } from './inkRender.js'
 
 /**
  * The eraser's width in CSS pixels.
@@ -22,6 +22,15 @@ export const ERASER_SIZE = 12
  * mark counts as the mark.
  */
 export const ERASER_REACH = ERASER_SIZE / 2 + STROKE_SIZE / 2
+
+/**
+ * The eraser's outline.
+ *
+ * Interface rather than ink: it marks where the eraser is, so it follows the
+ * same themed filter the canvas does and has no business tracking whatever
+ * color the pen happens to be set to.
+ */
+export const ERASER_COLOR = '#000000'
 
 /**
  * How far a point is from a line between two others, squared.
@@ -206,6 +215,6 @@ export function traceEraser(context, x, y) {
 	context.beginPath()
 	context.arc(x, y, ERASER_SIZE / 2, 0, Math.PI * 2)
 	context.lineWidth = 1
-	context.strokeStyle = INK_COLOR
+	context.strokeStyle = ERASER_COLOR
 	context.stroke()
 }

@@ -88,7 +88,8 @@ import UndoIcon from 'vue-material-design-icons/UndoVariant.vue'
 import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
-import { INK_COLOR, INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
+import { DEFAULT_INK_COLOR } from '../inkPalette.js'
+import { INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* How far a finger travels before it is moving the page rather than resting on
    it. A tap, and a hand settling, both report a little movement. */
@@ -388,7 +389,7 @@ export default {
 				const context = this.contextFor(which)
 				if (context) {
 					context.scale(ratio, ratio)
-					context.fillStyle = INK_COLOR
+					context.fillStyle = DEFAULT_INK_COLOR
 				}
 			}
 			this.painted = null
@@ -841,7 +842,7 @@ export default {
 			const context = picture.getContext('2d')
 			if (context) {
 				context.scale(ratio, ratio)
-				context.fillStyle = INK_COLOR
+				context.fillStyle = DEFAULT_INK_COLOR
 				for (const stroke of strokes) {
 					traceStroke(context, stroke.points)
 				}

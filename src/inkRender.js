@@ -5,16 +5,6 @@
 
 import { getStroke } from 'perfect-freehand'
 
-/**
- * What every stroke is drawn and saved in.
- *
- * One color on transparency, so the theme is applied where the ink is shown
- * rather than baked into the file: a page written on a light screen reads on
- * a dark one, and the other way round. Ink saved before this was black too,
- * so it follows the theme now without being rewritten.
- */
-export const INK_COLOR = '#000000'
-
 /* size is the nib in CSS pixels. thinning is how much pressure narrows it, and
    it is off: a mouse reports one flat pressure and so draws a uniform line,
    while a stylus reports real pressure and drew a line that swelled and

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CROP_MARGIN, INK_COLOR, inkBounds, placeInk, shiftStrokes, SMOOTH_GAP, smoothed, STROKE_SIZE, traceStroke } from '../inkRender.js'
+import { CROP_MARGIN, inkBounds, placeInk, shiftStrokes, SMOOTH_GAP, smoothed, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* Records what was asked of a canvas, so a test can say what the drawing is
    made of without a canvas to look at. */
@@ -61,10 +61,6 @@ describe('traceStroke', () => {
 		const { context, names } = recorder()
 		traceStroke(context, [])
 		expect(names()).toEqual([])
-	})
-
-	it('is one color on transparency, so the theme can be applied where it is shown', () => {
-		expect(INK_COLOR).toBe('#000000')
 	})
 
 	it('is the same width however hard the pen is pressed', () => {

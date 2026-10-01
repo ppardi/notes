@@ -25,7 +25,8 @@ const loadInk = vi.fn()
 vi.mock('../inkFile.js', () => ({ saveInk: (...a) => saveInk(...a), loadInk: (...a) => loadInk(...a) }))
 
 const InkCanvas = (await import('../components/InkCanvas.vue')).default
-const { CROP_MARGIN, INK_COLOR, INK_DENSITY } = await import('../inkRender.js')
+const { CROP_MARGIN, INK_DENSITY } = await import('../inkRender.js')
+const { DEFAULT_INK_COLOR } = await import('../inkPalette.js')
 
 /* Runs whatever is waiting for the next frame. Set up in beforeAll, where the
    queue it drains lives. */
@@ -1169,8 +1170,8 @@ describe('InkCanvas drawing', () => {
 	it('draws in the one color the theme is applied to', async () => {
 		const wrapper = await open({ png: new Blob(), strokes: [] })
 		wrapper.vm.paintLive()
-		expect(live(wrapper).fillStyle).toBe(INK_COLOR)
-		expect(page(wrapper).fillStyle).toBe(INK_COLOR)
+		expect(live(wrapper).fillStyle).toBe(DEFAULT_INK_COLOR)
+		expect(page(wrapper).fillStyle).toBe(DEFAULT_INK_COLOR)
 	})
 
 	it('draws on the canvas that is on screen, not the one it first held', async () => {
