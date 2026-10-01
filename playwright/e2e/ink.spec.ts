@@ -261,7 +261,7 @@ test.describe('Ink', () => {
 
 		// A press on the canvas was starting a text selection on iOS: blue
 		// handles, the Copy/Look Up callout, and - the part that is felt - the
-		// selection gesture recogniser deciding about every touch before the
+		// selection gesture recognizer deciding about every touch before the
 		// page saw it. touch-action does not stop that; it governs scrolling.
 		// Read off the painted style, so a rule that stopped applying fails.
 		// -webkit-touch-callout is WebKit's alone and computes to nothing here,

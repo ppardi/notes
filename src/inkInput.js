@@ -51,7 +51,7 @@ export function predictedFrom(event) {
  *
  * The Pencil's position arrives twice. Measured on the device, in a page of
  * handwriting: of 1038 gaps between consecutive samples, 513 were exactly
- * nought. A sample in the same place as the one before it says nothing that
+ * zero. A sample in the same place as the one before it says nothing that
  * one did not - pressure does not change the nib - and the pair is a flat
  * step, so the stroke the smoothing follows is a staircase. That is what put
  * visible facets in curves, and it showed up when the nib was thinned from 6

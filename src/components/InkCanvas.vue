@@ -236,13 +236,13 @@ export default {
 	methods: {
 		/* Keep iPadOS Scribble from taking the pen.
 		 *
-		 * Scribble is handwriting-to-text, and its recogniser claims pen input
+		 * Scribble is handwriting-to-text, and its recognizer claims pen input
 		 * over a canvas: the page is handed nothing at all - no pointerdown,
 		 * no pointermove - and stays that way while the pen is moved, until it
 		 * is lifted and put down again. A WebKit regression since iPadOS 14,
 		 * reported for years against drawing on the web.
 		 *
-		 * Refusing the default on touch is what stops the recogniser claiming
+		 * Refusing the default on touch is what stops the recognizer claiming
 		 * it. The listener has to be non-passive to be allowed to refuse,
 		 * which Vue's own binding does not guarantee, so it is attached here.
 		 *
@@ -297,7 +297,7 @@ export default {
 		 * element Vue hands back at mount is not the one that ends up on
 		 * screen, and when it is swapped out the focus it was holding falls
 		 * to the body - which leaves the editor as the next text field a
-		 * recogniser would find.
+		 * recognizer would find.
 		 *
 		 * Focus the reader moved themselves, onto a button in the bar, is
 		 * left where they put it. */
@@ -365,7 +365,7 @@ export default {
 
 		/* Size both sheets to the box, and set what a context loses whenever
 		   its size is written to: the device-pixel scale, so every coordinate
-		   from here on is a CSS pixel, and the colour strokes are filled in. */
+		   from here on is a CSS pixel, and the color strokes are filled in. */
 		fit() {
 			const canvas = this.$refs.canvas
 			if (!canvas) {
@@ -397,7 +397,7 @@ export default {
 		/* Fit where the drawing happens rather than only where the canvas is
 		   mounted. At mount the dialog has not been laid out, so the box can
 		   still be nothing; and a canvas that is resized loses its backing
-		   store, taking the scale, the colour and the page with it. */
+		   store, taking the scale, the color and the page with it. */
 		ensureFitted() {
 			const canvas = this.$refs.canvas
 			if (!canvas) {
@@ -499,13 +499,13 @@ export default {
 		/* @param {PointerEvent} event the finger's move */
 		continuePan(event) {
 			const panning = this.panning
-			const travelled = event.offsetY - panning.from
+			const traveled = event.offsetY - panning.from
 			/* A tap, or a hand settling, is not a request to move the page. */
-			if (!panning.moved && Math.abs(travelled) < PAN_THRESHOLD) {
+			if (!panning.moved && Math.abs(traveled) < PAN_THRESHOLD) {
 				return
 			}
 			panning.moved = true
-			this.panTo(panning.at - travelled)
+			this.panTo(panning.at - traveled)
 		},
 
 		/* The wheel does the same, where there is no finger to do it with. */
@@ -806,7 +806,7 @@ export default {
 			})
 		},
 
-		/* Paint now, cancelling a frame that would repeat it. */
+		/* Paint now, canceling a frame that would repeat it. */
 		paintNow() {
 			if (this.frame) {
 				cancelAnimationFrame(this.frame)
@@ -895,7 +895,7 @@ export default {
 	/* A page of handwriting is not text to select. Without this, iOS treats a
 	   press on the canvas as the start of a selection: it shows the blue
 	   handles and the Copy/Look Up callout, and - worse than the mess - its
-	   gesture recogniser arbitrates every touch before the page sees it,
+	   gesture recognizer arbitrates every touch before the page sees it,
 	   which is felt as the ink lagging behind the pen. touch-action alone
 	   does not stop this; it only governs scrolling and zooming. */
 	user-select: none;
@@ -915,7 +915,7 @@ export default {
 	min-height: 0;
 }
 
-/* Ink is drawn and saved as one colour on transparency, and the theme is
+/* Ink is drawn and saved as one color on transparency, and the theme is
    applied where it is shown - here and on the note - so a page written on a
    light screen reads on a dark one. Nextcloud sets this to `no` on a light
    theme, which is not a filter, so the picture is left alone; where the

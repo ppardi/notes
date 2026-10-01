@@ -9,7 +9,7 @@ import { makeId } from './id.js'
    URL is somewhere a note's own text can send us. */
 const ID = /^[A-Za-z0-9_-]+$/
 
-/* The shape of an ink file's name, exported so the one place that recognises
+/* The shape of an ink file's name, exported so the one place that recognizes
    ink by its rendered src does not keep a second copy of the convention. */
 export const INK_FILE_PATTERN = /(?:^|\/)ink-([A-Za-z0-9_-]+)\.png$/
 
@@ -68,7 +68,7 @@ export function inkIdFromUrl(url) {
  * editor takes.
  *
  * The picture alone. It used to carry an "Edit ink" link beneath it as a
- * second way back into the canvas, on the reasoning that recognising Text's
+ * second way back into the canvas, on the reasoning that recognizing Text's
  * own image node was not a promise Text had made. The link never worked:
  * Text's own link bubble claims a click on a link inside the editor, so the
  * handler behind it was never reached. Tapping the ink does work, and a line

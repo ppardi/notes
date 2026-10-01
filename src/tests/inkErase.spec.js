@@ -27,7 +27,7 @@ describe('erasedBy', () => {
 		expect(erasedBy([line(0, 0, 100, 0)], [[50, 200, 0.5]])).toEqual([])
 	})
 
-	it('reaches as far as the ink does, not only to the centre line', () => {
+	it('reaches as far as the ink does, not only to the center line', () => {
 		/* The samples are the middle of the stroke and the nib puts ink either
 		   side of them. An eraser touching the edge of a mark has to take it:
 		   what the reader aims at is the ink they can see. */

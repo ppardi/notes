@@ -8,7 +8,7 @@ import { getStroke } from 'perfect-freehand'
 /**
  * What every stroke is drawn and saved in.
  *
- * One colour on transparency, so the theme is applied where the ink is shown
+ * One color on transparency, so the theme is applied where the ink is shown
  * rather than baked into the file: a page written on a light screen reads on
  * a dark one, and the other way round. Ink saved before this was black too,
  * so it follows the theme now without being rewritten.
@@ -55,7 +55,7 @@ export const INK_DENSITY = 2
 /**
  * How far outside the samples a saved picture reaches, in CSS pixels.
  *
- * The samples are the stroke's centre line and the nib puts ink either side
+ * The samples are the stroke's center line and the nib puts ink either side
  * of it, so a crop taken at the samples would shave the writing lengthwise.
  * Beyond that it is margin: ink flush against the edge of a picture reads as
  * if it were cut off.

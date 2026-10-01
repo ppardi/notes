@@ -281,7 +281,7 @@ describe('InkCanvas', () => {
 	it('keeps only the samples that went somewhere', async () => {
 		/* The Pencil reports each position twice, and a stroke built from the
 		   pairs is a staircase: the curves came out faceted. Measured on the
-		   device - 513 of 1038 gaps were exactly nought. */
+		   device - 513 of 1038 gaps were exactly zero. */
 		const wrapper = await open()
 		await pointer(wrapper, 'pointerdown', { offsetX: 10, offsetY: 10 })
 		await pointer(wrapper, 'pointermove', { offsetX: 10, offsetY: 10 })
@@ -549,7 +549,7 @@ describe('InkCanvas', () => {
 			   handed nothing at all - no pointerdown, no pointermove - until
 			   the pen is lifted and put down again. A WebKit regression since
 			   iPadOS 14, and refusing the default on touch is what stops the
-			   recogniser taking it. Proven on the device, Scribble switched on. */
+			   recognizer taking it. Proven on the device, Scribble switched on. */
 			const wrapper = await open()
 			for (const type of ['touchstart', 'touchmove']) {
 				const event = new Event(type, { bubbles: true, cancelable: true })
@@ -1166,7 +1166,7 @@ describe('InkCanvas drawing', () => {
 		expect(page(wrapper).options).toBeUndefined()
 	})
 
-	it('draws in the one colour the theme is applied to', async () => {
+	it('draws in the one color the theme is applied to', async () => {
 		const wrapper = await open({ png: new Blob(), strokes: [] })
 		wrapper.vm.paintLive()
 		expect(live(wrapper).fillStyle).toBe(INK_COLOR)

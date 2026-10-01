@@ -79,7 +79,7 @@ describe('a click on a control inside the ink', () => {
 	})
 
 	it('is still ink when Text wraps the picture in a button of its own', () => {
-		/* Text puts the picture inside a button labelled "Open image". That
+		/* Text puts the picture inside a button labeled "Open image". That
 		   button is the picture, not a control beside it, and a tap on it is
 		   the tap this whole feature is for. */
 		const figure = figureWith('<button class="media-wrapper"><img></button><button class="delete">x</button>')

@@ -15,7 +15,7 @@ import { INK_COLOR, STROKE_SIZE } from './inkRender.js'
 export const ERASER_SIZE = 12
 
 /**
- * How close the eraser's centre has to come to a stroke's centre line.
+ * How close the eraser's center has to come to a stroke's center line.
  *
  * Both halves: the eraser's own radius, and the ink the nib puts either side
  * of the samples. The reader aims at the mark they can see, so the edge of a
@@ -67,7 +67,7 @@ function side(ax, ay, bx, by, x, y) {
 /**
  * How far one segment is from another, squared.
  *
- * Two segments that cross are nought apart, and no measurement from an end
+ * Two segments that cross are zero apart, and no measurement from an end
  * point will say so: think of an X, where every end is a long way from the
  * other stroke and yet they meet in the middle. That is not a corner case
  * here - it is what rubbing out a line looks like - so crossing is tested
@@ -195,7 +195,7 @@ export function erasedBy(strokes, path, reach = ERASER_REACH) {
  * Draw the eraser where it is, so it can be aimed.
  *
  * An outline rather than a disc: what matters is seeing which marks are inside
- * it, and a filled circle hides exactly that. In the ink's own colour, because
+ * it, and a filled circle hides exactly that. In the ink's own color, because
  * the sheet it is drawn on is the one the theme is applied to.
  *
  * @param {CanvasRenderingContext2D} context where to draw

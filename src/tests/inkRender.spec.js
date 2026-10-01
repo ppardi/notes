@@ -63,7 +63,7 @@ describe('traceStroke', () => {
 		expect(names()).toEqual([])
 	})
 
-	it('is one colour on transparency, so the theme can be applied where it is shown', () => {
+	it('is one color on transparency, so the theme can be applied where it is shown', () => {
 		expect(INK_COLOR).toBe('#000000')
 	})
 
@@ -104,7 +104,7 @@ describe('inkBounds', () => {
 	})
 
 	it('leaves room for the ink a stroke spreads beyond its samples', () => {
-		/* The samples are the centre line; the nib puts ink either side of it.
+		/* The samples are the center line; the nib puts ink either side of it.
 		   A crop taken at the samples would shave the stroke lengthwise. */
 		expect(CROP_MARGIN).toBeGreaterThanOrEqual(STROKE_SIZE)
 	})

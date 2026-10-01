@@ -9,7 +9,7 @@ A personal fork of [Nextcloud Notes](https://github.com/nextcloud/notes), built 
 one server and shared in case it is useful to anyone else. It is not affiliated with
 or endorsed by Nextcloud GmbH, and it is not in the app store.
 
-It is the official app plus a handful of features, chiefly around **organising** notes
+It is the official app plus a handful of features, chiefly around **organizing** notes
 rather than writing them. Notes are still ordinary Markdown files in your Nextcloud, as
 upstream intends, so nothing here locks anything in.
 
@@ -35,7 +35,7 @@ not filtering.
 **Search that looks inside notes**, across every category rather than only the selected
 one, from a box in the sidebar.
 
-**Comments drawn as comments.** The Text app stores an annotation as a specially labelled
+**Comments drawn as comments.** The Text app stores an annotation as a specially labeled
 footnote; the preview used to show that raw syntax. Commented notes now render the author,
 a timestamp in your own time zone, and replies threaded under one marker. Real footnotes
 render too, numbered separately so a comment cannot take `[1]` from one.

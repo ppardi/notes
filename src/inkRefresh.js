@@ -42,7 +42,7 @@ function stamped(src, stamp) {
  *
  * Reaching into Text's rendered figure is not a promise Text has made, which
  * is why this reports what it found and must fail by doing nothing: the ink
- * is saved either way, and the stale picture was the behaviour before this
+ * is saved either way, and the stale picture was the behavior before this
  * existed.
  *
  * @param {ParentNode | null} root where the note is rendered
