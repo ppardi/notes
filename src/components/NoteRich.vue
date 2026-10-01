@@ -215,7 +215,7 @@ export default {
 		 * Open a link that is not ours, the way Text does when nobody has
 		 * claimed links: resolved against this page, in a new tab.
 		 *
-		 * Claiming links replaces that behaviour for every link in every note,
+		 * Claiming links replaces that behavior for every link in every note,
 		 * so it is restated here rather than assumed. The one difference is
 		 * noopener, so a page a note links to gets no handle on this one.
 		 *
@@ -731,10 +731,10 @@ export default {
 /* Ink follows the theme where it is rendered, the same way the canvas it was
    drawn on does. Ink in any note's attachment folder counts, not only this
    note's: unlike a tap, which writes and so must be sure whose ink it opens,
-   colouring only has to be right about what the picture is, and a file named
+   coloring only has to be right about what the picture is, and a file named
    this way in a Notes attachment folder is this app's ink wherever it came
    from. An ordinary picture, and one on another host, are left alone. Only
-   the picture is recoloured, so Text's caption and controls keep theirs. */
+   the picture is recolored, so Text's caption and controls keep theirs. */
 .text-editor:deep(figure[data-component="image-view"][data-src^=".attachments."][data-src*="/ink-"][data-src$=".png"] img) {
 	/* Lightness flipped, hue kept. The variable is `invert(100%)` on a dark
 	   theme and `no` on a light one, so this is `invert(100%) hue-rotate(180deg)`
@@ -765,7 +765,7 @@ export default {
 /* Nextcloud core renders emphasis as lighter text rather than italics
    (`em { font-style: normal; color: var(--color-text-maxcontrast) }` in
    core/css/apps.scss). Text puts the italics back but not the color, so
-   emphasis inside the editor comes out grey. The preview editor already
+   emphasis inside the editor comes out gray. The preview editor already
    corrects this the same way. */
 .text-editor:deep(.ProseMirror em) {
 	color: inherit;
@@ -842,7 +842,7 @@ export default {
    and far enough out to make the note pannable sideways, which reads as text
    that will not hold still while you scroll.
 
-   Both are pulled in until they are flush with the edge. The glyph is centred
+   Both are pulled in until they are flush with the edge. The glyph is centered
    in a box wider than itself, so it still clears the heading; only the
    transparent part of the target laps over the first few pixels of the text,
    where a tap folds the section rather than placing the cursor.

@@ -299,7 +299,7 @@ export function categoryToSetting(category) {
 /**
  * The category a stored setting value selects.
  *
- * Anything unset or unrecognised reads as all notes.
+ * Anything unset or unrecognized reads as all notes.
  *
  * @param {string} [value] the stored value
  * @return {string|null} the category, or null for all notes

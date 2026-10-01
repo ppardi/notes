@@ -55,7 +55,7 @@ export default {
 
 		md.use(markdownItBidi)
 
-		/* Text 35 stores an annotation as a footnote labelled `comment-<n>`, so
+		/* Text 35 stores an annotation as a footnote labeled `comment-<n>`, so
 		   footnote support is what stops a commented note previewing as raw
 		   syntax; markdownItComments then draws the comments as comments rather
 		   than leaving them numbered in among any real footnotes. */

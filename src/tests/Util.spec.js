@@ -396,11 +396,11 @@ describe('escapeHtml', () => {
 })
 
 describe('isCategoryDrag', () => {
-	it('recognises a dragged category', () => {
+	it('recognizes a dragged category', () => {
 		expect(isCategoryDrag(dragEvent({ 'application/x-nextcloud-notes-category': 'Work' }))).toBe(true)
 	})
 
-	it('recognises the uncategorized category, which is an empty string', () => {
+	it('recognizes the uncategorized category, which is an empty string', () => {
 		expect(isCategoryDrag(dragEvent({ 'application/x-nextcloud-notes-category': '' }))).toBe(true)
 	})
 

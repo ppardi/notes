@@ -176,7 +176,7 @@ class HashtagParser {
 	 * Blank out the parts of a note that are code.
 	 *
 	 * Notes about code are full of hashes that are not tags: `#include`,
-	 * `#define`, `#!/bin/sh`, and the colour `#fff`. Left alone they would fill
+	 * `#define`, `#!/bin/sh`, and the color `#fff`. Left alone they would fill
 	 * the tag list with junk, and the tag list is the whole read-side UI. This
 	 * is the only Markdown structure the parser knows about; it needs no more.
 	 */

@@ -323,7 +323,7 @@ export default {
 			if (!isNew) {
 				return
 			}
-			/* The server normalises what it is given and drops what it cannot
+			/* The server normalizes what it is given and drops what it cannot
 			   use, so what came back is what exists - routing to an id it threw
 			   away would land on the "this has gone" path with no explanation. */
 			if (!(saved.smartCategories ?? []).some((entry) => entry.id === smart.id)) {

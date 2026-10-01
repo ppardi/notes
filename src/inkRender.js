@@ -207,7 +207,7 @@ export function smoothed(points, maxGap = SMOOTH_GAP) {
 		const steps = Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / maxGap)
 		if (steps > 1) {
 			/* The ends have no point beyond them to curve away from, so they
-			   stand in for their own neighbour and the curve runs straight
+			   stand in for their own neighbor and the curve runs straight
 			   into them. */
 			const p0 = points[i - 2] ?? p1
 			const p3 = points[i + 1] ?? p2
