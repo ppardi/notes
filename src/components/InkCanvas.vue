@@ -11,7 +11,9 @@
 			tabindex="-1"
 			:aria-label="t('notes', 'Ink')"
 		>
-			<div class="ink__stage">
+			<div class="ink__stage"
+				:class="{ 'ink__stage--above': morePageAbove, 'ink__stage--below': morePageBelow }"
+			>
 				<img v-if="backdrop"
 					class="ink__backdrop"
 					:src="backdrop"
@@ -65,6 +67,10 @@ import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
 import { INK_COLOR, inkBounds, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
+/* How far a finger travels before it is moving the page rather than resting on
+   it. A tap, and a hand settling, both report a little movement. */
+const PAN_THRESHOLD = 8
+
 export default {
 	name: 'InkCanvas',
 
@@ -95,6 +101,12 @@ export default {
 			   how a mark that was there before is taken out. */
 			history: [],
 			erasing: false,
+			/* How far down the page the top of the screen is. The two sheets
+			   stay the size of the screen and the page is as long as it needs
+			   to be: this is the one number that turns the one into a window
+			   onto the other. Page coordinates are screen coordinates plus
+			   this, and the strokes are kept in the page's. */
+			panY: 0,
 			current: null,
 			pointerId: null,
 			pointerType: null,
@@ -108,6 +120,19 @@ export default {
 			refusing: false,
 			backdrop: '',
 		}
+	},
+
+	computed: {
+		/* Whether the page carries on past the top and the bottom of the
+		   screen. The ink moving under the finger says the page is moving;
+		   these are what say there is more of it to move to. */
+		morePageAbove() {
+			return this.panY > 0
+		},
+
+		morePageBelow() {
+			return this.panY < this.panLimit()
+		},
 	},
 
 	async mounted() {
@@ -209,6 +234,10 @@ export default {
 				[canvas, 'touchstart', refuse],
 				[canvas, 'touchmove', refuse],
 				...(dialog ? [[dialog, 'touchmove', refuse]] : []),
+				/* Not a guard but the same kind of listener: it has to be
+				   non-passive to refuse the scroll it would otherwise give the
+				   page behind this dialog. */
+				[canvas, 'wheel', this.onWheel],
 			]
 			this.guarded = canvas
 			for (const [element, type, handler] of this.touchGuards) {
@@ -362,10 +391,102 @@ export default {
 			return !this.refusing && !this.saving
 		},
 
-		onDown(event) {
-			if (!this.accepting() || !shouldDraw(event)) {
+		/* The event's samples, in the page's coordinates rather than the
+		   screen's.
+		 *
+		 * @param {Array<Array<number>>} samples screen samples
+		 * @return {Array<Array<number>>} the same, on the page
+		 */
+		onPage(samples) {
+			if (!this.panY) {
+				return samples
+			}
+			return samples.map(([x, y, ...rest]) => [x, y + this.panY, ...rest])
+		},
+
+		/* A box on the page, as a box on the screen.
+		 *
+		 * @param {Array<number> | null} box [x, y, width, height] on the page
+		 * @return {Array<number> | null} the same on the screen
+		 */
+		onScreen(box) {
+			return box ? [box[0], box[1] - this.panY, box[2], box[3]] : null
+		},
+
+		/* How far down the page the screen may look.
+		 *
+		 * Far enough to put the last of the writing at the top, which always
+		 * leaves a whole empty screen to carry on in - and no further, because
+		 * beyond that is blank paper with nothing in it to say where you are
+		 * or which way is back. The limit follows the writing, so it grows as
+		 * the page is written on. */
+		panLimit() {
+			const bounds = inkBounds(this.strokes)
+			return bounds ? Math.max(0, bounds[1] + bounds[3]) : 0
+		},
+
+		/* Look at the page from here, within what there is to look at. */
+		panTo(y) {
+			const next = Math.max(0, Math.min(y, this.panLimit()))
+			if (next === this.panY) {
 				return
 			}
+			this.panY = next
+			/* The whole of both sheets is somewhere else now. */
+			this.painted = null
+			const live = this.contextFor('canvas')
+			const canvas = this.$refs.canvas
+			if (live && canvas) {
+				live.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight)
+			}
+			this.renderPage()
+		},
+
+		/* A finger moves the paper.
+		 *
+		 * A finger is the one thing on this canvas that never draws, which is
+		 * what makes it free to mean something else. A pen in the hand and a
+		 * finger on the page is how paper is moved on a desk.
+		 *
+		 * Never while the pen is writing: a hand resting on the screen arrives
+		 * as a touch like any other, and the page lurching under a stroke is
+		 * the palm problem in a new place. */
+		startPan(event) {
+			if (this.current || this.rubbing) {
+				return
+			}
+			this.panning = { pointerId: event.pointerId, from: event.offsetY, at: this.panY, moved: false }
+		},
+
+		/* @param {PointerEvent} event the finger's move */
+		continuePan(event) {
+			const panning = this.panning
+			const travelled = event.offsetY - panning.from
+			/* A tap, or a hand settling, is not a request to move the page. */
+			if (!panning.moved && Math.abs(travelled) < PAN_THRESHOLD) {
+				return
+			}
+			panning.moved = true
+			this.panTo(panning.at - travelled)
+		},
+
+		/* The wheel does the same, where there is no finger to do it with. */
+		onWheel(event) {
+			event.preventDefault()
+			this.panTo(this.panY + event.deltaY)
+		},
+
+		onDown(event) {
+			if (!this.accepting()) {
+				return
+			}
+			if (!shouldDraw(event)) {
+				this.startPan(event)
+				return
+			}
+			/* The pen takes the page off the finger: whoever is holding it
+			   means to write, and the paper holding still is the point. */
+			this.panning = null
 			/* One gesture at a time. Nothing preempts one in progress now that
 			   a finger cannot start one: what used to arrive first and have to
 			   be undone was the palm. */
@@ -381,11 +502,11 @@ export default {
 				   line back to where it was last lifted would rub out whatever
 				   it happened to cross. */
 				this.rubbedFrom = null
-				this.rubOut(samplesFrom(event))
+				this.rubOut(this.onPage(samplesFrom(event)))
 				return
 			}
 			this.predicted = []
-			this.current = { points: samplesFrom(event) }
+			this.current = { points: this.onPage(samplesFrom(event)) }
 			/* Draw it now. The first sample is already in hand, so waiting for
 			   a pointermove to show anything leaves the nib on a blank page
 			   for however long the browser takes to report the first one. */
@@ -393,28 +514,39 @@ export default {
 		},
 
 		onMove(event) {
+			if (!this.accepting()) {
+				return
+			}
+			if (this.panning?.pointerId === event.pointerId) {
+				this.continuePan(event)
+				return
+			}
 			/* Only the pointer that started the gesture continues it. A hand
 			   resting beside the pen keeps reporting moves, and those are
 			   neither ink nor erasing. */
-			if (event.pointerId !== this.pointerId || !this.accepting()) {
+			if (event.pointerId !== this.pointerId) {
 				return
 			}
 			if (this.rubbing) {
-				this.rubOut(samplesFrom(event))
+				this.rubOut(this.onPage(samplesFrom(event)))
 				return
 			}
 			if (!this.current) {
 				return
 			}
-			const samples = samplesFrom(event)
+			const samples = this.onPage(samplesFrom(event))
 			this.current.points.push(...samples)
 			/* Drawn, never kept: the file holds what the pen did, not what it
 			   was expected to do. */
-			this.predicted = predictedFrom(event)
+			this.predicted = this.onPage(predictedFrom(event))
 			this.requestPaint()
 		},
 
 		onUp(event) {
+			if (this.panning?.pointerId === event.pointerId) {
+				this.panning = null
+				return
+			}
 			/* A hand lifting must not end the pen's gesture. */
 			if (event.pointerId !== this.pointerId || !this.accepting()) {
 				return
@@ -458,7 +590,15 @@ export default {
 				took = true
 			}
 			if (took) {
-				this.renderPage()
+				/* Rubbing out the last of the writing shortens the page, and
+				   the screen must not be left below its bottom. panTo redraws
+				   when it has to move; when it does not, the page still has to
+				   be retraced without what has gone. */
+				const was = this.panY
+				this.panTo(this.panY)
+				if (this.panY === was) {
+					this.renderPage()
+				}
 			}
 			/* Whether or not anything went: the eraser's own outline follows
 			   the pen, which is what makes it something that can be aimed. */
@@ -487,7 +627,10 @@ export default {
 				this.history.push({ drew: this.current })
 				const context = this.contextFor('page')
 				if (context) {
+					context.save()
+					context.translate(0, -this.panY)
 					traceStroke(context, this.current.points)
+					context.restore()
 				}
 				this.current = null
 				this.predicted = []
@@ -521,6 +664,7 @@ export default {
 					this.strokes.splice(at, 0, stroke)
 				}
 			}
+			this.panTo(this.panY)
 			this.renderPage()
 		},
 
@@ -550,13 +694,21 @@ export default {
 		renderPage() {
 			const context = this.contextFor('page')
 			const canvas = this.$refs.canvas
+
 			if (!context || !canvas) {
 				return
 			}
 			context.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight)
+			/* The strokes are the page's and the sheet is the screen's, so the
+			   one is drawn through the other. Nothing outside the screen is
+			   clipped by hand: the canvas does that, and a page of handwriting
+			   off the top costs a few outlines nobody sees. */
+			context.save()
+			context.translate(0, -this.panY)
 			for (const stroke of this.strokes) {
 				traceStroke(context, stroke.points)
 			}
+			context.restore()
 		},
 
 		/* The stroke under the pen, and the browser's guess at where it is
@@ -576,21 +728,29 @@ export default {
 			if (this.painted) {
 				context.clearRect(...this.painted)
 			}
+			if (!this.current && !(this.rubbing && this.rubbedFrom)) {
+				this.painted = null
+				return
+			}
+			/* Drawn through the pan, as the page is; the rectangle to clear
+			   next time is kept in the screen's own coordinates, which is what
+			   clearRect wants. */
+			context.save()
+			context.translate(0, -this.panY)
 			if (this.current) {
 				const points = this.predicted?.length
 					? [...this.current.points, ...this.predicted]
 					: this.current.points
 				traceStroke(context, points)
-				this.painted = this.boundsOf(points)
-			} else if (this.rubbing && this.rubbedFrom) {
+				this.painted = this.onScreen(this.boundsOf(points))
+			} else {
 				const [x, y] = this.rubbedFrom
 				traceEraser(context, x, y)
 				/* A box around the ring with room for its own line, cleared
 				   the same way a stroke's box is. */
-				this.painted = [x - ERASER_SIZE, y - ERASER_SIZE, ERASER_SIZE * 2, ERASER_SIZE * 2]
-			} else {
-				this.painted = null
+				this.painted = this.onScreen([x - ERASER_SIZE, y - ERASER_SIZE, ERASER_SIZE * 2, ERASER_SIZE * 2])
 			}
+			context.restore()
 		},
 
 		/* One paint per frame, however many samples arrived in it. A pen
@@ -753,6 +913,35 @@ export default {
 /* Only the top sheet takes input; the page beneath is never pointed at. */
 .ink__canvas--page {
 	pointer-events: none;
+}
+
+/* Where the page carries on past the screen. Along the edge it continues
+   past, so it reads as the page going on rather than as a line drawn on it. */
+.ink__stage::before,
+.ink__stage::after {
+	position: absolute;
+	z-index: 1;
+	height: 10px;
+	content: '';
+	opacity: 0;
+	transition: opacity 120ms ease;
+	pointer-events: none;
+	inset-inline: 0;
+}
+
+.ink__stage::before {
+	top: 0;
+	background: linear-gradient(to bottom, var(--color-text-maxcontrast), transparent);
+}
+
+.ink__stage::after {
+	bottom: 0;
+	background: linear-gradient(to top, var(--color-text-maxcontrast), transparent);
+}
+
+.ink__stage--above::before,
+.ink__stage--below::after {
+	opacity: 0.3;
 }
 
 .ink__bar {

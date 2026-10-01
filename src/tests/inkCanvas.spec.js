@@ -369,9 +369,10 @@ describe('InkCanvas', () => {
 			const live = wrapper.find('.ink__canvas--live').element.getContext('2d')
 			expect(live.arcs.at(-1)?.slice(0, 2)).toEqual([40, 50])
 
-			/* And it is gone when the pen comes off the page. */
+			/* And it is gone when the pen comes off the page: its box was
+			   cleared, and nothing was drawn in it afterwards. */
 			await pointer(wrapper, 'pointerup')
-			expect(live.calls.at(-1)).toBe('clearRect')
+			expect(live.calls.lastIndexOf('clearRect')).toBeGreaterThan(live.calls.lastIndexOf('arc'))
 		})
 
 		it('never rubs out for a finger', async () => {
@@ -616,6 +617,148 @@ describe('InkCanvas', () => {
 			expect(button(wrapper, 'Done').attributes('disabled')).toBeDefined()
 			await arrive(null)
 			expect(button(wrapper, 'Done').attributes('disabled')).toBeUndefined()
+		})
+	})
+
+	describe('more page than one screen', () => {
+		/* A finger, which never draws, moves the paper instead. */
+		async function dragFinger(wrapper, from, to, id = 9) {
+			await pointer(wrapper, 'pointerdown', { pointerType: 'touch', pointerId: id, offsetX: 100, offsetY: from })
+			await pointer(wrapper, 'pointermove', { pointerType: 'touch', pointerId: id, offsetX: 100, offsetY: to })
+		}
+
+		/* Ink down to a given depth, so the page has somewhere to pan to. */
+		const deep = (y) => [{ points: [[10, 0, 0.5], [10, y, 0.5]] }]
+
+		it('moves the page under the pen when a finger is dragged', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: deep(2000) })
+			await dragFinger(wrapper, 400, 300)
+			expect(wrapper.vm.panY).toBe(100)
+		})
+
+		it('stays still for a finger that has barely moved', async () => {
+			/* A tap, or a hand settling, is not a request to move the page. */
+			const wrapper = await open({ png: new Blob(), strokes: deep(2000) })
+			await dragFinger(wrapper, 400, 396)
+			expect(wrapper.vm.panY).toBe(0)
+		})
+
+		it('keeps the top of the page at the top', async () => {
+			/* Above the first line there is nothing, and a reader who panned
+			   into it would be looking at a blank sheet with no way to tell
+			   which way was back. */
+			const wrapper = await open({ png: new Blob(), strokes: deep(2000) })
+			await dragFinger(wrapper, 300, 500)
+			expect(wrapper.vm.panY).toBe(0)
+		})
+
+		it('gives one fresh screen below the lowest ink, and no more', async () => {
+			/* Panning until the last of the writing is at the top always leaves
+			   a whole empty screen to carry on in. Further than that is blank
+			   paper with nothing to say where you are. */
+			const wrapper = await open({ png: new Blob(), strokes: deep(500) })
+			await dragFinger(wrapper, 900, -4000)
+			expect(wrapper.vm.panY).toBeCloseTo(505, 0)
+		})
+
+		it('has nowhere to go on a page that fits', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [] })
+			await dragFinger(wrapper, 400, 100)
+			expect(wrapper.vm.panY).toBe(0)
+		})
+
+		it('does not move the page for a hand resting while the pen writes', async () => {
+			/* The palm again, in a new place: it arrives as a touch, and a
+			   touch now moves the paper. */
+			const wrapper = await open({ png: new Blob(), strokes: deep(2000) })
+			await pointer(wrapper, 'pointerdown', { offsetX: 10, offsetY: 10 })
+			await dragFinger(wrapper, 400, 200)
+			expect(wrapper.vm.panY).toBe(0)
+			expect(wrapper.vm.current).not.toBeNull()
+		})
+
+		it('lets the pen take over from a finger that was moving the page', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: deep(2000) })
+			await dragFinger(wrapper, 400, 300)
+			await pointer(wrapper, 'pointerdown', { offsetX: 10, offsetY: 10 })
+			await pointer(wrapper, 'pointermove', { pointerType: 'touch', pointerId: 9, offsetX: 100, offsetY: 100 })
+
+			/* The pen is writing and the page has stopped moving under it. */
+			expect(wrapper.vm.current).not.toBeNull()
+			expect(wrapper.vm.panY).toBe(100)
+		})
+
+		it('keeps a stroke where the page has it, not where the screen did', async () => {
+			/* The strokes are the page's, so what is saved does not depend on
+			   how far down the reader had scrolled when they wrote it. */
+			const wrapper = await open({ png: new Blob(), strokes: deep(2000) })
+			await dragFinger(wrapper, 400, 100)
+			expect(wrapper.vm.panY).toBe(300)
+
+			await pointer(wrapper, 'pointerdown', { offsetX: 50, offsetY: 50 })
+			await pointer(wrapper, 'pointerup')
+
+			expect(wrapper.vm.strokes.at(-1).points[0]).toEqual([50, 350, 0.5])
+		})
+
+		it('rubs out what is under the eraser on a page that has been moved', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [{ points: [[10, 700, 0.5], [200, 700, 0.5]] }] })
+			await dragFinger(wrapper, 500, 0)
+			expect(wrapper.vm.panY).toBe(500)
+			wrapper.vm.erasing = true
+
+			/* 700 on the page is 195 on the screen once the page has moved. */
+			await pointer(wrapper, 'pointerdown', { offsetX: 100, offsetY: 700 - wrapper.vm.panY })
+
+			expect(wrapper.vm.strokes).toHaveLength(0)
+		})
+
+		it('says when the page carries on past the screen', async () => {
+			/* Writing that has moved off the top is writing the reader has no
+			   other way of knowing is there. */
+			const wrapper = await open({ png: new Blob(), strokes: deep(2000) })
+			const stage = () => wrapper.find('.ink__stage').classes()
+			expect(stage()).toContain('ink__stage--below')
+			expect(stage()).not.toContain('ink__stage--above')
+
+			await dragFinger(wrapper, 400, 300)
+			await wrapper.vm.$nextTick()
+
+			expect(stage()).toContain('ink__stage--above')
+			expect(stage()).toContain('ink__stage--below')
+		})
+
+		it('says nothing about more page on a page that fits', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [] })
+			expect(wrapper.find('.ink__stage').classes()).not.toContain('ink__stage--below')
+		})
+
+		it('moves the page for a wheel, where there is no finger', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: deep(2000) })
+			const wheel = new Event('wheel', { bubbles: true, cancelable: true })
+			Object.defineProperty(wheel, 'deltaY', { value: 120 })
+			wrapper.find('.ink__canvas--live').element.dispatchEvent(wheel)
+			await wrapper.vm.$nextTick()
+
+			expect(wrapper.vm.panY).toBe(120)
+			expect(wheel.defaultPrevented, 'the page behind the dialog would scroll').toBe(true)
+		})
+
+		it('comes back inside the page when the ink below is rubbed out', async () => {
+			/* The limit follows the writing, so rubbing out the last of it
+			   shortens the page - and must not leave the reader looking at
+			   somewhere below its bottom. */
+			const wrapper = await open({ png: new Blob(), strokes: deep(2000) })
+			await dragFinger(wrapper, 1400, 0)
+			expect(wrapper.vm.panY).toBe(1400)
+
+			/* Rub out the one stroke, which is the whole page. */
+			wrapper.vm.erasing = true
+			await pointer(wrapper, 'pointerdown', { offsetX: 10, offsetY: 1500 - wrapper.vm.panY })
+			await pointer(wrapper, 'pointerup')
+
+			expect(wrapper.vm.strokes).toHaveLength(0)
+			expect(wrapper.vm.panY).toBe(0)
 		})
 	})
 

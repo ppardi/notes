@@ -604,4 +604,52 @@ test.describe('Ink', () => {
 		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
 		await expect.poll(async () => await inkOnThePage(page), { timeout: 10000 }).toBeGreaterThan(first * 1.5)
 	})
+	test('keeps writing past the bottom of the screen on one page', async ({ page, request }) => {
+		const noteId = await openInkedNote(page, request)
+		await page.getByRole('button', { name: 'Ink', exact: true }).click()
+		const canvas = page.locator('.ink__canvas--live')
+		await expect(canvas).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		const box = (await canvas.boundingBox())!
+		const x = box.x + box.width / 3
+		// Low on the screen, so there is nothing like room for the next line
+		// below it without more page.
+		const low = box.y + box.height - 40
+		const stage = page.locator('.ink__stage')
+
+		// Three lines, each written as low as the one before, with the page
+		// moved up in between. A finger does that on the iPad; a wheel here.
+		for (const line of [0, 1, 2]) {
+			if (line > 0) {
+				await page.mouse.move(x, box.y + box.height / 2)
+				await page.mouse.wheel(0, box.height)
+				await expect(stage).toHaveClass(/ink__stage--above/)
+			} else {
+				// Nothing is written yet, so there is nowhere to go in either
+				// direction.
+				await expect(stage).not.toHaveClass(/ink__stage--above/)
+				await expect(stage).not.toHaveClass(/ink__stage--below/)
+			}
+			await page.mouse.move(x, low)
+			await page.mouse.down()
+			await page.mouse.move(x + 120, low, { steps: 10 })
+			await page.mouse.up()
+			// Each line leaves page below it to carry on in.
+			await expect(stage).toHaveClass(/ink__stage--below/)
+		}
+		await page.getByRole('button', { name: 'Done' }).click()
+
+		const image = new RegExp(`(\\.attachments\\.${noteId}/ink-[A-Za-z0-9_-]+\\.png)`)
+		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toMatch(image)
+		const src = image.exec(await noteContent(noteId))![1]
+		const bytes = await noteAttachment(noteId, src)
+		const size = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+
+		// One picture, taller than the screen it was written on: each line is
+		// on the page below the one before, not on top of it.
+		expect(size.getUint32(20)).toBeGreaterThan(box.height)
+		// And no wider than the lines themselves.
+		expect(size.getUint32(16)).toBeLessThan(300)
+	})
 })
