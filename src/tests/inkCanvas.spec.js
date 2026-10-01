@@ -24,6 +24,13 @@ const saveInk = vi.fn()
 const loadInk = vi.fn()
 vi.mock('../inkFile.js', () => ({ saveInk: (...a) => saveInk(...a), loadInk: (...a) => loadInk(...a) }))
 
+vi.mock('@nextcloud/vue/components/NcActions', () => ({
+	default: { name: 'NcActions', template: '<div><slot name="icon" /><slot /></div>' },
+}))
+vi.mock('@nextcloud/vue/components/NcActionButton', () => ({
+	default: { name: 'NcActionButton', template: '<button><slot /></button>' },
+}))
+
 const InkCanvas = (await import('../components/InkCanvas.vue')).default
 const { CROP_MARGIN, INK_DENSITY } = await import('../inkRender.js')
 const { DEFAULT_INK_COLOR } = await import('../inkPalette.js')
@@ -33,7 +40,10 @@ const { DEFAULT_INK_COLOR } = await import('../inkPalette.js')
 let runFrame
 
 beforeAll(() => {
-	globalThis.t = (app, text) => text
+	/* Interpolating, because a label with a placeholder left in it is not the
+	   label a reader sees, and a test asserting one would pass on a string
+	   nobody will ever read. */
+	globalThis.t = (app, text, vars) => text.replace(/\{(\w+)\}/g, (whole, name) => vars?.[name] ?? whole)
 	/* One context per canvas, so a test can count what was asked of it. */
 	const contexts = new WeakMap()
 	HTMLCanvasElement.prototype.getContext = function(type, options) {
@@ -710,7 +720,11 @@ describe('InkCanvas', () => {
 		/* An icon with no name is a button nobody can describe: not to a screen
 		   reader, not in a bug report, and not to themselves. */
 		const wrapper = await open()
+		/* Not the color picker's choices: the real menu is a popover outside
+		   the bar, and the stub that stands in for it here renders them in
+		   place. They are named by their text, and tested above. */
 		const buttons = wrapper.find('.ink__bar').findAll('button')
+			.filter((b) => !b.element.closest('.ink__color'))
 		expect(buttons.map((b) => b.attributes('aria-label') || b.text()))
 			.toEqual(['Erase', 'Undo', 'Cancel', 'Done'])
 		/* The three tools are icons, so the name has to be written down; Done
@@ -931,6 +945,110 @@ describe('InkCanvas', () => {
 			wrapper.unmount()
 			expect(disconnect).toHaveBeenCalled()
 		})
+	})
+
+	it('names every color, so the picker is not six unlabeled squares', async () => {
+		const wrapper = await open()
+
+		expect(wrapper.vm.colorChoices.map((choice) => choice.label))
+			.toEqual(['Black', 'Red', 'Orange', 'Green', 'Blue', 'Purple'])
+	})
+
+	it('marks which color is in use', async () => {
+		const wrapper = await open()
+
+		wrapper.vm.chooseColor('#0044cc')
+
+		const chosen = wrapper.vm.colorChoices.filter((choice) => choice.chosen)
+		expect(chosen).toHaveLength(1)
+		expect(chosen[0].value).toBe('#0044cc')
+	})
+
+	it('opens in the color last used', async () => {
+		window.localStorage.setItem('notes-ink-color', '#008800')
+
+		const wrapper = await open()
+
+		expect(wrapper.vm.color).toBe('#008800')
+		window.localStorage.clear()
+	})
+
+	it('remembers a color when it is chosen', async () => {
+		const wrapper = await open()
+
+		wrapper.vm.chooseColor('#7733cc')
+
+		expect(window.localStorage.getItem('notes-ink-color')).toBe('#7733cc')
+		window.localStorage.clear()
+	})
+
+	it('leaves the strokes already drawn alone when the color changes', async () => {
+		/* The picker sets what the next stroke will be. Changing it is not an
+		   edit to the page. */
+		const wrapper = await open()
+		await pointer(wrapper, 'pointerdown', { offsetX: 30, offsetY: 30 })
+		await pointer(wrapper, 'pointerup')
+
+		wrapper.vm.chooseColor('#cc0000')
+
+		expect(wrapper.vm.strokes[0].color).toBe(DEFAULT_INK_COLOR)
+	})
+
+	it('leaves the focus alone while the picker is open', async () => {
+		/* The dialog holds the focus on purpose: iPadOS Scribble writes into
+		   whatever text field has it, and the note's editor is right behind
+		   this. The picker's popover teleports to <body>, so it is NOT inside
+		   the dialog - and claimFocus() returns early only when the dialog
+		   contains the active element. Called while the menu is open it would
+		   take the focus back and shut the menu.
+		 *
+		 * fit() is the only caller and ensureFitted() only calls it when the
+		 * backing size changed - a rotation, or the error message appearing.
+		 * Both of those happen on the device, which is the one place this
+		 * would be found. */
+		const wrapper = await open(null, { attachTo: document.body })
+		wrapper.vm.picking = true
+		const elsewhere = document.createElement('button')
+		document.body.appendChild(elsewhere)
+		elsewhere.focus()
+
+		wrapper.vm.claimFocus()
+
+		expect(document.activeElement).toBe(elsewhere)
+		elsewhere.remove()
+		wrapper.unmount()
+	})
+
+	it('takes the focus back once the picker closes', async () => {
+		/* The guard above must not become a way to leave the focus outside the
+		   dialog for good - that is the state Scribble writes into the note
+		   from. */
+		const wrapper = await open(null, { attachTo: document.body })
+		wrapper.vm.picking = false
+		const elsewhere = document.createElement('button')
+		document.body.appendChild(elsewhere)
+		elsewhere.focus()
+
+		wrapper.vm.claimFocus()
+
+		expect(document.activeElement).not.toBe(elsewhere)
+		elsewhere.remove()
+		wrapper.unmount()
+	})
+
+	it('undoes a stroke with the color it was drawn in, not the one now chosen', async () => {
+		const wrapper = await open()
+		wrapper.vm.chooseColor('#cc0000')
+		await pointer(wrapper, 'pointerdown', { offsetX: 30, offsetY: 30 })
+		await pointer(wrapper, 'pointerup')
+		wrapper.vm.chooseColor('#0044cc')
+		await pointer(wrapper, 'pointerdown', { offsetX: 60, offsetY: 60 })
+		await pointer(wrapper, 'pointerup')
+
+		wrapper.vm.undo()
+
+		expect(wrapper.vm.strokes).toHaveLength(1)
+		expect(wrapper.vm.strokes[0].color).toBe('#cc0000')
 	})
 })
 
@@ -1210,6 +1328,39 @@ describe('InkCanvas drawing', () => {
 		wrapper.vm.renderPage()
 
 		expect(page(wrapper).fillStyles).toEqual([DEFAULT_INK_COLOR])
+	})
+
+	it('saves a picture whose strokes are the colors they were drawn in', async () => {
+		/* The picture is a canvas of its own, built when Done is pressed, and
+		   nothing else reaches it. If it filled every stroke in one color the
+		   page would show red and blue while the saved file said black - the
+		   picture disagreeing with its own strokes. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open()
+		wrapper.vm.strokes = [
+			{ points: [[10, 10, 0.5]], color: '#cc0000' },
+			{ points: [[20, 20, 0.5]], color: '#0044cc' },
+		]
+		/* The picture's canvas is never held by the component or in the
+		   document, so the only place to meet it is where it is made. */
+		const made = []
+		const create = document.createElement.bind(document)
+		const spy = vi.spyOn(document, 'createElement').mockImplementation((...args) => {
+			const element = create(...args)
+			if (args[0] === 'canvas') {
+				made.push(element)
+			}
+			return element
+		})
+
+		await wrapper.vm.done()
+		spy.mockRestore()
+
+		/* Vue also remakes the dialog's own two sheets while saving; the
+		   picture is the one canvas that is none of them. */
+		const pictures = made.filter((canvas) => !canvas.classList.contains('ink__canvas'))
+		expect(pictures).toHaveLength(1)
+		expect(pictures[0].getContext('2d').fillStyles).toEqual(['#cc0000', '#0044cc'])
 	})
 
 	it('saves a refused color as the one it was drawn in, not the one it came in with', async () => {

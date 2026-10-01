@@ -41,6 +41,37 @@
 			     name, which is what a screen reader reads and what a tooltip
 			     shows. -->
 			<div class="ink__bar">
+				<!-- The color in use is the button: a reader can see what the
+				     pen will draw without opening anything. Six swatches in
+				     the bar itself would be faster by one tap and leave no
+				     room for the tools. -->
+				<NcActions v-model:open="picking"
+					class="ink__color"
+					:aria-label="t('notes', 'Color: {color}', { color: colorLabel })"
+					:title="t('notes', 'Color: {color}', { color: colorLabel })"
+					:disabled="!accepting()"
+				>
+					<template #icon>
+						<span class="ink__swatch" :style="{ background: color }" />
+					</template>
+					<!-- Radio rather than six toggles. These are one choice
+					     among six, and NcActionButton's default behavior with
+					     a boolean model-value is a toggle button - which a
+					     reader listening would hear as six separate pressed
+					     and unpressed buttons rather than as a single pen. -->
+					<NcActionButton v-for="choice in colorChoices"
+						:key="choice.key"
+						type="radio"
+						:modelValue="color"
+						:value="choice.value"
+						@update:modelValue="chooseColor(choice.value)"
+					>
+						<template #icon>
+							<span class="ink__swatch" :style="{ background: choice.value }" />
+						</template>
+						{{ choice.label }}
+					</NcActionButton>
+				</NcActions>
 				<NcButton class="ink__tool"
 					:aria-label="t('notes', 'Erase')"
 					:title="t('notes', 'Erase')"
@@ -81,6 +112,8 @@
 </template>
 
 <script>
+import NcActionButton from '@nextcloud/vue/components/NcActionButton'
+import NcActions from '@nextcloud/vue/components/NcActions'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import CloseIcon from 'vue-material-design-icons/Close.vue'
 import EraserIcon from 'vue-material-design-icons/Eraser.vue'
@@ -88,7 +121,7 @@ import UndoIcon from 'vue-material-design-icons/UndoVariant.vue'
 import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
-import { DEFAULT_INK_COLOR, knownColor } from '../inkPalette.js'
+import { INK_COLORS, knownColor, rememberColor, rememberedColor } from '../inkPalette.js'
 import { INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* How far a finger travels before it is moving the page rather than resting on
@@ -101,6 +134,8 @@ export default {
 	components: {
 		CloseIcon,
 		EraserIcon,
+		NcActionButton,
+		NcActions,
 		NcButton,
 		UndoIcon,
 	},
@@ -128,9 +163,15 @@ export default {
 			   how a mark that was there before is taken out. */
 			history: [],
 			erasing: false,
-			/* What the next stroke will be drawn in. A stroke keeps the color
-			   it was drawn with, so changing this never alters the page. */
-			color: DEFAULT_INK_COLOR,
+			/* What the next stroke will be drawn in, starting where the last
+			   canvas left it. A stroke keeps the color it was drawn with, so
+			   changing this never alters the page. */
+			color: rememberedColor(),
+			/* Whether the picker's menu is open. NcActions manages this
+			   itself; the component has to know because the menu lives
+			   outside the dialog and the dialog takes the focus back from
+			   anything outside it. */
+			picking: false,
 			/* How far down the page the top of the screen is. The two sheets
 			   stay the size of the screen and the page is as long as it needs
 			   to be: this is the one number that turns the one into a window
@@ -162,6 +203,35 @@ export default {
 
 		morePageBelow() {
 			return this.panY < this.panLimit()
+		},
+
+		/* The palette, named and with the one in use marked.
+		 *
+		 * The names are here rather than in the palette module because they
+		 * are translated, and a module of six hex values should not need the
+		 * translation globals to be testable. A color is a poor label on its
+		 * own in any case: it is no label at all to a reader who cannot tell
+		 * two of them apart, or who is listening rather than looking.
+		 */
+		colorChoices() {
+			const named = {
+				ink: t('notes', 'Black'),
+				red: t('notes', 'Red'),
+				orange: t('notes', 'Orange'),
+				green: t('notes', 'Green'),
+				blue: t('notes', 'Blue'),
+				purple: t('notes', 'Purple'),
+			}
+			return INK_COLORS.map((color) => ({
+				...color,
+				label: named[color.key],
+				chosen: color.value === this.color,
+			}))
+		},
+
+		/* What the picker's own button says it will draw in. */
+		colorLabel() {
+			return this.colorChoices.find((choice) => choice.chosen)?.label ?? ''
 		},
 	},
 
@@ -311,10 +381,16 @@ export default {
 		 * recognizer would find.
 		 *
 		 * Focus the reader moved themselves, onto a button in the bar, is
-		 * left where they put it. */
+		 * left where they put it.
+		 *
+		 * The color picker's menu is the one thing outside this dialog that
+		 * belongs to it: it is a popover, so it is teleported to the body and
+		 * `contains` says no. Taking the focus back from it would shut it
+		 * mid-choice, which a resize - a rotation, or the error message
+		 * appearing - is enough to cause. */
 		claimFocus() {
 			const dialog = this.$refs.dialog
-			if (!dialog || dialog.contains(document.activeElement)) {
+			if (!dialog || this.picking || dialog.contains(document.activeElement)) {
 				return
 			}
 			/* Once: by the second call the focus is the body's, and handing
@@ -408,7 +484,7 @@ export default {
 		/* Fit where the drawing happens rather than only where the canvas is
 		   mounted. At mount the dialog has not been laid out, so the box can
 		   still be nothing; and a canvas that is resized loses its backing
-		   store, taking the scale, the color and the page with it. */
+		   store, taking the scale and the page with it. */
 		ensureFitted() {
 			const canvas = this.$refs.canvas
 			if (!canvas) {
@@ -741,6 +817,19 @@ export default {
 			}
 			const pad = STROKE_SIZE + 2
 			return [minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2]
+		},
+
+		/* Set what the next stroke will be drawn in.
+		 *
+		 * Nothing already on the page moves: a stroke keeps the color it was
+		 * drawn with, which is what makes Undo put back what was taken rather
+		 * than a recolored copy of it.
+		 *
+		 * @param {string} value the chosen color
+		 */
+		chooseColor(value) {
+			this.color = knownColor(value)
+			rememberColor(this.color)
 		},
 
 		/* The color to fill a stroke with.
