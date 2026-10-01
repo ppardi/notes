@@ -122,10 +122,14 @@ async function pointer(wrapper, type, init) {
 	await wrapper.vm.$nextTick()
 }
 
-/* A button by its label, which is how a reader finds one - and, unlike its
-   place in the bar, does not change when a tool is added beside it. */
+/* A button by its name, which is how a reader finds one - and, unlike its
+   place in the bar, does not change when a tool is added beside it. The tools
+   carry an icon and no text, so the name is the one a screen reader would
+   read out. */
 function button(wrapper, label) {
-	return wrapper.findAll('button').find((candidate) => candidate.text() === label)
+	return wrapper.findAll('button').find((candidate) => {
+		return candidate.attributes('aria-label') === label || candidate.text() === label
+	})
 }
 
 describe('InkCanvas', () => {
@@ -688,6 +692,22 @@ describe('InkCanvas', () => {
 			await arrive(null)
 			expect(button(wrapper, 'Done').attributes('disabled')).toBeUndefined()
 		})
+	})
+
+	it('names the tools it shows as icons', async () => {
+		/* An icon with no name is a button nobody can describe: not to a screen
+		   reader, not in a bug report, and not to themselves. */
+		const wrapper = await open()
+		const buttons = wrapper.find('.ink__bar').findAll('button')
+		expect(buttons.map((b) => b.attributes('aria-label') || b.text()))
+			.toEqual(['Erase', 'Undo', 'Cancel', 'Done'])
+		/* The three tools are icons, so the name has to be written down; Done
+		   says what it does in words and needs no second copy of it. */
+		for (const [at, name] of [[0, 'Erase'], [1, 'Undo'], [2, 'Cancel']]) {
+			expect(buttons[at].attributes('aria-label'), `${name} has no name of its own`).toBe(name)
+			expect(buttons[at].text(), `${name} still carries text`).toBe('')
+		}
+		expect(buttons[3].text()).toBe('Done')
 	})
 
 	describe('more page than one screen', () => {

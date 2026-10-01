@@ -35,19 +35,39 @@
 					@pointercancel="onUp"
 				/>
 			</div>
+			<!-- The tools are icons and Done is words: the three that change
+			     what is on the page are reached with a glance, and the one
+			     that ends the session says so. Each icon carries its own
+			     name, which is what a screen reader reads and what a tooltip
+			     shows. -->
 			<div class="ink__bar">
 				<NcButton class="ink__tool"
+					:aria-label="t('notes', 'Erase')"
+					:title="t('notes', 'Erase')"
 					:pressed="erasing"
 					:disabled="!accepting()"
 					@click="erasing = !erasing"
 				>
-					{{ t('notes', 'Erase') }}
+					<template #icon>
+						<EraserIcon :size="20" />
+					</template>
 				</NcButton>
-				<NcButton :disabled="!history.length || saving" @click="undo">
-					{{ t('notes', 'Undo') }}
+				<NcButton :aria-label="t('notes', 'Undo')"
+					:title="t('notes', 'Undo')"
+					:disabled="!history.length || saving"
+					@click="undo"
+				>
+					<template #icon>
+						<UndoIcon :size="20" />
+					</template>
 				</NcButton>
-				<NcButton @click="$emit('close')">
-					{{ t('notes', 'Cancel') }}
+				<NcButton :aria-label="t('notes', 'Cancel')"
+					:title="t('notes', 'Cancel')"
+					@click="$emit('close')"
+				>
+					<template #icon>
+						<CloseIcon :size="20" />
+					</template>
 				</NcButton>
 				<NcButton variant="primary" :disabled="!ready || saving" @click="done">
 					{{ t('notes', 'Done') }}
@@ -62,6 +82,9 @@
 
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
+import CloseIcon from 'vue-material-design-icons/Close.vue'
+import EraserIcon from 'vue-material-design-icons/Eraser.vue'
+import UndoIcon from 'vue-material-design-icons/UndoVariant.vue'
 import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
@@ -75,7 +98,10 @@ export default {
 	name: 'InkCanvas',
 
 	components: {
+		CloseIcon,
+		EraserIcon,
 		NcButton,
+		UndoIcon,
 	},
 
 	props: {
