@@ -1476,8 +1476,11 @@ and the test:
 
 		// Pick red, then draw. The picker names the color it will draw in, so
 		// the button is found by what it says rather than by its place.
+		// The choices carry role menuitemradio, not button — they are one choice
+		// among six. Asking for a button named "Red" also matches Text's own
+		// disabled "Redo" button, and the click times out against it.
 		await page.getByRole('button', { name: /^Color:/ }).click()
-		await page.getByRole('button', { name: 'Red' }).click()
+		await page.getByRole('menuitemradio', { name: 'Red', exact: true }).click()
 
 		const box = (await canvas.boundingBox())!
 		const x = box.x + box.width / 2
