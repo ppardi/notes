@@ -431,7 +431,10 @@ test.describe('Ink', () => {
 		await drawAndFinish(page)
 		await expect(page.locator('.ink__canvas--live')).toBeHidden()
 
-		await page.locator('.ProseMirror').click()
+		// Into the text, not the middle of the editor: the middle of it is the
+		// picture that was just drawn, and a click there opens the canvas,
+		// which is what a click on ink is meant to do.
+		await page.getByText('Typed already.').click()
 		await page.keyboard.press('Control+End')
 		await page.keyboard.type(' more typing')
 		await expect.poll(async () => (await noteContent(noteId)).includes('more typing'), { timeout: 15000 }).toBe(true)
@@ -775,5 +778,69 @@ test.describe('Ink', () => {
 			// is shown on, so nothing is being stretched.
 			expect(pixels / shown.css).toBeGreaterThanOrEqual(shown.dpr)
 		})
+	})
+	test('keeps the Ink button in the same place however long the note is', async ({ page, request }) => {
+		// It used to sit at the foot of a box the height of one screen, so on a
+		// long note it rode up the page as the reader scrolled and ended up
+		// beside a paragraph in the middle of the text.
+		await login(page)
+		await deleteAllNotesVia()
+		await setNoteMode(request, 'rich')
+		const long = Array.from({ length: 60 }, (_, i) => `Paragraph ${i + 1}. ` + 'Some text that goes on. '.repeat(6)).join('\n\n')
+		const noteId = await createNoteViaRequest('', 'Long', `${long}\n`)
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+		await expect(page.locator('.ProseMirror').first()).toBeVisible()
+
+		const ink = page.getByRole('button', { name: 'Ink', exact: true })
+		const where = async () => {
+			const box = (await ink.boundingBox())!
+			const height = page.viewportSize()!.height
+			return { box, onScreen: box.y >= 0 && box.y + box.height <= height }
+		}
+
+		const atTop = await where()
+		expect(atTop.onScreen, 'not in view before scrolling').toBe(true)
+
+		// All the way down a note far taller than the window.
+		await page.locator('.app-content-details').evaluate((el) => {
+			el.scrollTop = el.scrollHeight
+		})
+		await page.waitForTimeout(400)
+		const atBottom = await where()
+		expect(atBottom.onScreen, 'scrolled out of view').toBe(true)
+		// And in the same place on the screen, not merely somewhere on it.
+		expect(Math.abs(atBottom.box.y - atTop.box.y), 'moved up the page').toBeLessThan(4)
+		expect(Math.abs(atBottom.box.x - atTop.box.x)).toBeLessThan(4)
+	})
+
+	test('puts the ink where the caret is', async ({ page, request }) => {
+		await login(page)
+		await deleteAllNotesVia()
+		await setNoteMode(request, 'rich')
+		const body = Array.from({ length: 12 }, (_, i) => `Paragraph ${i + 1}.`).join('\n\n')
+		const noteId = await createNoteViaRequest('', 'Caret', `${body}\n`)
+		await page.goto(`/index.php/apps/notes/note/${noteId}`)
+		await expect(page.locator('.ProseMirror').first()).toBeVisible()
+
+		// The reader puts the caret in the middle of the note and asks for ink.
+		await page.getByText('Paragraph 6.', { exact: true }).click()
+		await page.keyboard.press('End')
+		await page.getByRole('button', { name: 'Ink', exact: true }).click()
+		const canvas = page.locator('.ink__canvas--live')
+		await expect(canvas).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+		const box = (await canvas.boundingBox())!
+		await page.mouse.move(box.x + 300, box.y + 300)
+		await page.mouse.down()
+		await page.mouse.move(box.x + 380, box.y + 340, { steps: 8 })
+		await page.mouse.up()
+		await page.getByRole('button', { name: 'Done' }).click()
+
+		// Straight after the paragraph the caret was in, not at the end of the
+		// note and not in the title.
+		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toMatch(/!\[/)
+		const lines = (await noteContent(noteId)).split('\n').filter((line) => line.trim())
+		const ink = lines.findIndex((line) => line.startsWith('!['))
+		expect(lines[ink - 1]).toBe('Paragraph 6.')
 	})
 })

@@ -7,13 +7,17 @@
 	<div class="text-editor-wrapper" :class="{ loading: loading, 'icon-error': !loading && (!note || note.error), 'is-mobile': isMobile }">
 		<div v-show="!loading" ref="editor" class="text-editor" />
 		<TagCompletion :editorElement="editorElement" @select="onTagCompleted" />
-		<NcButton v-if="!loading"
-			class="ink-open"
-			variant="tertiary"
-			@click="openInk()"
-		>
-			{{ t('notes', 'Ink') }}
-		</NcButton>
+		<!-- The button is wrapped rather than made sticky itself: NcButton
+		     positions itself, and a sticky rule on it is overruled.
+
+		     Refusing the default on mousedown is what keeps the caret: the
+		     press would otherwise take the focus out of the editor, and the
+		     ink is written where the caret is. -->
+		<div v-if="!loading" class="ink-open">
+			<NcButton variant="secondary" @mousedown.prevent @click="openInk()">
+				{{ t('notes', 'Ink') }}
+			</NcButton>
+		</div>
 		<InkCanvas
 			v-if="inkId"
 			:noteId="Number(noteId)"
@@ -691,10 +695,15 @@ export default {
 
 <style lang="scss" scoped>
 .text-editor-wrapper {
-	height: 100%;
-	/* The Ink button sits under the editor, so the editor takes what is left
-	   rather than the whole height. Sized to the full height it pushed the
-	   button below the bottom of the window, out of reach on a phone. */
+	/* As tall as the note, not as tall as the window: the Ink button sticks to
+	   the bottom of the pane, and a sticky element only sticks for as long as
+	   the box it is in is on screen. At one screen tall it came unstuck
+	   immediately and rode up the page with the text.
+
+	   A minimum rather than a height, so the button is still at the foot of
+	   the pane on a note too short to scroll - sized to the full height it
+	   was pushed below the bottom of the window, out of reach on a phone. */
+	min-height: 100%;
 	display: flex;
 	flex-direction: column;
 }
@@ -705,9 +714,18 @@ export default {
 	min-height: 0;
 }
 
+/* Always in the same corner. It used to sit at the foot of a box one screen
+   tall, so on a long note it rode up the page as the reader scrolled and came
+   to rest beside a paragraph in the middle of the text. Sticky keeps it where
+   it was put, and the solid variant keeps it readable over the words it now
+   floats above. */
 .ink-open {
+	position: sticky;
+	bottom: calc(var(--default-grid-baseline) * 2);
 	flex: none;
 	align-self: flex-end;
+	margin-block-end: calc(var(--default-grid-baseline) * 2);
+	margin-inline-end: calc(var(--default-grid-baseline) * 2);
 }
 
 /* Ink follows the theme where it is rendered, the same way the canvas it was
