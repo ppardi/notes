@@ -52,7 +52,12 @@ test assigned to the task that owns the code.
 
 1. **A stroke loaded from a file with a color that is not in the palette** —
    e.g. `#ff00ff` from a hand-edited file. Expected: drawn in the default, never
-   passed to `fillStyle`. Pinned in Task 2.
+   passed to `fillStyle`, **and saved back as the default rather than as the
+   value it came in with**. Validating only on the way to the canvas would leave
+   the picture black while the metadata beside it still claimed magenta, and
+   this codebase's rule is that the picture and the strokes that drew it cannot
+   come to disagree (`rubOut()` says so in as many words). Pinned in Task 2 for
+   the validator and Task 3 for both halves of the round trip.
 2. **`localStorage.getItem` throwing** — Safari private browsing throws rather
    than returning null. Expected: the default color, canvas opens normally.
    Pinned in Task 2.
@@ -542,6 +547,38 @@ that point.
 		expect(page(wrapper).fillStyles).toEqual([DEFAULT_INK_COLOR])
 	})
 
+	it('saves a refused color as the one it was drawn in, not the one it came in with', async () => {
+		/* Validating only on the way to the canvas would leave the picture
+		   black and the metadata beside it still claiming magenta - a file
+		   that disagrees with itself for good. The strokes a canvas holds are
+		   the ones it draws. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open({
+			png: new Blob(),
+			strokes: [{ points: [[10, 10, 0.5]], color: '#ff00ff' }],
+			origin: null,
+		})
+
+		await wrapper.vm.done()
+
+		expect(saveInk.mock.calls[0][3][0].color).toBe(DEFAULT_INK_COLOR)
+	})
+
+	it('gives a stroke loaded without a color one of its own', async () => {
+		/* Every file written before this change. Opening and saving it makes
+		   it say what it has always drawn. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open({
+			png: new Blob(),
+			strokes: [{ points: [[10, 10, 0.5]] }],
+			origin: null,
+		})
+
+		await wrapper.vm.done()
+
+		expect(saveInk.mock.calls[0][3][0].color).toBe(DEFAULT_INK_COLOR)
+	})
+
 	it('stamps the color in force onto the stroke being drawn', async () => {
 		const wrapper = await open()
 		wrapper.vm.color = '#008800'
@@ -718,7 +755,43 @@ to
 				}
 ```
 
-- [ ] **Step 6: Stamp the color onto a new stroke**
+- [ ] **Step 6: Give every loaded stroke a color of its own**
+
+`colorOf()` guards the canvas, but `done()` saves `this.strokes` as they are —
+`shiftStrokes()` spreads `...stroke`, so an unrecognized color would be drawn as
+black and written back unchanged, and the file would disagree with its own
+picture for good.
+
+In `mounted()`, change
+
+```js
+			const placed = placeInk(
+				existing?.strokes ?? [],
+				existing?.origin,
+				canvas?.clientWidth ?? 0,
+				canvas?.clientHeight ?? 0,
+			)
+```
+
+to
+
+```js
+			/* Every stroke gets a color this palette offers, here at the one
+			   place strokes enter the canvas. A file can be copied in from
+			   anywhere and edited by anything; what it says would otherwise be
+			   drawn as the default and saved back as whatever it claimed, and
+			   a picture that disagrees with the strokes beside it is the one
+			   thing this format must never produce. A stroke from before color
+			   existed gets the default, which is what it has always drawn in. */
+			const placed = placeInk(
+				(existing?.strokes ?? []).map((stroke) => ({ ...stroke, color: knownColor(stroke.color) })),
+				existing?.origin,
+				canvas?.clientWidth ?? 0,
+				canvas?.clientHeight ?? 0,
+			)
+```
+
+- [ ] **Step 7: Stamp the color onto a new stroke**
 
 In `onDown(event)`, change
 
@@ -749,17 +822,17 @@ contains them and replace its body with:
 
 Rename that test to `'leaves the color off the context, since a stroke carries its own'`.
 
-- [ ] **Step 7: Run them and watch them pass**
+- [ ] **Step 8: Run them and watch them pass**
 
 Run: `npm run test -- inkCanvas`
 Expected: PASS, all tests in the file.
 
-- [ ] **Step 8: Run the whole suite and the linters**
+- [ ] **Step 9: Run the whole suite and the linters**
 
 Run: `npm run test && npm run lint && npm run stylelint`
 Expected: all green.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/components/InkCanvas.vue src/tests/inkCanvas.spec.js
@@ -771,9 +844,12 @@ the renderers inherited it, which is why a resize had to set it again.
 It belongs to the stroke, so each render path fills per stroke and fit()
 sets none.
 
-A stroke with no color of its own is drawn in the default, which is every
-file written before this. A color that is not in the palette is too -
-strokes arrive from a file that anything could have written.
+Every stroke is given a color the palette offers as it enters the canvas,
+rather than only on the way to fillStyle. Guarding the canvas alone would
+have drawn an unrecognized color as black and saved it back unchanged,
+leaving a picture that disagrees with the strokes beside it - which is the
+one thing this format must never produce. A stroke from before color
+existed gets the default, which is what it has always drawn in.
 
 Assisted-by: Claude Code:claude-opus-5
 
@@ -796,7 +872,9 @@ Covers Review Focus item 5.
 - Consumes: `INK_COLORS`, `rememberedColor`, `rememberColor` from
   `src/inkPalette.js`; the `color` data field from Task 3.
 - Produces: a computed `colorChoices` returning
-  `Array<{key, value, label, chosen}>`; a method `chooseColor(value)`.
+  `Array<{key, value, label, chosen}>` and a computed `colorLabel`; a method
+  `chooseColor(value)`; a `picking` boolean in `data()` that `claimFocus()`
+  reads.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -850,6 +928,46 @@ Add to `src/tests/inkCanvas.spec.js`, inside `describe('InkCanvas', …)`:
 		expect(wrapper.vm.strokes[0].color).toBe(DEFAULT_INK_COLOR)
 	})
 
+	it('leaves the focus alone while the picker is open', async () => {
+		/* The dialog holds the focus on purpose: iPadOS Scribble writes into
+		   whatever text field has it, and the note's editor is right behind
+		   this. The picker's popover teleports to <body>, so it is NOT inside
+		   the dialog - and claimFocus() returns early only when the dialog
+		   contains the active element. Called while the menu is open it would
+		   take the focus back and shut the menu.
+		 *
+		 * fit() is the only caller and ensureFitted() only calls it when the
+		 * backing size changed - a rotation, or the error message appearing.
+		 * Both of those happen on the device, which is the one place this
+		 * would be found. */
+		const wrapper = await open()
+		wrapper.vm.picking = true
+		const elsewhere = document.createElement('button')
+		document.body.appendChild(elsewhere)
+		elsewhere.focus()
+
+		wrapper.vm.claimFocus()
+
+		expect(document.activeElement).toBe(elsewhere)
+		elsewhere.remove()
+	})
+
+	it('takes the focus back once the picker closes', async () => {
+		/* The guard above must not become a way to leave the focus outside the
+		   dialog for good - that is the state Scribble writes into the note
+		   from. */
+		const wrapper = await open()
+		wrapper.vm.picking = false
+		const elsewhere = document.createElement('button')
+		document.body.appendChild(elsewhere)
+		elsewhere.focus()
+
+		wrapper.vm.claimFocus()
+
+		expect(document.activeElement).not.toBe(elsewhere)
+		elsewhere.remove()
+	})
+
 	it('undoes a stroke with the color it was drawn in, not the one now chosen', async () => {
 		const wrapper = await open()
 		wrapper.vm.chooseColor('#cc0000')
@@ -872,7 +990,28 @@ Run: `npm run test -- inkCanvas`
 Expected: FAIL — `Cannot read properties of undefined (reading 'map')`, because
 `colorChoices` does not exist.
 
-- [ ] **Step 3: Mock NcActions so the component can mount**
+- [ ] **Step 3: Make the test translation stub interpolate**
+
+This task adds the first string with a placeholder in it. The stub in
+`src/tests/inkCanvas.spec.js` is `globalThis.t = (app, text) => text`, which
+drops the variables — so `t('notes', 'Color: {color}', { color: 'Red' })` would
+return the literal `Color: {color}` and any test asserting that label would be
+asserting a lie. In the `beforeAll` block, change
+
+```js
+	globalThis.t = (app, text) => text
+```
+
+to
+
+```js
+	/* Interpolating, because a label with a placeholder left in it is not the
+	   label a reader sees, and a test asserting one would pass on a string
+	   nobody will ever read. */
+	globalThis.t = (app, text, vars) => text.replace(/\{(\w+)\}/g, (whole, name) => vars?.[name] ?? whole)
+```
+
+- [ ] **Step 4: Mock NcActions so the component can mount**
 
 `NcActions` and `NcActionButton` import `.css`, which Node cannot load — the
 same problem this file already solves for `NcButton` at the top. Add beside that
@@ -888,7 +1027,7 @@ vi.mock('@nextcloud/vue/components/NcActionButton', () => ({
 }))
 ```
 
-- [ ] **Step 4: Add the choices and the chooser**
+- [ ] **Step 5: Add the choices and the chooser**
 
 In `src/components/InkCanvas.vue`, change the palette import to
 
@@ -960,7 +1099,45 @@ In `data()`, change the `color` field added in Task 3 from
 remove it from the import, leaving
 `import { INK_COLORS, knownColor, rememberColor, rememberedColor } from '../inkPalette.js'`.
 
-- [ ] **Step 5: Add the picker to the bar**
+Add to `data()`, immediately after the `color` field:
+
+```js
+			/* Whether the picker's menu is open. NcActions manages this
+			   itself; the component has to know because the menu lives
+			   outside the dialog and the dialog takes the focus back from
+			   anything outside it. */
+			picking: false,
+```
+
+and make `claimFocus()` stand down while it is. Change its guard from
+
+```js
+			const dialog = this.$refs.dialog
+			if (!dialog || dialog.contains(document.activeElement)) {
+				return
+			}
+```
+
+to
+
+```js
+			const dialog = this.$refs.dialog
+			if (!dialog || this.picking || dialog.contains(document.activeElement)) {
+				return
+			}
+```
+
+and add to the end of that method's doc comment, before the closing `*/`:
+
+```
+	 * The color picker's menu is the one thing outside this dialog that
+	 * belongs to it: it is a popover, so it is teleported to the body and
+	 * `contains` says no. Taking the focus back from it would shut it
+	 * mid-choice, which a resize - a rotation, or the error message
+	 * appearing - is enough to cause.
+```
+
+- [ ] **Step 6: Add the picker to the bar**
 
 Add the imports beside the existing component imports:
 
@@ -980,7 +1157,8 @@ before the Erase button:
 				     pen will draw without opening anything. Six swatches in
 				     the bar itself would be faster by one tap and leave no
 				     room for the tools. -->
-				<NcActions class="ink__color"
+				<NcActions v-model:open="picking"
+					class="ink__color"
 					:aria-label="t('notes', 'Color: {color}', { color: colorLabel })"
 					:title="t('notes', 'Color: {color}', { color: colorLabel })"
 					:disabled="!accepting()"
@@ -988,10 +1166,17 @@ before the Erase button:
 					<template #icon>
 						<span class="ink__swatch" :style="{ background: color }" />
 					</template>
+					<!-- Radio rather than six toggles. These are one choice
+					     among six, and NcActionButton's default behavior with
+					     a boolean model-value is a toggle button - which a
+					     reader listening would hear as six separate pressed
+					     and unpressed buttons rather than as a single pen. -->
 					<NcActionButton v-for="choice in colorChoices"
 						:key="choice.key"
-						:model-value="choice.chosen"
-						@click="chooseColor(choice.value)"
+						type="radio"
+						:model-value="color"
+						:value="choice.value"
+						@update:model-value="chooseColor(choice.value)"
 					>
 						<template #icon>
 							<span class="ink__swatch" :style="{ background: choice.value }" />
@@ -1001,32 +1186,28 @@ before the Erase button:
 				</NcActions>
 ```
 
-Add to the component's `<style scoped>` block, beside the other `.ink__` rules:
+`NcActionButton` takes `type` from `['button', 'checkbox', 'radio', 'reset', 'submit']`
+and, with `type="radio"`, compares its own `value` against `modelValue` to decide
+which one is selected — so `model-value` is bound to the chosen color itself,
+not to a per-choice boolean. The `chosen` field on `colorChoices` is still what
+the tests assert and what `colorLabel` reads; it is no longer what the markup
+binds.
 
-```css
-/* A swatch shows the ink itself, so it sits under the same themed filter the
-   canvas does and a reader sees in the picker what they will get on the page. */
-.ink__swatch {
-	display: block;
-	inline-size: 16px;
-	block-size: 16px;
-	border-radius: 50%;
-	border: 1px solid var(--color-border-dark);
-	filter: var(--background-invert-if-dark) hue-rotate(180deg);
-}
-```
+The swatch's own CSS lands in Task 5, which owns every surface the theme filter
+touches. Until then the swatches show their raw color, which is right on a light
+theme and a little off on a dark one for the span of one commit.
 
-- [ ] **Step 6: Run them and watch them pass**
+- [ ] **Step 7: Run them and watch them pass**
 
 Run: `npm run test -- inkCanvas`
 Expected: PASS, all tests in the file.
 
-- [ ] **Step 7: Run the whole suite and the linters**
+- [ ] **Step 8: Run the whole suite and the linters**
 
 Run: `npm run test && npm run lint && npm run stylelint`
 Expected: all green.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src/components/InkCanvas.vue src/tests/inkCanvas.spec.js
@@ -1038,8 +1219,15 @@ bar already holds four controls and will want room for more, so this
 costs one slot rather than six - two taps to change color, which is a
 thing done occasionally rather than constantly.
 
-Each swatch carries its own name. A color is no label at all to a reader
-who cannot tell two of them apart, or who is listening.
+Each swatch carries its own name and the six are radio buttons, because
+they are one choice rather than six switches. A color is no label at all
+to a reader who cannot tell two of them apart, or who is listening.
+
+The dialog stands down from claiming the focus while the menu is open.
+It holds the focus so that iPadOS Scribble has no text field to write the
+pen into, but the menu is a popover and so lives outside the dialog -
+and a resize while it was open would have taken the focus back and shut
+it mid-choice.
 
 Assisted-by: Claude Code:claude-opus-5
 
@@ -1055,8 +1243,12 @@ The last piece, and the one the whole design rests on. Today both the canvas and
 the picture in the note carry `filter: var(--background-invert-if-dark)`, which
 on a dark theme is `invert(100%)` — and plain invert turns red into cyan.
 
+This task owns **every** surface the theme filter touches — the canvas, the
+picture in the note, and the picker's swatches — so that they cannot drift apart
+and a reviewer sees them agree in one diff.
+
 **Files:**
-- Modify: `src/components/InkCanvas.vue` (the `.ink__canvas` rule)
+- Modify: `src/components/InkCanvas.vue` (the `.ink__canvas` rule, and the new `.ink__swatch` rule)
 - Modify: `src/components/NoteRich.vue` (the `figure[data-component="image-view"]` rule)
 - Modify: `playwright/e2e/ink.spec.ts`
 
@@ -1147,6 +1339,23 @@ rule (around line 926), with the shorter comment:
 	filter: var(--background-invert-if-dark) hue-rotate(180deg);
 ```
 
+And add the picker's swatch rule to the same `<style scoped>` block, beside the
+other `.ink__` rules — it is a third surface showing ink, and it has to be
+filtered identically or the picker would promise a color the page does not give:
+
+```css
+/* A swatch shows the ink itself, so it sits under the same themed filter the
+   canvas and the picture do: what the picker offers is what lands on the page. */
+.ink__swatch {
+	display: block;
+	inline-size: 16px;
+	block-size: 16px;
+	border-radius: 50%;
+	border: 1px solid var(--color-border-dark);
+	filter: var(--background-invert-if-dark) hue-rotate(180deg);
+}
+```
+
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx playwright test ink.spec.ts -g "keeps the hue"`
@@ -1179,6 +1388,10 @@ back, which is what PencilKit does. Measured in Blink: all six palette
 colors come out byte-identical to the values computed from the filter
 specification's own matrix. Black still becomes white, so every drawing
 saved before this is unaffected.
+
+All three surfaces that show ink move together - the canvas, the picture
+in the note, and the picker's swatches. A swatch filtered differently
+from the page would offer a color the page does not give.
 
 Assisted-by: Claude Code:claude-opus-5
 
@@ -1218,6 +1431,12 @@ async function inkColorsOnThePage(page: Page): Promise<string[]> {
 			// Only pixels the nib covered fully. An antialiased edge is a blend
 			// with the transparent ground and is not the color anything was
 			// drawn in.
+			//
+			// This threshold is coupled to the nib: a 2.5 CSS pixel stroke at
+			// INK_DENSITY has a solid core, and a much finer one might have
+			// none at all. The caller asserts that something opaque was found,
+			// so a nib thinned past this fails loudly rather than reporting an
+			// empty page.
 			if (data[i + 3] < 250) {
 				continue
 			}
@@ -1260,7 +1479,12 @@ and the test:
 		await expect(page.locator('.ink__canvas--page')).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
 
-		expect(await inkColorsOnThePage(page)).toContain('#cc0000')
+		const colors = await inkColorsOnThePage(page)
+		// Said separately, so a reader of a failure can tell "the ink is the
+		// wrong color" from "the helper found no fully-opaque pixels at all",
+		// which is what a thinner nib would cause.
+		expect(colors.length).toBeGreaterThan(0)
+		expect(colors).toContain('#cc0000')
 
 		// And the picker opens on the color last used, not back at black.
 		await expect(page.getByRole('button', { name: 'Color: Red' })).toBeVisible()
