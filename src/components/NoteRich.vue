@@ -736,7 +736,16 @@ export default {
    from. An ordinary picture, and one on another host, are left alone. Only
    the picture is recoloured, so Text's caption and controls keep theirs. */
 .text-editor:deep(figure[data-component="image-view"][data-src^=".attachments."][data-src*="/ink-"][data-src$=".png"] img) {
-	filter: var(--background-invert-if-dark);
+	/* Lightness flipped, hue kept. The variable is `invert(100%)` on a dark
+	   theme and `no` on a light one, so this is `invert(100%) hue-rotate(180deg)`
+	   there and an invalid - therefore ignored - declaration here. Extending
+	   the variable rather than writing the theme's own selector is what makes
+	   this track whatever the server decides is dark, including themes that do
+	   not exist yet.
+
+	   Without the rotation, invert flips hue along with lightness and a red
+	   annotation reads cyan. With it, a dark red becomes a light red. */
+	filter: var(--background-invert-if-dark) hue-rotate(180deg);
 	/* And is shown at the size it was drawn, which is what makes it sharp.
 	   Markdown cannot say how big to show an image, so a picture is laid out
 	   at one image pixel per CSS pixel and every pixel of it is doubled on a

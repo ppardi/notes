@@ -1042,7 +1042,20 @@ export default {
    it was drawn. */
 .ink__canvas,
 .ink__backdrop {
-	filter: var(--background-invert-if-dark);
+	/* Lightness flipped, hue kept - see NoteRich.vue, which does the same to
+	   the picture once it is in the note. */
+	filter: var(--background-invert-if-dark) hue-rotate(180deg);
+}
+
+/* A swatch shows the ink itself, so it sits under the same themed filter the
+   canvas and the picture do: what the picker offers is what lands on the page. */
+.ink__swatch {
+	display: block;
+	inline-size: 16px;
+	block-size: 16px;
+	border-radius: 50%;
+	border: 1px solid var(--color-border-dark);
+	filter: var(--background-invert-if-dark) hue-rotate(180deg);
 }
 
 /* The saved picture, behind a canvas that is blank and takes no input. Laid

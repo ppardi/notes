@@ -205,7 +205,7 @@ test.describe('Ink', () => {
 		// Read off the painted style: a rule that matched nothing would compute
 		// to `none` here, exactly as a picture left alone does.
 		const filters = await page.locator('figure[data-component="image-view"] img').evaluateAll((images) => images.map((image) => getComputedStyle(image).filter))
-		expect(filters).toEqual(['invert(1)', 'none'])
+		expect(filters).toEqual(['invert(1) hue-rotate(180deg)', 'none'])
 	})
 
 	test('marks the page on contact, on the second stroke as much as the first', async ({ page, request }) => {
@@ -842,5 +842,39 @@ test.describe('Ink', () => {
 		const lines = (await noteContent(noteId)).split('\n').filter((line) => line.trim())
 		const ink = lines.findIndex((line) => line.startsWith('!['))
 		expect(lines[ink - 1]).toBe('Paragraph 6.')
+	})
+
+	test('keeps the hue of colored ink when the theme inverts it', async ({ page, request }) => {
+		// The whole color design rests on this one declaration. Plain invert
+		// flips lightness and hue together, which turns a red annotation cyan;
+		// the hue-rotate puts the hue back. A mistake here is invisible in the
+		// light theme, which is how the tests run by default.
+		await openInkedNote(page, request)
+		await drawAndFinish(page)
+
+		const picture = page.locator('figure[data-component="image-view"] img').first()
+		await expect(picture).toBeVisible()
+
+		const filter = await picture.evaluate((img) => getComputedStyle(img).filter)
+		// The light theme applies none: `no hue-rotate(180deg)` is not a valid
+		// filter, so the declaration is dropped entirely.
+		expect(filter).toBe('none')
+
+		// And on the dark theme the pair is applied. Swap the attribute the
+		// theming app sets, rather than changing the account's theme, so the
+		// test says what the CSS does and nothing about the server.
+		//
+		// The light attribute has to come OFF, not merely be joined by the dark
+		// one. Every theme's stylesheet is linked on every page so the theme can
+		// be switched without a reload, and `[data-theme-light]` and
+		// `[data-theme-dark]` have equal specificity - so with both attributes
+		// present, source order decides and light.css is linked last. Measured:
+		// adding `data-theme-dark` alone leaves the variable at `no`.
+		await page.evaluate(() => {
+			document.body.removeAttribute('data-theme-light')
+			document.body.setAttribute('data-theme-dark', '')
+		})
+		const dark = await picture.evaluate((img) => getComputedStyle(img).filter)
+		expect(dark).toBe('invert(1) hue-rotate(180deg)')
 	})
 })
