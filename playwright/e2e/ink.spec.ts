@@ -566,4 +566,42 @@ test.describe('Ink', () => {
 		// And it is the line that was not rubbed out, not an empty page.
 		expect(size.getUint32(16)).toBeGreaterThanOrEqual(100)
 	})
+	test('reopens on the ink as it was last saved, not as it was first fetched', async ({ page, request }) => {
+		// The attachment endpoint answers with `max-age=3600` and no ETag, so a
+		// second read of the same path can be served out of the browser's cache
+		// for an hour. The picture in the note is refreshed by hand; the file the
+		// canvas opens on was not, so re-editing twice showed the drawing as it
+		// stood before the first edit.
+		await openInkedNote(page, request)
+		await drawAndFinish(page)
+
+		const picture = page.locator('figure[data-component="image-view"] img')
+		await expect(picture).toBeVisible({ timeout: 15000 })
+
+		// Reopen once, which is what puts the file in the cache, and note how
+		// much ink the canvas opened on.
+		await picture.click()
+		await expect(page.locator('.ink__canvas--live')).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+		const first = await inkOnThePage(page)
+		expect(first).toBeGreaterThan(0)
+
+		// Add a good deal more ink and save it.
+		const canvas = page.locator('.ink__canvas--live')
+		const box = (await canvas.boundingBox())!
+		const x = box.x + box.width / 4
+		const y = box.y + box.height / 2
+		await page.mouse.move(x, y)
+		await page.mouse.down()
+		await page.mouse.move(x + 400, y + 120, { steps: 12 })
+		await page.mouse.up()
+		await page.getByRole('button', { name: 'Done' }).click()
+		await expect(page.getByRole('dialog', { name: 'Ink' })).toHaveCount(0)
+
+		// Reopening has to show what was just saved.
+		await picture.click()
+		await expect(page.locator('.ink__canvas--live')).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+		await expect.poll(async () => await inkOnThePage(page), { timeout: 10000 }).toBeGreaterThan(first * 1.5)
+	})
 })
