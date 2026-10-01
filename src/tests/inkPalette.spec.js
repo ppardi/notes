@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_INK_COLOR, INK_COLORS, knownColor, rememberColor, rememberedColor } from '../inkPalette.js'
 
 describe('the palette', () => {
@@ -63,6 +63,10 @@ describe('the remembered color', () => {
 		window.localStorage.clear()
 	})
 
+	afterEach(() => {
+		vi.restoreAllMocks()
+	})
+
 	it('is the default until one is chosen', () => {
 		expect(rememberedColor()).toBe(DEFAULT_INK_COLOR)
 	})
@@ -79,21 +83,28 @@ describe('the remembered color', () => {
 
 	it('is the default when storage cannot be read', () => {
 		/* Private browsing throws rather than returning null. The canvas has to
-		   open regardless; a forgotten color is not a reason to fail. */
-		vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+		   open regardless; a forgotten color is not a reason to fail.
+		 *
+		 * Spied on the prototype, not the instance: jsdom's Storage is exotic
+		 * and treats a property defined on the instance as a named-item write,
+		 * so an instance spy never fires and this test would pass without ever
+		 * reaching the branch it exists for. */
+		const reading = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
 			throw new Error('denied')
 		})
+
 		expect(rememberedColor()).toBe(DEFAULT_INK_COLOR)
-		vi.restoreAllMocks()
+		expect(reading).toHaveBeenCalled()
 	})
 
 	it('does not throw when storage cannot be written', () => {
 		/* The color still applies to this session's strokes. Only the
 		   remembering is lost, and that is not worth an error. */
-		vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+		const writing = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
 			throw new Error('quota')
 		})
+
 		expect(() => rememberColor('#0044cc')).not.toThrow()
-		vi.restoreAllMocks()
+		expect(writing).toHaveBeenCalled()
 	})
 })
