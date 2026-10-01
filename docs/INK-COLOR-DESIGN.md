@@ -46,6 +46,9 @@ Read out of the running container, Nextcloud 35, 2026-10-01:
 | What are the backgrounds? | `#ffffff` light, `#171717` dark, `#000000` dark high contrast. |
 | Does `invert` keep hue? | **No.** `#cc0000` inverts to `#11ffff`. |
 | Does `invert(100%) hue-rotate(180deg)`? | **Yes**, approximately — see below. |
+| Does a browser agree with the computed table? | **Yes, exactly.** All six colors came back byte-identical in Blink (Chromium 152), measured through a canvas filter. |
+| How is the dark theme scoped? | `[data-theme-dark] { … }`, and `@media (prefers-color-scheme: dark) [data-theme-default] { … }` for the default theme (`ThemingController.php:433`). |
+| What does `no hue-rotate(180deg)` compute to? | `none` — the declaration is dropped, which is the light-theme behavior wanted. So does `none hue-rotate(180deg)`. |
 
 The second filter is the one PencilKit uses: keep the hue, flip the lightness.
 Computed from the fixed `hue-rotate` matrix in the Filter Effects specification,
@@ -105,13 +108,31 @@ places that have it today: `.ink__canvas` in `InkCanvas.vue` and the
   drawing mixing black with red would still have invisible black on the dark
   theme.
 
-**Written as explicit dark-theme rules, not by extending the variable.**
-`filter: var(--background-invert-if-dark) hue-rotate(180deg)` happens to do the
-right thing, because in light themes it resolves to `no hue-rotate(180deg)`,
-which is invalid and therefore ignored. Relying on an invalid value to mean "no
-filter" is a trick that works until someone changes `no` to something that
-parses. The dark rule is written against the theme's own selector instead, with
-the light case stating plainly that there is no filter.
+**Written by extending the variable: `var(--background-invert-if-dark)
+hue-rotate(180deg)`.** This reverses an earlier draft of this document, which
+called for explicit dark-theme selectors on the grounds that the variable only
+works by accident — in a light theme it resolves to `no hue-rotate(180deg)`,
+which is invalid and therefore ignored. Two measurements changed the decision.
+
+The server scopes its dark variables as `[data-theme-dark] { … }`, and the
+default theme's dark values as `@media (prefers-color-scheme: dark)
+[data-theme-default] { … }` (`ThemingController.php:433`). Writing the rule
+explicitly therefore means hardcoding three selectors — `[data-theme-dark]`,
+`[data-theme-dark-highcontrast]`, and the media-query form — and a fourth the
+day Nextcloud adds another dark theme. Extending the variable tracks whatever
+the server decides is dark, including themes that do not exist yet.
+
+And the "accident" fails safe under every value the variable could plausibly
+take. Measured in the browser: `no hue-rotate(180deg)` and `none
+hue-rotate(180deg)` both drop the declaration and compute to `none`, while
+`invert(100%) hue-rotate(180deg)` computes to `invert(1) hue-rotate(180deg)`.
+There is no filter keyword that would combine with a function and produce
+something unwanted.
+
+What the earlier draft was right about is that this is not self-evident from
+reading the CSS. The answer is a comment saying so, and a test that asserts the
+computed filter on both a light and a dark theme — which turns the risk into
+something that fails loudly rather than silently.
 
 ### Six colors, and the orange is not the obvious one
 
