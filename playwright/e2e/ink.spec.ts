@@ -96,6 +96,34 @@ async function inkBoxOnScreen(page: Page): Promise<{ left: number, top: number, 
 	})
 }
 
+// Which colors are actually painted on the page sheet, most-used first. Read
+// off the pixels rather than off the strokes: what is being checked is what the
+// reader sees when they open their drawing again.
+async function inkColorsOnThePage(page: Page): Promise<string[]> {
+	return await page.locator('.ink__canvas--page').evaluate((canvas: HTMLCanvasElement) => {
+		const { data } = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height)
+		const counts = new Map<string, number>()
+		for (let i = 0; i < data.length; i += 4) {
+			// Only pixels the nib covered fully. An antialiased edge is a blend
+			// with the transparent ground and is not the color anything was
+			// drawn in.
+			//
+			// This threshold is coupled to the nib: a 2.5 CSS pixel stroke at
+			// INK_DENSITY has a solid core, and a much finer one might have
+			// none at all. The caller asserts that something opaque was found,
+			// so a nib thinned past this fails loudly rather than reporting an
+			// empty page.
+			if (data[i + 3] < 250) {
+				continue
+			}
+			const hex = '#' + [data[i], data[i + 1], data[i + 2]]
+				.map((v) => v.toString(16).padStart(2, '0')).join('')
+			counts.set(hex, (counts.get(hex) ?? 0) + 1)
+		}
+		return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([hex]) => hex)
+	})
+}
+
 test.describe('Ink', () => {
 	test('puts the picture into the note', async ({ page, request }) => {
 		const noteId = await openInkedNote(page, request)
@@ -844,6 +872,46 @@ test.describe('Ink', () => {
 		expect(lines[ink - 1]).toBe('Paragraph 6.')
 	})
 
+	test('a stroke keeps its color through the file and back', async ({ page, request }) => {
+		await openInkedNote(page, request)
+		await page.getByRole('button', { name: 'Ink', exact: true }).click()
+		const canvas = page.locator('.ink__canvas--live')
+		await expect(canvas).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		// Pick red, then draw. The picker names the color it will draw in, so
+		// the button is found by what it says rather than by its place. The
+		// choices are radio items, so they are not buttons: and "Red" as a
+		// button name would also match Text's "Redo".
+		await page.getByRole('button', { name: /^Color:/ }).click()
+		await page.getByRole('menuitemradio', { name: 'Red' }).click()
+
+		const box = (await canvas.boundingBox())!
+		const x = box.x + box.width / 2
+		const y = box.y + box.height / 2
+		await page.mouse.move(x, y)
+		await page.mouse.down()
+		await page.mouse.move(x + 100, y + 70, { steps: 10 })
+		await page.mouse.up()
+		await page.getByRole('button', { name: 'Done' }).click()
+
+		// Reopen the drawing and read what is on the page sheet.
+		await expect(page.locator('figure[data-component="image-view"] img').first()).toBeVisible()
+		await page.locator('figure[data-component="image-view"] img').first().click()
+		await expect(page.locator('.ink__canvas--page')).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		const colors = await inkColorsOnThePage(page)
+		// Said separately, so a reader of a failure can tell "the ink is the
+		// wrong color" from "the helper found no fully-opaque pixels at all",
+		// which is what a thinner nib would cause.
+		expect(colors.length).toBeGreaterThan(0)
+		expect(colors).toContain('#cc0000')
+
+		// And the picker opens on the color last used, not back at black.
+		await expect(page.getByRole('button', { name: 'Color: Red' })).toBeVisible()
+	})
+
 	test('keeps the hue of colored ink when the theme inverts it', async ({ page, request }) => {
 		// The whole color design rests on this one declaration. Plain invert
 		// flips lightness and hue together, which turns a red annotation cyan;
@@ -876,5 +944,71 @@ test.describe('Ink', () => {
 		})
 		const dark = await picture.evaluate((img) => getComputedStyle(img).filter)
 		expect(dark).toBe('invert(1) hue-rotate(180deg)')
+	})
+
+	test('keeps the hue of the ink on every surface that shows it', async ({ page, request }) => {
+		// The picture in the note is checked above. The other two surfaces are
+		// the canvas the ink is written on and the picker's swatches, and a
+		// swatch or canvas left on plain invert would look right in every
+		// light-theme test while the picker promised a color the page does not
+		// give.
+		await openInkedNote(page, request)
+		await page.getByRole('button', { name: 'Ink', exact: true }).click()
+		await expect(page.locator('.ink__canvas--live')).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		// The trigger's own swatch: it is in the bar whether or not the menu is
+		// open, and shows the color in use. Said by count first, so a selector
+		// that matched nothing fails here instead of passing vacuously below.
+		const trigger = page.locator('.ink__color .ink__swatch')
+		await expect(trigger).toHaveCount(1)
+		// The menu is teleported out of the bar, so its swatches are found from
+		// the page; opening it also puts the six choices' swatches in reach.
+		await page.getByRole('button', { name: /^Color:/ }).click()
+		await expect(page.getByRole('menuitemradio', { name: 'Red' })).toBeVisible()
+		const choice = page.getByRole('menuitemradio', { name: 'Red' }).locator('.ink__swatch')
+		await expect(choice).toHaveCount(1)
+		await page.keyboard.press('Escape')
+		await expect(page.getByRole('menuitemradio', { name: 'Red' })).toBeHidden()
+
+		const surfaces = {
+			canvas: page.locator('.ink__canvas--live'),
+			trigger,
+		}
+
+		const filterOf = async (locator: typeof trigger) => await locator.evaluate((el) => getComputedStyle(el).filter)
+		const sizeOf = async (locator: typeof trigger) => await locator.evaluate((el) => {
+			const style = getComputedStyle(el)
+			return { width: style.width, height: style.height }
+		})
+
+		// The trigger is the only thing in the bar that shows the color in use,
+		// and before it had a size it was an empty span: no dimensions and no
+		// visible icon. A non-zero rendered size is what says it shows anything.
+		expect(await sizeOf(trigger)).toEqual({ width: '16px', height: '16px' })
+
+		// The light theme applies no filter at all.
+		for (const [name, locator] of Object.entries(surfaces)) {
+			expect(await filterOf(locator), name).toBe('none')
+		}
+
+		// The light attribute has to come OFF, not merely be joined by the dark
+		// one. Every theme's stylesheet is linked on every page so the theme can
+		// be switched without a reload, and `[data-theme-light]` and
+		// `[data-theme-dark]` have equal specificity - so with both attributes
+		// present, source order decides and light.css is linked last.
+		await page.evaluate(() => {
+			document.body.removeAttribute('data-theme-light')
+			document.body.setAttribute('data-theme-dark', '')
+		})
+		for (const [name, locator] of Object.entries(surfaces)) {
+			expect(await filterOf(locator), name).toBe('invert(1) hue-rotate(180deg)')
+		}
+
+		// A swatch in the menu, which is a separate element from the trigger's.
+		await page.getByRole('button', { name: /^Color:/ }).click()
+		await expect(choice).toBeVisible()
+		expect(await filterOf(choice), 'menu swatch').toBe('invert(1) hue-rotate(180deg)')
+		expect(await sizeOf(choice)).toEqual({ width: '16px', height: '16px' })
 	})
 })
