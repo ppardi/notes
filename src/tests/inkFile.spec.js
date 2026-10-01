@@ -87,6 +87,20 @@ describe('loadInk', () => {
 		expect(get.mock.calls[0][1].params.path).toBe('.attachments.5/ink-abc.png')
 	})
 
+	it('does not let the browser answer out of its cache', async () => {
+		/* The attachment endpoint sends `max-age=3600` and no ETag, so a second
+		   read of the same path is answered from the cache for an hour without
+		   asking the server. The file changes under a fixed name every time the
+		   ink is saved, so that answer is the drawing as it was before the last
+		   edit - which is what the canvas then opened on. */
+		get.mockResolvedValue({ data: await tinyPng().arrayBuffer() })
+		await loadInk(5, 'abc')
+		await loadInk(5, 'abc')
+		const asked = get.mock.calls.map(([, config]) => config.params.fetched)
+		expect(asked[0]).toBeDefined()
+		expect(asked[1]).not.toBe(asked[0])
+	})
+
 	it('hands back the strokes as a plain list, not the envelope', async () => {
 		/* What saveInk uploads is what loadInk must read back. */
 		post.mockResolvedValue({ data: { filename: '.attachments.5/ink-abc.png' } })

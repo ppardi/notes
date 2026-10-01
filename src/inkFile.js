@@ -30,6 +30,20 @@ export async function saveInk(noteId, id, png, strokes) {
 	return response.data?.filename ?? inkAttachmentPath(noteId, id)
 }
 
+/* Makes each read of an ink file a URL the browser has not seen.
+ *
+ * The attachment endpoint answers `private, max-age=3600` with no ETag, so a
+ * second read of the same path is served out of the cache for an hour without
+ * the server being asked. An ink file changes under a fixed name every time it
+ * is saved, so that cached answer is the drawing as it stood before the last
+ * edit - and the canvas opened on it, losing the edit as far as the reader
+ * could tell. The server ignores the parameter.
+ *
+ * Counted as well as timed: two reads in the same millisecond are a reopen
+ * straight after a save, which is exactly the case this exists for.
+ */
+let reads = 0
+
 /**
  * Read one ink block back.
  *
@@ -41,9 +55,13 @@ export async function loadInk(noteId, id) {
 	const url = generateUrl(`/apps/notes/notes/${noteId}/attachment`)
 	try {
 		const response = await axios.get(url, {
-			/* The server resolves this against the note's folder, so the bare file
-			   name would look beside the note rather than in its attachments. */
-			params: { path: inkAttachmentPath(noteId, id) },
+			params: {
+				/* The server resolves this against the note's folder, so the bare
+				   file name would look beside the note rather than in its
+				   attachments. */
+				path: inkAttachmentPath(noteId, id),
+				fetched: `${Date.now()}.${++reads}`,
+			},
 			responseType: 'arraybuffer',
 		})
 		const bytes = new Uint8Array(response.data)
