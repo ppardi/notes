@@ -162,7 +162,16 @@ describe('InkCanvas', () => {
 		/* The sample was drawn at [1, 1] and the picture is cropped to the
 		   writing, so what is saved is the stroke in the picture's own
 		   coordinates - at the margin, not where the screen had it. */
-		expect(saveInk).toHaveBeenCalledWith(5, 'abc', expect.any(Blob), [{ points: [[CROP_MARGIN, CROP_MARGIN, 0.5]] }])
+		/* And the corner it was cropped from, which puts it back here when it
+		   is opened again - clamped onto the page then, since this one was
+		   drawn inside the margin of the edge. */
+		expect(saveInk).toHaveBeenCalledWith(
+			5,
+			'abc',
+			expect.any(Blob),
+			[{ points: [[CROP_MARGIN, CROP_MARGIN, 0.5]] }],
+			[1 - CROP_MARGIN, 1 - CROP_MARGIN],
+		)
 		expect(wrapper.emitted('saved')?.[0]?.[0]).toEqual({ id: 'abc' })
 		expect(wrapper.emitted('close')).toHaveLength(1)
 	})
@@ -225,6 +234,44 @@ describe('InkCanvas', () => {
 	it('opens over the strokes that were saved before', async () => {
 		const wrapper = await open({ png: new Blob(), strokes: [{ points: [[3, 3, 0.5]] }] })
 		expect(wrapper.vm.strokes).toEqual([{ points: [[3, 3, 0.5]] }])
+	})
+
+	it('opens the drawing where it was left', async () => {
+		/* The file holds the writing cropped to itself, so without the corner
+		   it was cropped from, a reader who drew in the middle of the page saw
+		   it there the first time and in the top left every time after. */
+		const wrapper = await open({
+			png: new Blob(),
+			strokes: [{ points: [[CROP_MARGIN, CROP_MARGIN, 0.5], [45, 35, 0.5]] }],
+			origin: [400, 300],
+		})
+		expect(wrapper.vm.strokes[0].points[0]).toEqual([400 + CROP_MARGIN, 300 + CROP_MARGIN, 0.5])
+	})
+
+	it('saves where the drawing is, so it opens there next time', async () => {
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open({ png: new Blob(), strokes: [] })
+		await pointer(wrapper, 'pointerdown', { offsetX: 400, offsetY: 300 })
+		await pointer(wrapper, 'pointermove', { offsetX: 420, offsetY: 330 })
+
+		await wrapper.vm.done()
+
+		expect(saveInk.mock.calls[0][4]).toEqual([400 - CROP_MARGIN, 300 - CROP_MARGIN])
+	})
+
+	it('keeps the drawing still across a save and an open', async () => {
+		/* The round trip, which is the whole point: what is handed to saveInk
+		   put back through the load has to come out where it started. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const first = await open({ png: new Blob(), strokes: [] })
+		await pointer(first, 'pointerdown', { offsetX: 400, offsetY: 300 })
+		await pointer(first, 'pointermove', { offsetX: 420, offsetY: 330 })
+		await first.vm.done()
+		const [, , , strokes, origin] = saveInk.mock.calls[0]
+
+		const again = await open({ png: new Blob(), strokes, origin })
+
+		expect(again.vm.strokes[0].points).toEqual([[400, 300, 0.5], [420, 330, 0.5]])
 	})
 
 	it('undoes the last stroke', async () => {

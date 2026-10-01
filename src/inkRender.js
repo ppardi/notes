@@ -93,6 +93,40 @@ export function shiftStrokes(strokes, dx, dy) {
 const CURVABLE = 4
 
 /**
+ * Ink back where it was drawn, as far as this screen allows.
+ *
+ * A saved block is cropped to the writing and its strokes moved into the
+ * picture's own corner, which is what makes the file the size of the drawing
+ * rather than the size of a screen. Opening it without putting it back meant
+ * the drawing jumped to the top left - so the first time a reader opened it
+ * they saw it where they had written it, and every time after that somewhere
+ * else. The origin saved beside the strokes is what undoes that.
+ *
+ * Where the screen cannot hold it at that offset the ink is brought on rather
+ * than left hanging off the edge: an iPad is a different width in portrait,
+ * and ink outside the canvas can be neither seen nor rubbed out. A drawing
+ * longer than the screen starts at the top, because no offset would show all
+ * of it and the top is where reading starts.
+ *
+ * @param {Array<{points: Array<Array<number>>}>} strokes the saved strokes
+ * @param {Array<number> | null | undefined} origin where it was, or nothing
+ *   for a block saved before positions were kept
+ * @param {number} width the canvas, in CSS pixels
+ * @param {number} height the canvas, in CSS pixels
+ * @return {Array<object>} the strokes, placed
+ */
+export function placeInk(strokes, origin, width, height) {
+	const bounds = inkBounds(strokes)
+	if (!bounds || !origin) {
+		return strokes
+	}
+	const [left, top, pictureWidth, pictureHeight] = bounds
+	const x = Math.max(0, Math.min(origin[0], width - pictureWidth))
+	const y = Math.max(0, Math.min(origin[1], height - pictureHeight))
+	return shiftStrokes(strokes, x - left, y - top)
+}
+
+/**
  * Trace one stroke's outline onto a context and fill it.
  *
  * perfect-freehand returns the outline as a polygon. Joining its points with

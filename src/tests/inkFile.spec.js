@@ -87,6 +87,32 @@ describe('loadInk', () => {
 		expect(get.mock.calls[0][1].params.path).toBe('.attachments.5/ink-abc.png')
 	})
 
+	it('hands back where the ink was, so it can be put there again', async () => {
+		/* A block is cropped to the writing, so the strokes in the file start
+		   at the picture's own corner. Without the corner itself, opening the
+		   drawing a second time puts it somewhere it never was. */
+		post.mockResolvedValue({ data: { filename: '.attachments.5/ink-abc.png' } })
+		const strokes = [{ points: [[5, 5, 0.5]] }]
+		await saveInk(5, 'abc', tinyPng(), strokes, [400, 300])
+		const uploaded = post.mock.calls[0][1].get('file')
+		get.mockResolvedValue({ data: await uploaded.arrayBuffer() })
+
+		await expect(loadInk(5, 'abc')).resolves.toMatchObject({ origin: [400, 300] })
+	})
+
+	it('says nothing about where ink saved by an earlier build was', async () => {
+		/* Those files carry strokes and no origin, and must open rather than
+		   fail - in the corner, as they did then. */
+		post.mockResolvedValue({ data: { filename: '.attachments.5/ink-abc.png' } })
+		await saveInk(5, 'abc', tinyPng(), [{ points: [[5, 5, 0.5]] }])
+		const uploaded = post.mock.calls[0][1].get('file')
+		get.mockResolvedValue({ data: await uploaded.arrayBuffer() })
+
+		const loaded = await loadInk(5, 'abc')
+		expect(loaded.strokes).toHaveLength(1)
+		expect(loaded.origin).toBeNull()
+	})
+
 	it('does not let the browser answer out of its cache', async () => {
 		/* The attachment endpoint sends `max-age=3600` and no ETag, so a second
 		   read of the same path is answered from the cache for an hour without

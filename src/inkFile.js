@@ -15,12 +15,14 @@ import { embedStrokes, readStrokes } from './inkPng.js'
  * @param {string} id the ink's id
  * @param {Blob} png the rendered picture
  * @param {Array<object>} strokes what drew it
+ * @param {Array<number> | null} origin the picture's corner on the canvas it
+ *   was drawn on, so the drawing can be opened where it was left
  * @return {Promise<string>} the path the note should hold
  */
-export async function saveInk(noteId, id, png, strokes) {
+export async function saveInk(noteId, id, png, strokes, origin = null) {
 	/* The envelope is this module's business. Callers hand over a list of
 	   strokes and get a list back, so nobody outside writes strokes.strokes. */
-	const withStrokes = embedStrokes(new Uint8Array(await png.arrayBuffer()), { version: 1, strokes })
+	const withStrokes = embedStrokes(new Uint8Array(await png.arrayBuffer()), { version: 1, strokes, origin })
 	const form = new FormData()
 	form.append('file', new Blob([withStrokes], { type: 'image/png' }), inkFileName(id))
 	const url = generateUrl(`/apps/notes/notes/${noteId}/attachment?replace=1`)
@@ -49,7 +51,9 @@ let reads = 0
  *
  * @param {number} noteId the note it belongs to
  * @param {string} id the ink's id
- * @return {Promise<{png: Blob, strokes: Array<object> | null} | null>} what is there, or null
+ * @return {Promise<{png: Blob, strokes: Array<object> | null, origin: Array<number> | null} | null>}
+ *   what is there, or null. The origin is null for a block saved before
+ *   positions were kept, which opens in the corner as it did then.
  */
 export async function loadInk(noteId, id) {
 	const url = generateUrl(`/apps/notes/notes/${noteId}/attachment`)
@@ -65,9 +69,11 @@ export async function loadInk(noteId, id) {
 			responseType: 'arraybuffer',
 		})
 		const bytes = new Uint8Array(response.data)
+		const carried = readStrokes(bytes)
 		return {
 			png: new Blob([bytes], { type: 'image/png' }),
-			strokes: readStrokes(bytes)?.strokes ?? null,
+			strokes: carried?.strokes ?? null,
+			origin: carried?.origin ?? null,
 		}
 	} catch (error) {
 		/* Gone is an answer, not a failure: the reader deleted the picture and

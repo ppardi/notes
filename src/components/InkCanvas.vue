@@ -65,7 +65,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw } from '../inkInput.js'
-import { INK_COLOR, inkBounds, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
+import { INK_COLOR, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* How far a finger travels before it is moving the page rather than resting on
    it. A tap, and a hand settling, both report a little movement. */
@@ -163,11 +163,23 @@ export default {
 				this.error = t('notes', 'The strokes of this ink could not be read, so it cannot be edited. The picture is shown as it is saved; nothing has been changed.')
 				return
 			}
-			/* Underneath anything drawn while the file was on its way, rather
-			   than instead of it: the canvas takes the pen from the moment it
-			   is open, and on the device the reader is already writing by the
-			   time this returns. */
-			this.strokes = [...(existing?.strokes ?? []), ...this.strokes]
+			/* Where it was drawn, as far as this screen allows. The file holds
+			   the writing cropped to itself, so without this a reader who drew
+			   in the middle of the page saw it there the first time they opened
+			   it and in the top left corner every time after.
+			 *
+			 * Underneath anything drawn while the file was on its way, rather
+			 * than instead of it: the canvas takes the pen from the moment it
+			 * is open, and on the device the reader is already writing by the
+			 * time this returns. */
+			const canvas = this.$refs.canvas
+			const placed = placeInk(
+				existing?.strokes ?? [],
+				existing?.origin,
+				canvas?.clientWidth ?? 0,
+				canvas?.clientHeight ?? 0,
+			)
+			this.strokes = [...placed, ...this.strokes]
 			this.ready = true
 			/* After the render that shows it, so the sheets being fitted are
 			   the ones that end up on screen, at the size the dialog gives
@@ -826,7 +838,11 @@ export default {
 					? shiftStrokes(this.strokes, -bounds[0], -bounds[1])
 					: this.strokes
 				const png = await this.pictureOf(strokes, bounds)
-				await saveInk(this.noteId, this.inkId, png, strokes)
+				/* The corner the picture was cropped from, so opening it again
+				   puts the drawing back where it is now rather than in the top
+				   left of whatever screen opens it. */
+				const origin = bounds ? [bounds[0], bounds[1]] : null
+				await saveInk(this.noteId, this.inkId, png, strokes, origin)
 				this.$emit('saved', { id: this.inkId })
 				this.$emit('close')
 			} catch {

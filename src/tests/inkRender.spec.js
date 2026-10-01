@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { CROP_MARGIN, INK_COLOR, inkBounds, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
+import { CROP_MARGIN, INK_COLOR, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 
 /* Records what was asked of a canvas, so a test can say what the drawing is
    made of without a canvas to look at. */
@@ -142,5 +142,54 @@ describe('shiftStrokes', () => {
 		const [x, y] = inkBounds(strokes)
 		const moved = shiftStrokes(strokes, -x, -y)
 		expect(moved[0].points[0]).toEqual([CROP_MARGIN, CROP_MARGIN, 0.5])
+	})
+})
+
+describe('placeInk', () => {
+	/* What a saved block looks like coming back: its own coordinates, the ink
+	   a margin inside the picture, as shiftStrokes left it when it was
+	   cropped. The origin saved with it is the picture's corner, so what is
+	   put back is the rectangle the picture occupied. */
+	const saved = (width, height) => [{
+		points: [
+			[CROP_MARGIN, CROP_MARGIN, 0.5],
+			[width - CROP_MARGIN, height - CROP_MARGIN, 0.5],
+		],
+	}]
+	const boxOf = (strokes) => inkBounds(strokes).slice(0, 2)
+
+	it('puts the ink back where it was drawn', () => {
+		/* Opening a drawing and seeing it jump to a corner reads as a drawing
+		   that has been moved. The first open and every one after it have to
+		   look the same. */
+		expect(boxOf(placeInk(saved(100, 60), [400, 300], 800, 600))).toEqual([400, 300])
+	})
+
+	it('brings ink back on when it would hang off the right', () => {
+		/* The iPad is a different width in portrait, and ink written at the
+		   right of a landscape screen would be off the edge of a narrow one:
+		   invisible, and beyond the eraser. Moved on just enough. */
+		expect(boxOf(placeInk(saved(100, 60), [700, 10], 400, 600))).toEqual([300, 10])
+	})
+
+	it('starts a page longer than the screen at the top of it', () => {
+		/* No offset would show all of it, and the top is where reading starts. */
+		expect(boxOf(placeInk(saved(100, 2000), [50, 900], 800, 600))).toEqual([50, 0])
+	})
+
+	it('never places ink above or to the left of the page', () => {
+		expect(boxOf(placeInk(saved(100, 60), [-200, -50], 800, 600))).toEqual([0, 0])
+	})
+
+	it('leaves ink saved before positions were kept where it is', () => {
+		/* Blocks saved by an earlier build carry no origin. They open in the
+		   corner, as they did then, rather than somewhere invented. */
+		const strokes = saved(100, 60)
+		expect(placeInk(strokes, null, 800, 600)).toBe(strokes)
+		expect(placeInk(strokes, undefined, 800, 600)).toBe(strokes)
+	})
+
+	it('has nothing to place for a page with no ink', () => {
+		expect(placeInk([], [10, 10], 800, 600)).toEqual([])
 	})
 })

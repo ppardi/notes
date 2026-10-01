@@ -67,6 +67,34 @@ async function inkOnThePage(page: Page): Promise<number> {
 	})
 }
 
+// Where the ink sits on the page sheet, in that canvas's own pixels. Read off
+// the pixels rather than off the strokes: what is being checked is what the
+// reader sees when they open their drawing.
+async function inkBoxOnScreen(page: Page): Promise<{ left: number, top: number, width: number, height: number }> {
+	return await page.locator('.ink__canvas--page').evaluate((canvas: HTMLCanvasElement) => {
+		const { data } = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height)
+		let left = Infinity
+		let top = Infinity
+		let right = -Infinity
+		let bottom = -Infinity
+		for (let i = 3; i < data.length; i += 4) {
+			if (data[i] === 0) {
+				continue
+			}
+			const at = (i - 3) / 4
+			const x = at % canvas.width
+			const y = Math.floor(at / canvas.width)
+			left = Math.min(left, x)
+			top = Math.min(top, y)
+			right = Math.max(right, x)
+			bottom = Math.max(bottom, y)
+		}
+		return left === Infinity
+			? { left: 0, top: 0, width: 0, height: 0 }
+			: { left, top, width: right - left, height: bottom - top }
+	})
+}
+
 test.describe('Ink', () => {
 	test('puts the picture into the note', async ({ page, request }) => {
 		const noteId = await openInkedNote(page, request)
@@ -651,5 +679,51 @@ test.describe('Ink', () => {
 		expect(size.getUint32(20)).toBeGreaterThan(box.height)
 		// And no wider than the lines themselves.
 		expect(size.getUint32(16)).toBeLessThan(300)
+	})
+	test('opens the drawing where it was left, every time', async ({ page, request }) => {
+		// The file holds the writing cropped to itself. Without the corner it
+		// was cropped from, a drawing made in the middle of the page was there
+		// the first time it was opened and in the top left corner every time
+		// after - which is the kind of thing that reads as unfinished.
+		await openInkedNote(page, request)
+		await page.getByRole('button', { name: 'Ink', exact: true }).click()
+		const canvas = page.locator('.ink__canvas--live')
+		await expect(canvas).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		// Write in the middle, nowhere near a corner.
+		const box = (await canvas.boundingBox())!
+		const x = box.x + box.width / 2
+		const y = box.y + box.height / 2
+		await page.mouse.move(x, y)
+		await page.mouse.down()
+		await page.mouse.move(x + 90, y + 50, { steps: 10 })
+		await page.mouse.up()
+
+		const drawn = await inkBoxOnScreen(page)
+		expect(drawn.width).toBeGreaterThan(50)
+		// Really in the middle, so a jump to the corner cannot pass unnoticed.
+		expect(drawn.left).toBeGreaterThan(200)
+		expect(drawn.top).toBeGreaterThan(100)
+		await page.getByRole('button', { name: 'Done' }).click()
+
+		const picture = page.locator('figure[data-component="image-view"] img')
+		await expect(picture).toBeVisible({ timeout: 15000 })
+
+		// Open it twice: the first open is the one that used to look right.
+		for (const visit of ['first', 'second']) {
+			await picture.click()
+			await expect(page.locator('.ink__canvas--live')).toBeVisible()
+			await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+			await expect
+				.poll(async () => (await inkBoxOnScreen(page)).width, { timeout: 10000 })
+				.toBeGreaterThan(50)
+
+			const again = await inkBoxOnScreen(page)
+			expect(Math.abs(again.left - drawn.left), `${visit} open moved it sideways`).toBeLessThan(3)
+			expect(Math.abs(again.top - drawn.top), `${visit} open moved it down the page`).toBeLessThan(3)
+			await page.getByRole('button', { name: 'Done' }).click()
+			await expect(page.getByRole('dialog', { name: 'Ink' })).toHaveCount(0)
+		}
 	})
 })
