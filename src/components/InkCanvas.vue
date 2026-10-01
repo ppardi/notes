@@ -67,7 +67,7 @@
 						@update:modelValue="chooseColor(choice.value)"
 					>
 						<template #icon>
-							<span class="ink__swatch" :style="{ background: choice.value }" />
+							<span class="ink__swatch ink__swatch--choice" :style="{ background: choice.value }" />
 						</template>
 						{{ choice.label }}
 					</NcActionButton>
@@ -1056,6 +1056,25 @@ export default {
 	border-radius: 50%;
 	border: 1px solid var(--color-border-dark);
 	filter: var(--background-invert-if-dark) hue-rotate(180deg);
+	/* Both the buttons this sits in are flex rows, and a dot shorter than the
+	   row would otherwise be stretched or shrunk to fit one. The trigger is
+	   only as wide as its own icon, and without this the dot came out 12px
+	   there instead of 16. */
+	flex: none;
+	align-self: center;
+}
+
+/* NcActionButton lays an icon out in a 34px box and lets the glyph centre
+   inside it - that box is where the gap between an icon and its label comes
+   from, since the component adds no margin of its own. A 16px dot dropped into
+   that slot is 18px narrower than the icon it stands in for, so the label sat
+   hard against it. These margins make the dot occupy the width the component
+   expects, which is also what lines these up with every other icon in a menu.
+
+   The trigger's swatch is deliberately left out: its button is exactly one
+   icon wide, and the same margins there squeeze the dot rather than space it. */
+.ink__swatch--choice {
+	margin-inline: 9px;
 }
 
 /* The saved picture, behind a canvas that is blank and takes no input. Laid
