@@ -51,6 +51,7 @@ Read out of the running container, Nextcloud 35, 2026-10-01:
 | Does `invert` keep hue? | **No.** `#cc0000` inverts to `#11ffff`. |
 | Does `invert(100%) hue-rotate(180deg)`? | **Yes**, approximately — see below. |
 | Does a browser agree with the computed table? | **Yes, exactly.** All six colors came back byte-identical in Blink (Chromium 152), measured through a canvas filter. |
+| Does **WebKit** agree — the engine the iPad actually runs? | **Yes, within rounding.** Measured by rendering the real CSS filter in WebKit 26.6 and reading the pixels back: every channel is within 2/255 of Blink's, hue is preserved, and the contrast ratios move by at most 0.16. Worth stating because WebKit does *not* support the Canvas 2D `ctx.filter` property at all — a probe written through a canvas measures nothing there and silently reports the colors unchanged. |
 | How is the dark theme scoped? | `[data-theme-dark] { … }`, and `@media (prefers-color-scheme: dark) [data-theme-default] { … }` for the default theme (`ThemingController.php:433`). |
 | What does `no hue-rotate(180deg)` compute to? | `none` — the declaration is dropped, which is the light-theme behavior wanted. So does `none hue-rotate(180deg)`. |
 
@@ -61,17 +62,26 @@ and contrast from WCAG relative luminance:
 | name | drawn | on `#ffffff` | dark mode | on `#171717` | on `#000000` |
 | --- | --- | --- | --- | --- | --- |
 | ink | `#000000` | 21.0:1 | `#ffffff` | 17.9:1 | 21.0:1 |
-| red | `#cc0000` | 5.9:1 | `#ffa8a8` | 14.8:1 | 17.3:1 |
+| red | `#cc0000` | 5.9:1 | `#ffa8a8` | 9.7:1 | 11.4:1 |
 | orange | `#b35900` | 4.8:1 | `#e68c33` | 7.0:1 | 8.2:1 |
-| green | `#008800` | 4.6:1 | `#3dc53d` | 7.9:1 | 9.2:1 |
-| blue | `#0044cc` | 7.8:1 | `#80c4ff` | 10.7:1 | 12.5:1 |
-| purple | `#7733cc` | 6.7:1 | `#dd99ff` | 9.2:1 | 10.8:1 |
+| green | `#008800` | 4.6:1 | `#3dc53d` | 7.9:1 | 9.3:1 |
+| blue | `#0044cc` | 7.8:1 | `#80c4ff` | 9.6:1 | 11.3:1 |
+| purple | `#7733cc` | 6.7:1 | `#dd99ff` | 8.6:1 | 10.1:1 |
+
+An earlier version of this table overstated three of the dark-theme ratios — red
+as 14.8:1, blue as 10.7:1, purple as 9.2:1. The hex values were always right, but
+the ratios beside them had been computed from the matrix's raw output before it
+was clamped to the 0-1 range: red's red channel comes out at 1.536, and feeding
+that straight to the luminance formula inflates the result. Only the three colors
+that clamp were affected. The numbers above are computed from the clamped values
+a screen can actually show.
 
 Three things to read out of that table. A dark red becomes a light red rather
 than a cyan, which is the whole point. Black still becomes white, so every
-drawing already saved is unaffected. And every color clears 4.5:1 on the light
-theme and 7:1 on both dark ones, which is the bar this palette was chosen
-against rather than chosen and then excused.
+drawing already saved is unaffected. And every color clears 4.5:1 on both
+themes, which is the bar this palette was chosen against rather than chosen and
+then excused. The weakest are green at 4.6:1 in light and orange at 7.0:1 in
+dark.
 
 **`hue-rotate` is a linear approximation, not a true rotation.** Lightness does
 not flip evenly: red nearly doubles its contrast on the dark theme, green barely
