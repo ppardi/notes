@@ -1338,9 +1338,13 @@ the top of the file.
 			return { edge, middle }
 		})
 		expect(hollow.edge).toBeGreaterThan(0)
-		// The sides still cross the middle third, so this is a ratio and not a
-		// zero: a filled rectangle would put far more there than its two sides.
-		expect(hollow.middle / hollow.edge).toBeLessThan(0.35)
+		// Measured against the INTERIOR, not a ratio of rows. A ratio cannot
+		// do this job: a uniformly filled box puts exactly a third of its ink
+		// in the middle third of its own rows, which is 0.333 and under any
+		// threshold loose enough to admit the 0.156 an outline measures. The
+		// central half on both axes holds a quarter of a filled box's ink and
+		// none at all of an outline's - everything against nothing.
+		expect(hollow.interior / hollow.edge).toBeLessThan(0.02)
 
 		// And the tool opens on the pen next time, unlike the color.
 		await expect(page.getByRole('button', { name: 'Tool: Pen' })).toBeVisible()
@@ -1371,10 +1375,13 @@ Neither number separates them. What does is the corners: a tenth-of-the-box
 square at each corner of the ink's own bounding box holds ink for a rectangle
 (measured [97, 87, 86, 92]) and none at all for an ellipse ([0, 0, 0, 0]).
 
-Also measure the hollow ratio against the **ink's own bounding rows**, not the
-canvas's. The canvas is 1280x677 and the rectangle sits at rows 277-399 —
-entirely inside the canvas's middle third — so a ratio taken over the whole
-canvas is exactly 1 and fails on a correct drawing.
+And do not measure a ratio of rows at all. Two separate faults were found by
+running it: taken over the whole canvas (1280x677) the rectangle sits at rows
+277-399, entirely inside the middle third, so the ratio is exactly 1 and fails on
+a correct drawing; and taken over the ink's own rows, a uniformly filled box
+gives exactly 0.333, which no threshold loose enough to admit an outline's 0.156
+can reject. Count the interior instead — the central half of the ink's box on
+both axes — where an outline measures 0 and a fill measures 0.248.
 
 Change it back and confirm it passes again. Put both outputs in your report.
 
