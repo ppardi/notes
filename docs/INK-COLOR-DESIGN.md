@@ -18,18 +18,17 @@ Paul's call once he has drawn with it; dropping it costs one line.
 Six colors to write in, chosen before the stroke is drawn. Nothing more: no
 recoloring what is already on the page, no highlighter, no custom colors.
 
-The mechanical part is small, but not quite as small as it looks. The whole
-pipeline is monochrome by one constant, `INK_COLOR` in `src/inkRender.js`, set as
-`fillStyle` in three places: `fit()` in `InkCanvas.vue`, which sets it on both
-sheets' contexts whenever the canvas is sized; `pictureOf()`, which sets it on
+The mechanical part was small, but not quite as small as it looked. The whole
+pipeline was monochrome by one constant, `INK_COLOR` in `src/inkRender.js`, set
+as `fillStyle` in three places: `fit()` in `InkCanvas.vue`, which set it on both
+sheets' contexts whenever the canvas was sized; `pictureOf()`, which set it on
 the picture's own context; and the eraser's outline ring in `inkErase.js`.
 
-So the color is currently a property of a *context*, not of a stroke —
-`renderPage()` and `paintLive()` set no color at all and rely on `fit()` having
-done it, which is also why a resize has to redo it. Color per stroke moves that
-responsibility: both renderers set `fillStyle` inside their stroke loop, and
-`fit()` stops setting a color, because there is no longer one color for a
-canvas to carry.
+So the color was a property of a *context*, not of a stroke — `renderPage()` and
+`paintLive()` set no color at all and relied on `fit()` having done it, which is
+also why a resize had to redo it. Color per stroke moved that responsibility:
+each render path now sets `fillStyle` inside its stroke loop, and `fit()` sets
+no color, because there is no longer one color for a canvas to carry.
 
 The obstacle is the dark theme. Ink is stored as one color on transparency and
 the theme is applied where the ink is *shown*, by a CSS filter on both the canvas
@@ -155,8 +154,10 @@ the only color in the set that failed the bar, and visibly the faint one. The
 darker orange measures 4.8:1 and still reads as orange, lightening to `#e68c33`
 on the dark theme.
 
-The palette lives beside `INK_COLOR` as an ordered list, since the picker's order
-and the stored values must not be able to disagree.
+The palette is an ordered list in `src/inkPalette.js`, since the picker's order
+and the stored values must not be able to disagree. That module owns the colors
+outright: `INK_COLOR` no longer exists, because a constant named for one color
+is the wrong shape once there are six.
 
 ### The color applies to the next stroke, and nothing else
 
@@ -207,10 +208,11 @@ keyboard. The button's own label names the current color.
 
 ### The eraser does not learn about color
 
-It erases whole strokes, whatever color they are, exactly as it does now. One
-related tidy: the eraser's outline ring currently borrows `INK_COLOR` for its
-`strokeStyle`. The ring is interface, not ink, and once `INK_COLOR` is one of six
-it should stop standing in for "the color of a line on this canvas".
+It erases whole strokes, whatever color they are, exactly as it did before. One
+related tidy came with this: the eraser's outline ring used to borrow the ink's
+own constant for its `strokeStyle`. The ring is interface, not ink, so it has
+`ERASER_COLOR` of its own in `src/inkErase.js` and no longer stands in for "the
+color of a line on this canvas".
 
 ### What the note shows does not change
 
