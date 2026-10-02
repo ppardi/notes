@@ -1784,4 +1784,31 @@ describe('InkCanvas drawing', () => {
 		expect(wrapper.vm.strokes).toHaveLength(0)
 		expect(wrapper.vm.shaping).toBeNull()
 	})
+
+	it('keeps a shape that was being dragged when Done was pressed', async () => {
+		/* The reader is looking at it on the live sheet. The one control that
+		   means "keep this" must not be the one that throws it away. */
+		saveInk.mockResolvedValue('.attachments.5/ink-abc.png')
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 160, offsetY: 120 })
+		await wrapper.vm.done()
+
+		expect(wrapper.vm.strokes).toHaveLength(1)
+		expect(wrapper.vm.shaping).toBeNull()
+	})
+	it('leaves an eraser pass alone when there is no shape to finish', async () => {
+		/* Done finishes whatever is in progress. Finishing a shape that does
+		   not exist must not take the pointer from a rub that does. */
+		const wrapper = await open()
+		wrapper.vm.erasing = true
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+
+		wrapper.vm.finishShape()
+
+		expect(wrapper.vm.rubbing).not.toBeNull()
+		expect(wrapper.vm.pointerId).toBe(1)
+	})
 })

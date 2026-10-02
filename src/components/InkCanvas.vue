@@ -856,9 +856,14 @@ export default {
 
 		/* Commit the shape, if the drag made one.
 		 *
-		 * One stroke and one thing to undo, however many points it took. */
+		 * One stroke and one thing to undo, however many points it took. Does
+		 * nothing when no shape is being dragged: letting go of the shape
+		 * would otherwise take the pointer from a rub that is in progress. */
 		finishShape() {
-			const drawn = this.shaping?.points ?? []
+			if (!this.shaping) {
+				return
+			}
+			const drawn = this.shaping.points
 			if (drawn.length) {
 				const stroke = { points: drawn, color: this.color }
 				this.strokes.push(stroke)
@@ -1191,9 +1196,11 @@ export default {
 			if (!this.ready || this.saving) {
 				return
 			}
-			/* A stroke still under the pen is drawn on the canvas, so it would be
-			   in the PNG but not in the strokes. Commit it first. */
+			/* A stroke or a shape still under the pen is on the canvas but not
+			   yet in the strokes, so it would be missing from the PNG. Commit
+			   whichever is in progress; each is a no-op when it is not. */
 			this.finishStroke()
+			this.finishShape()
 			this.error = ''
 			this.saving = true
 			try {
