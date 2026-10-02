@@ -59,13 +59,21 @@
 					     among six, and NcActionButton's default behavior with
 					     a boolean model-value is a toggle button - which a
 					     reader listening would hear as six separate pressed
-					     and unpressed buttons rather than as a single pen. -->
+					     and unpressed buttons rather than as a single pen.
+
+					     Bound to the click as well as the model, because a
+					     radio reports only a change: choosing the color
+					     already in use emits nothing, and the menu sat open
+					     on a choice that had been made. Both can fire for one
+					     tap, which is harmless - chooseColor says the same
+					     thing twice. -->
 					<NcActionButton v-for="choice in colorChoices"
 						:key="choice.key"
 						type="radio"
 						:modelValue="color"
 						:value="choice.value"
 						@update:modelValue="chooseColor(choice.value)"
+						@click="chooseColor(choice.value)"
 					>
 						<template #icon>
 							<span class="ink__swatch ink__swatch--choice" :style="{ background: choice.value }" />

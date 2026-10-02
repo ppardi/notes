@@ -1072,6 +1072,21 @@ describe('InkCanvas', () => {
 		expect(wrapper.vm.color).toBe('#0044cc')
 	})
 
+	it('closes the picker when the color already in use is chosen again', async () => {
+		/* A radio reports a change, so re-choosing the current color emits
+		   nothing at all - and the menu stayed open on a choice that had been
+		   made. */
+		const wrapper = await open()
+		wrapper.vm.chooseColor('#cc0000')
+		wrapper.vm.picking = true
+		await wrapper.vm.$nextTick()
+
+		await button(wrapper, 'Red').trigger('click')
+
+		expect(wrapper.vm.picking).toBe(false)
+		expect(wrapper.vm.color).toBe('#cc0000')
+	})
+
 	it('names every color, so the picker is not six unlabeled squares', async () => {
 		const wrapper = await open()
 
