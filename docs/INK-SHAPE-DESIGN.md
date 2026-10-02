@@ -24,8 +24,9 @@ be a rectangle. Nothing in the canvas can make a straight line straight.
 
 | Question | Answer |
 | --- | --- |
-| Does a dense polyline keep its corners through `traceStroke`? | **No.** The filled corner of a 200×100 rectangle lands 1.75 px *inside* the corner, where a square join reaches 1.77 px *outside* it — the turn is cut back by 3.5 px in all, and the edges are seen to taper into it. An earlier figure of 0.99 px measured the nearest outline *vertex*, which is not where the ink ends: `traceStroke` draws the outline as curves through those vertices, and the curve cuts further. |
-| And with `streamline: 0`? | **Yes.** The filled corner lands 0.06 px inside it — square to within a fortieth of the nib. |
+| Does a dense polyline keep its corners through perfect-freehand? | **No.** The filled corner of a 200×120 rectangle lands 1.75 px *inside* the corner, where a round join reaches 1.77 px *outside* it — cut back by 3.5 px in all, and the edges are seen to taper into every turn. An earlier figure of 0.99 px measured the nearest outline *vertex*, which is not where the ink ends: the outline is drawn as curves through those vertices, and the curve cuts further. `streamline: 0` recovers most of it, to 0.06 px inside. Stroking the path recovers all of it: 1.75 px outside. |
+| Does a closed shape come back clean through perfect-freehand? | **Not in every engine.** Its outline is one polygon that runs up one side of the path and back down the other, so a loop's polygon doubles back on itself at the join. WebKit fills that overlap half a nib wider than the band — a blister exactly where the shape starts. Chromium does not, which is why it took an iPad to find. |
+| Stroked as a path instead? | **Clean in both.** Ink per column along the top edge, through the join, is flat to 0.00 in Chromium and 0.01 in WebKit. |
 | Does the Catmull-Rom gap filling interfere? | **No**, as long as vertices are no further apart than `SMOOTH_GAP` (6 px): `smoothed()` inserts nothing between points closer than that, so edges stay straight and corners stay sharp. |
 | Do the icons exist? | Yes — `Pencil`, `VectorLine`, `RectangleOutline`, `EllipseOutline` are all in `vue-material-design-icons`. |
 | How much room is in the bar? | Enough. It holds five controls today; six compact ones plus a labeled Done is comfortable at 768 pt, an iPad's portrait width. |
@@ -55,21 +56,35 @@ working the day shapes ship, with no new code and no change to the file format:
   compatibility. Nobody asked to move a shape. If that day comes, polylines do
   not block it — a drawing is still just strokes.
 
-### A shape is ruled, and ruled strokes are not smoothed
+### A shape is ruled, and a ruled stroke is stroked rather than filled
 
-A shape carries `ruled: true` beside its points and color, and `traceStroke`
-draws a ruled stroke with `streamline: 0`.
+A shape carries `ruled: true` beside its points and color. `traceStroke` draws a
+ruled stroke as the path it is — `lineWidth` the nib, `lineJoin` and `lineCap`
+round, `closePath` for a loop — instead of filling the outline perfect-freehand
+returns for a hand.
 
-This was designed as a contingency and then spent: shipped without it, the
-corners read as tapering on the device, which the measurement above explains —
-the smoothing that keeps handwriting from showing the pen's own jitter has
-nothing to do on a construction but cut its corners.
+This is the one place a shape is not treated exactly like handwriting, and it
+was conceded to the device rather than chosen. perfect-freehand exists to turn a
+hand's samples into a nib's mark: it smooths the jitter and wraps the path in an
+outline. A construction has no jitter, so the smoothing only cuts its corners;
+and its outline doubles back on itself at the join, which WebKit fills wider
+than the band. Both faults are the same mistake — asking for a drawn stroke when
+the thing is a drawn *path*.
+
+Everything else still holds. A shape is still one stroke of `{points, color}`,
+so the eraser, undo, cropping, the picture, the file and the theme filter are
+untouched; only the four lines that put ink on the canvas look at the flag.
 
 `ruled` is an additive field. A stroke without it draws as a hand, which is
 every stroke written before this and every freehand stroke after it. Anything
 but `true` in the file is dropped on the way in, and the field is left off
 rather than stored as `false`, so a page of handwriting carries no field per
 stroke saying what it is not.
+
+A loop's last sample repeats its first, which is what tells the renderer to
+close the path. Shapes saved by a build between these two fixes carry a few
+samples past that point — they were covering a gap this way of drawing does not
+leave — and the renderer drops them.
 
 ### One tool picker, with the pen inside it
 
@@ -217,11 +232,12 @@ could be added on top of this later; it would share the same geometry.
 - **End to end.** Pick Rectangle, drag, Done, reopen, and read the pixels on the
   page sheet — the proof used for color, and the only one that covers the whole
   path through the file.
-- **Unit, `src/inkRender.js`.** A ruled stroke's traced outline reaches further
-  past a square corner than a smoothed one does, and comes within half a nib of
-  where a square join puts it. Measuring the traced path rather than the pixels
-  is what makes this a unit test; the pixels were measured in a browser, once,
-  and the figures are in the table above.
+- **Unit, `src/inkRender.js`.** A ruled stroke is stroked, not filled; it takes
+  the nib's width and a round join and cap; it closes a loop and drops anything
+  carried past the start; and it takes its color from `fillStyle`, which is what
+  every caller sets. A hand's stroke is still filled from its outline. The
+  pixels themselves were measured in Chromium **and WebKit**, and the figures
+  are in the table above.
 - **Not testable here.** Whether the snap threshold feels helpful or
   interfering. That is Paul's eye on the device.
 
@@ -242,9 +258,9 @@ could be added on top of this later; it would share the same geometry.
   is an opinion about it on the device. Lines shallower than 5° from horizontal or
   vertical snap true; anything outside that latitude draws at the angle it was dragged.
 
-Settled on the device: the corners did read as soft, and `ruled` was spent on
-them. Even ruled, the apex stops at the corner rather than reaching the 1.77 px
-beyond it that a stroked path with a round join would — recovering that would
-mean drawing shapes with `ctx.stroke()` instead of filling perfect-freehand's
-outline, which is a second renderer for the sake of a pixel nobody has asked
-about.
+Settled on the device: the corners did read as soft, and the join showed a
+blister on an iPad that no measurement in Chromium could see. Both are gone, at
+the cost of drawing a shape as a stroked path rather than as a filled outline.
+
+The lesson is cheap to state and was expensive to learn: the target is an iPad,
+so a rendering question is not answered until it has been answered in WebKit.

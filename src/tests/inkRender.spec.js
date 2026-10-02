@@ -29,51 +29,60 @@ const RIGHT_ANGLE = [
 	...Array.from({ length: 20 }, (_, i) => [100, (i + 1) * 5, 0.5]),
 ]
 
-/* How far the traced outline reaches past a corner, along the diagonal
-   pointing out of it. A square join reaches STROKE_SIZE / 2 * sqrt(2) beyond
-   the corner; a path smoothed into the turn falls short of it, and the edge
-   is seen to taper into the corner. */
-function pastTheCorner(calls, corner, out) {
-	let furthest = -Infinity
-	for (const [name, ...args] of calls) {
-		const traced = name === 'quadraticCurveTo'
-			? [[args[0], args[1]], [args[2], args[3]]]
-			: name === 'moveTo' || name === 'lineTo'
-				? [[args[0], args[1]]]
-				: []
-		for (const [x, y] of traced) {
-			furthest = Math.max(furthest, (x - corner[0]) * out[0] + (y - corner[1]) * out[1])
-		}
-	}
-	return furthest
-}
-
 describe('traceStroke', () => {
-	it('keeps a ruled corner square, where a hand is smoothed into the turn', () => {
-		/* perfect-freehand smooths the path it is given, which is right for a
-		   hand and wrong for a construction: it cuts the corner of a rectangle
-		   into a long chamfer that reads as the edges tapering away. Ruled
-		   says the points are exact and are not to be smoothed. */
-		const away = [Math.SQRT1_2, -Math.SQRT1_2]
-		const hand = recorder()
-		traceStroke(hand.context, RIGHT_ANGLE)
-		const ruled = recorder()
-		traceStroke(ruled.context, RIGHT_ANGLE, true)
+	it('strokes a ruled path rather than filling an outline round it', () => {
+		/* perfect-freehand returns a stroke as one polygon that goes up one
+		   side of the path and back down the other. For a loop that polygon
+		   doubles back on itself at the join, and WebKit fills the overlap
+		   half a nib wider than the band - a visible blister on an iPad, and
+		   invisible in Chromium, which is why it took a device to find. A
+		   construction is drawn as what it is: a path, stroked. */
+		const { context, names, calls } = recorder()
+		traceStroke(context, RIGHT_ANGLE, true)
 
-		expect(pastTheCorner(ruled.calls, [100, 0], away))
-			.toBeGreaterThan(pastTheCorner(hand.calls, [100, 0], away) + 1)
+		expect(names()).toContain('stroke')
+		expect(names()).not.toContain('fill')
+		expect(context.lineWidth).toBe(STROKE_SIZE)
+		/* Round, so a corner reaches where the nib would put it rather than
+		   being cut back to the path's own vertex. */
+		expect(context.lineJoin).toBe('round')
+		expect(context.lineCap).toBe('round')
+		/* The path is the points themselves, corner and all. */
+		const corners = calls.filter(([name]) => name === 'lineTo')
+		expect(corners.some(([, x, y]) => x === 100 && y === 0)).toBe(true)
 	})
 
-	it('reaches a ruled corner within half a nib of the join itself', () => {
-		const ruled = recorder()
-		traceStroke(ruled.context, RIGHT_ANGLE, true)
+	it('takes the ink color for a ruled stroke, which callers set as a fill', () => {
+		/* Every caller sets fillStyle, because that is what filling an outline
+		   needs. A stroked path would otherwise come out in whatever the
+		   context last stroked with - black ink in a red drawing. */
+		const { context } = recorder()
+		context.fillStyle = '#cc0000'
+		traceStroke(context, RIGHT_ANGLE, true)
 
-		/* A square join puts the outer corner STROKE_SIZE / 2 * sqrt(2) out
-		   along the diagonal. Within half a nib of that is a corner, not a
-		   taper. */
-		const square = (STROKE_SIZE / 2) * Math.SQRT2
-		expect(pastTheCorner(ruled.calls, [100, 0], [Math.SQRT1_2, -Math.SQRT1_2]))
-			.toBeGreaterThan(square - STROKE_SIZE / 2)
+		expect(context.strokeStyle).toBe('#cc0000')
+	})
+
+	it('closes a ruled loop instead of running past where it began', () => {
+		/* A loop that is closed has no join to show. Points carried past the
+		   start - which earlier builds added to paper over the gap perfect-
+		   freehand left there - are dropped rather than drawn over the band. */
+		const loop = [...RIGHT_ANGLE, ...RIGHT_ANGLE.slice(1, 3)]
+		loop.splice(RIGHT_ANGLE.length, 0, [...RIGHT_ANGLE[0]])
+		const { context, names, calls } = recorder()
+		traceStroke(context, loop, true)
+
+		expect(names()).toContain('closePath')
+		const drawn = calls.filter(([name]) => name === 'lineTo' || name === 'moveTo')
+		expect(drawn.length).toBe(RIGHT_ANGLE.length)
+	})
+
+	it('still fills a handwritten stroke from its outline, which is what gives it a nib', () => {
+		const { context, names } = recorder()
+		traceStroke(context, RIGHT_ANGLE)
+
+		expect(names()).toContain('fill')
+		expect(names()).not.toContain('stroke')
 	})
 
 	it('draws the outline as curves, so a stroke has no facets', () => {

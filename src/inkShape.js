@@ -41,17 +41,6 @@ export const SHAPE_STEP = 5
 export const SHAPE_MINIMUM = 8
 
 /**
- * How far a closed shape carries on past the point it started from, in CSS px.
- *
- * perfect-freehand trims the last few pixels off a path before it caps it, so a
- * loop whose last point is its first leaves the join bare - 1.6 px of blank
- * page, measured, which at a 2.5 px nib is a plain break in the line. Going
- * round and continuing puts ink over the join, and the cap that was showing
- * lands on ink already laid down.
- */
-export const SHAPE_LAP = 3
-
-/**
  * How far from square a line may be and still be straightened, in degrees.
  *
  * A ruled line under a heading is the thing shapes were asked for, and one that
@@ -136,19 +125,16 @@ function along(from, to) {
 }
 
 /**
- * A loop's points, brought back to the start and carried on past it.
+ * A loop's points, brought back to the point they started from.
+ *
+ * The last sample repeats the first, which is what tells the renderer the path
+ * is a loop and is to be closed rather than ended.
  *
  * @param {Array<Array<number>>} loop the distinct points, start first
- * @return {Array<Array<number>>} the loop, closed and lapped
+ * @return {Array<Array<number>>} the loop, closed
  */
 function closed(loop) {
-	const out = [...loop, [loop[0][0], loop[0][1], FLAT_PRESSURE]]
-	let carried = 0
-	for (let i = 1; carried < SHAPE_LAP && i < loop.length; i++) {
-		out.push(loop[i])
-		carried += Math.hypot(loop[i][0] - loop[i - 1][0], loop[i][1] - loop[i - 1][1])
-	}
-	return out
+	return [...loop, [loop[0][0], loop[0][1], FLAT_PRESSURE]]
 }
 
 /* Coordinates are kept to a tenth of a pixel.

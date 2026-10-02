@@ -21,17 +21,50 @@ export const STROKE_SIZE = 2.5
 
 const STROKE = { size: STROKE_SIZE, thinning: 0, simulatePressure: false }
 
-/* What a stroke whose points are a construction rather than a hand is drawn
-   with.
+/**
+ * Trace one construction's path onto a context and stroke it.
  *
- * perfect-freehand smooths the path it is given - `streamline` defaults to 0.5
- * - which is what keeps handwriting from showing the pen's own jitter. On a
- * shape there is no jitter to take out and the smoothing has nothing to do but
- * cut the corners: a rectangle's corner came out 1.75 px inside where the nib
- * alone would put it, against the 1.77 px outside a square join reaches, so the
- * edges were seen to taper into every turn. Off, the corner is square to within
- * a quarter of a pixel. */
-const RULED = { ...STROKE, streamline: 0 }
+ * A line, a rectangle or an ellipse is not a nib dragged across paper, and
+ * drawing it as one costs twice over. perfect-freehand returns a stroke as a
+ * single polygon that runs up one side of the path and back down the other, so
+ * a closed shape's polygon doubles back on itself where it began - and WebKit
+ * fills that overlap half a nib wider than the band, a blister on the line
+ * exactly where a rectangle starts. Chromium does not, which is why it took an
+ * iPad to find. The same polygon also smooths the path it is given, which on a
+ * construction has no jitter to take out and nothing to do but cut the corners:
+ * measured, a rectangle's corner landed 1.75 px inside itself where a round
+ * join reaches 1.77 px outside.
+ *
+ * Stroked, the path is the shape: nothing overlaps, so no engine can double
+ * anything, and the corner is where the nib puts it. A loop is closed rather
+ * than drawn round and past itself, so it has no join to show at all.
+ *
+ * The color comes from `fillStyle`, which is what every caller sets, so a
+ * construction and a hand are asked for in the same way.
+ *
+ * @param {CanvasRenderingContext2D} context where to trace
+ * @param {Array<Array<number>>} points the construction's [x, y, pressure] samples
+ */
+function traceRuled(context, points) {
+	/* Where the path comes back to where it began, if it does. Older shapes
+	   carry samples past that point, which were there to cover a gap this way
+	   of drawing does not leave; closing the loop is what replaces them. */
+	const loops = points.findIndex(([x, y], i) => i > 0 && x === points[0][0] && y === points[0][1])
+	const run = loops < 0 ? points : points.slice(0, loops)
+	context.beginPath()
+	context.moveTo(run[0][0], run[0][1])
+	for (const [x, y] of run.slice(1)) {
+		context.lineTo(x, y)
+	}
+	if (loops >= 0) {
+		context.closePath()
+	}
+	context.lineWidth = STROKE_SIZE
+	context.lineJoin = 'round'
+	context.lineCap = 'round'
+	context.strokeStyle = context.fillStyle
+	context.stroke()
+}
 
 /**
  * Image pixels per CSS pixel of drawing in a saved picture.
@@ -244,8 +277,8 @@ export function smoothed(points, maxGap = SMOOTH_GAP) {
  * smooth as the rest.
  *
  * A ruled stroke is one whose points were computed rather than drawn - a line,
- * a rectangle, an ellipse. Those are traced without the smoothing a hand needs,
- * which is what keeps a corner square.
+ * a rectangle, an ellipse. Those are stroked as the path they are rather than
+ * filled from an outline; see `traceRuled` for why.
  *
  * The fill is whatever `fillStyle` the context carries, so the caller must set
  * it before calling: a stroke traced without one is drawn in the last color
@@ -258,7 +291,11 @@ export function smoothed(points, maxGap = SMOOTH_GAP) {
  *   hand's path, and so are to be drawn exactly rather than smoothed
  */
 export function traceStroke(context, points, ruled = false) {
-	const outline = getStroke(smoothed(points), ruled ? RULED : STROKE)
+	if (ruled && points.length > 1) {
+		traceRuled(context, points)
+		return
+	}
+	const outline = getStroke(smoothed(points), STROKE)
 	if (!outline.length) {
 		return
 	}
