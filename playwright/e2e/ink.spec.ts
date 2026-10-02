@@ -162,6 +162,36 @@ async function inkColorsInTheNoteImage(image: Locator): Promise<string[]> {
 	})
 }
 
+// Put the page on a known theme, whatever the account is set to.
+//
+// Three tests here assert what a filter computes to in light and then in dark.
+// They used to read the account's own theme, which worked only because the e2e
+// harness pins `enforce_theme` to light - and `dev/ipad.sh --dark` exists to
+// unpin exactly that. A test that inherits its theme asserts whatever the
+// container was last left in.
+//
+// Setting the attribute is not enough on its own: every theme's stylesheet is
+// linked on every page so the theme can be switched without a reload, and the
+// `[data-theme-*]` selectors have equal specificity, so with two attributes
+// present source order decides and light.css is linked last. Every other theme
+// attribute therefore comes off first.
+async function putPageOnTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
+	await page.evaluate((wanted) => {
+		for (const attribute of [...document.body.attributes]) {
+			if (attribute.name.startsWith('data-theme-')) {
+				document.body.removeAttribute(attribute.name)
+			}
+		}
+		document.body.setAttribute(`data-theme-${wanted}`, '')
+	}, theme)
+	// The themes define this variable and nothing else decides whether ink is
+	// inverted, so it is also the proof that the swap took.
+	await expect(page.locator('body')).toHaveCSS(
+		'--background-invert-if-dark',
+		theme === 'dark' ? 'invert(100%)' : 'no',
+	)
+}
+
 test.describe('Ink', () => {
 	test('puts the picture into the note', async ({ page, request }) => {
 		const noteId = await openInkedNote(page, request)
@@ -264,9 +294,26 @@ test.describe('Ink', () => {
 
 		// A dark theme is this variable and nothing else: Nextcloud sets it to
 		// invert(100%) there and to `no`, which is not a filter, on a light one.
-		// It is defined on [data-theme-default], so that is where it is replaced
-		// - a rule on :root would lose to it and prove nothing.
-		await page.addStyleTag({ content: '[data-theme-default] { --background-invert-if-dark: invert(100%); }' })
+		// The server defines it on the body's [data-theme-<id>] attribute, so
+		// that is where it has to be replaced - a rule on :root would lose to it
+		// and prove nothing.
+		//
+		// Every theme the server can set is listed rather than just the default
+		// one, because which attribute the body carries depends on the account's
+		// own theme and on whether `enforce_theme` is set. The e2e harness pins
+		// it to light, but `dev/ipad.sh --dark` exists precisely to unpin it, and
+		// a test that silently stopped simulating anything would then pass for
+		// the wrong reason - it computed `none` against an expectation of `none`.
+		await page.addStyleTag({ content: `
+			[data-theme-default], [data-theme-light], [data-theme-dark],
+			[data-theme-light-highcontrast], [data-theme-dark-highcontrast] {
+				--background-invert-if-dark: invert(100%);
+			}` })
+
+		// Proof the line above did something. Without it the rest of this test
+		// cannot fail: an unmatched rule and an unfiltered picture both read
+		// `none`, which is what the second assertion expects anyway.
+		await expect(page.locator('body')).toHaveCSS('--background-invert-if-dark', 'invert(100%)')
 
 		// Read off the painted style: a rule that matched nothing would compute
 		// to `none` here, exactly as a picture left alone does.
@@ -970,6 +1017,7 @@ test.describe('Ink', () => {
 		const picture = page.locator('figure[data-component="image-view"] img').first()
 		await expect(picture).toBeVisible()
 
+		await putPageOnTheme(page, 'light')
 		const filter = await picture.evaluate((img) => getComputedStyle(img).filter)
 		// The light theme applies none: `no hue-rotate(180deg)` is not a valid
 		// filter, so the declaration is dropped entirely.
@@ -985,10 +1033,7 @@ test.describe('Ink', () => {
 		// `[data-theme-dark]` have equal specificity - so with both attributes
 		// present, source order decides and light.css is linked last. Measured:
 		// adding `data-theme-dark` alone leaves the variable at `no`.
-		await page.evaluate(() => {
-			document.body.removeAttribute('data-theme-light')
-			document.body.setAttribute('data-theme-dark', '')
-		})
+		await putPageOnTheme(page, 'dark')
 		const dark = await picture.evaluate((img) => getComputedStyle(img).filter)
 		expect(dark).toBe('invert(1) hue-rotate(180deg)')
 	})
@@ -1044,6 +1089,7 @@ test.describe('Ink', () => {
 		await expectSwatchBox(trigger, 'trigger swatch')
 
 		// The light theme applies no filter at all.
+		await putPageOnTheme(page, 'light')
 		for (const [name, locator] of Object.entries(surfaces)) {
 			expect(await filterOf(locator), name).toBe('none')
 		}
@@ -1053,10 +1099,7 @@ test.describe('Ink', () => {
 		// be switched without a reload, and `[data-theme-light]` and
 		// `[data-theme-dark]` have equal specificity - so with both attributes
 		// present, source order decides and light.css is linked last.
-		await page.evaluate(() => {
-			document.body.removeAttribute('data-theme-light')
-			document.body.setAttribute('data-theme-dark', '')
-		})
+		await putPageOnTheme(page, 'dark')
 		for (const [name, locator] of Object.entries(surfaces)) {
 			expect(await filterOf(locator), name).toBe('invert(1) hue-rotate(180deg)')
 		}
