@@ -167,8 +167,11 @@ only thing deciding the proportions.
 - **`pointercancel` mid-drag.** The shape is abandoned; the page is unchanged.
 - **A second pointer during a drag.** Refused, as a second stroke already is:
   one gesture at a time.
-- **A shape dragged off the canvas edge.** Clamped to the canvas, as ink outside
-  it can be neither seen nor rubbed out.
+- **A shape dragged off the canvas edge.** The far corner is clamped into the
+  page: x into the canvas's width, y to no less than nought. Ink off the sides
+  can be neither seen nor rubbed out. There is no bottom to clamp to — the page
+  grows downward with whatever is drawn on it, which is what `panLimit()`
+  computes from the ink's own bounds.
 - **An unknown tool value**, from a future build or a hand-edited state. Falls
   back to the pen rather than refusing to draw.
 
