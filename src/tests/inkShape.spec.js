@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { SMOOTH_GAP } from '../inkRender.js'
-import { DEFAULT_TOOL, INK_TOOLS, knownTool, LINE_SNAP, SHAPE_MINIMUM, SHAPE_STEP, shapePoints, straighten } from '../inkShape.js'
+import { DEFAULT_TOOL, INK_TOOLS, knownTool, LINE_SNAP, SHAPE_LAP, SHAPE_MINIMUM, SHAPE_STEP, shapePoints, straighten } from '../inkShape.js'
 
 /* The longest step between two vertices of a shape. This is the property the
    whole design rests on: smoothed() interpolates anything wider than
@@ -16,6 +16,24 @@ function longestStep(points) {
 		longest = Math.max(longest, Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]))
 	}
 	return longest
+}
+
+/* Where a loop comes back to the point it started from, and how far it carries
+   on past it. perfect-freehand trims the last few pixels off a path before it
+   caps it, so a loop that simply ends where it began leaves bare page at the
+   join - 1.6 px of it, measured, which at a 2.5 px nib is a visible break. The
+   path has to go round and keep going. */
+function pastTheJoin(points) {
+	const start = points[0]
+	const join = points.findIndex(([x, y], i) => i > 0 && x === start[0] && y === start[1])
+	if (join < 0) {
+		return null
+	}
+	let carried = 0
+	for (let i = join + 1; i < points.length; i++) {
+		carried += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1])
+	}
+	return carried
 }
 
 describe('the tools', () => {
@@ -144,9 +162,17 @@ describe('shapePoints', () => {
 	})
 
 	describe('a rectangle', () => {
-		it('closes, so the outline has no gap in it', () => {
+		it('comes back round and carries on, so the join has no gap in it', () => {
 			const points = shapePoints('rectangle', [0, 0], [100, 60])
-			expect(points.at(-1)).toEqual(points[0])
+			expect(pastTheJoin(points)).toBeGreaterThanOrEqual(SHAPE_LAP)
+		})
+
+		it('starts from the middle of an edge rather than a corner', () => {
+			/* The join carries a round cap. On a straight run the cap is flush
+			   with the band it ends; on a corner it fills the corner in, and
+			   that reads as a blot where three identical corners do not. */
+			const points = shapePoints('rectangle', [0, 0], [100, 60])
+			expect(points[0]).toEqual([50, 0, 0.5])
 		})
 
 		it('puts every point on an edge of the box', () => {
@@ -187,10 +213,9 @@ describe('shapePoints', () => {
 			}
 		})
 
-		it('closes, so the outline has no gap in it', () => {
+		it('comes back round and carries on, so the join has no gap in it', () => {
 			const points = shapePoints('ellipse', [0, 0], [200, 100])
-			expect(points.at(-1)[0]).toBeCloseTo(points[0][0], 9)
-			expect(points.at(-1)[1]).toBeCloseTo(points[0][1], 9)
+			expect(pastTheJoin(points)).toBeGreaterThanOrEqual(SHAPE_LAP)
 		})
 
 		it('steps closely enough that the smoothing leaves it alone', () => {

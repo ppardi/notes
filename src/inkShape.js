@@ -41,6 +41,17 @@ export const SHAPE_STEP = 5
 export const SHAPE_MINIMUM = 8
 
 /**
+ * How far a closed shape carries on past the point it started from, in CSS px.
+ *
+ * perfect-freehand trims the last few pixels off a path before it caps it, so a
+ * loop whose last point is its first leaves the join bare - 1.6 px of blank
+ * page, measured, which at a 2.5 px nib is a plain break in the line. Going
+ * round and continuing puts ink over the join, and the cap that was showing
+ * lands on ink already laid down.
+ */
+export const SHAPE_LAP = 3
+
+/**
  * How far from square a line may be and still be straightened, in degrees.
  *
  * A ruled line under a heading is the thing shapes were asked for, and one that
@@ -124,6 +135,22 @@ function along(from, to) {
 	return out
 }
 
+/**
+ * A loop's points, brought back to the start and carried on past it.
+ *
+ * @param {Array<Array<number>>} loop the distinct points, start first
+ * @return {Array<Array<number>>} the loop, closed and lapped
+ */
+function closed(loop) {
+	const out = [...loop, [loop[0][0], loop[0][1], FLAT_PRESSURE]]
+	let carried = 0
+	for (let i = 1; carried < SHAPE_LAP && i < loop.length; i++) {
+		out.push(loop[i])
+		carried += Math.hypot(loop[i][0] - loop[i - 1][0], loop[i][1] - loop[i - 1][1])
+	}
+	return out
+}
+
 /* Coordinates are kept to a tenth of a pixel.
  *
  * Freehand points come from offsetX and offsetY and serialize short; a shape's
@@ -175,22 +202,25 @@ function outline(tool, from, to) {
 	const top = Math.min(from[1], to[1])
 	const bottom = Math.max(from[1], to[1])
 	if (wanted === 'rectangle') {
-		const corners = [[left, top], [right, top], [right, bottom], [left, bottom]]
+		/* Started from the middle of the top edge rather than a corner. The
+		   join carries a round cap either way; on a straight run the cap is
+		   flush with the band it ends, where on a corner it fills the corner
+		   in and reads as a blot beside three identical clean ones. */
+		const middle = [(left + right) / 2, top]
+		const way = [middle, [right, top], [right, bottom], [left, bottom], [left, top], middle]
 		const out = []
-		for (let i = 0; i < corners.length; i++) {
-			out.push(...along(corners[i], corners[(i + 1) % corners.length]))
+		for (let i = 0; i < way.length - 1; i++) {
+			out.push(...along(way[i], way[i + 1]))
 		}
-		/* Closed, so the outline has no gap where it started. */
-		out.push([left, top, FLAT_PRESSURE])
-		return out
+		return closed(out)
 	}
 	const a = (right - left) / 2
 	const b = (bottom - top) / 2
 	const steps = Math.max(8, Math.ceil((2 * Math.PI * Math.max(a, b)) / SAMPLE_STEP))
 	const out = []
-	for (let step = 0; step <= steps; step++) {
+	for (let step = 0; step < steps; step++) {
 		const angle = (step / steps) * 2 * Math.PI
 		out.push([left + a + a * Math.cos(angle), top + b + b * Math.sin(angle), FLAT_PRESSURE])
 	}
-	return out
+	return closed(out)
 }
