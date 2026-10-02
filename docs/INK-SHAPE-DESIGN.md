@@ -140,11 +140,14 @@ A line within **5°** of horizontal or vertical snaps true. That is what makes a
 section delimiter worth having rather than irritating, and it is the one piece of
 polish that serves the stated purpose directly.
 
-A rectangle whose sides are within **6%** of each other becomes a true square,
-and an ellipse a circle, both sides taking the mean. Paul asked for squares and
-circles; this design gives free proportions instead, and the snap is what gives
-the other reading back. The threshold is tight on purpose: a deliberate 100×92
-box differs by 8% and stays as drawn.
+Rectangles and ellipses do **not** snap. A near-square rectangle becoming a true
+square was designed and then cut by Paul, and the reasoning stands on its own: it
+is the only snap here that could fight a reader who meant the proportions they
+drew, and a line's snap has an unambiguous target where a box's does not.
+
+So a square is a rectangle dragged square by eye, and a circle an ellipse dragged
+round by eye. That is the cost of the decision, stated plainly: the drag is the
+only thing deciding the proportions.
 
 ## Data flow
 
@@ -200,7 +203,8 @@ could be added on top of this later; it would share the same geometry.
   close. An ellipse's points satisfy its equation within a tolerance. No two
   consecutive points are further apart than `SMOOTH_GAP`, which is the property
   the whole design rests on. A line snaps inside 5° and does not outside it. A
-  near-square snaps and a 100×92 box does not.
+  does not. A rectangle and an ellipse keep whatever proportions they were
+  dragged to, since neither snaps.
 - **Unit, the canvas.** The tool selected is the shape committed. Choosing a tool
   turns erasing off. A drag under the threshold commits nothing. `pointercancel`
   commits nothing. The tool opens on the pen rather than on what was used last.
@@ -216,14 +220,14 @@ could be added on top of this later; it would share the same geometry.
   remedy is designed and costed; it just has not been spent.
 - **A stateful tool is a stateful tool.** Showing it on the button is the
   mitigation, not a cure.
-- **Snap thresholds are chosen, not measured.** 5° and 6% are judgments. They
-  are two constants and trivial to move once there is an opinion.
+- **The 5° snap threshold is chosen, not measured.** It is one constant and
+  trivial to move once there is an opinion about it on the device.
 - **`InkCanvas.vue` is 1273 lines before this.** The geometry lives in
   `src/inkShape.js` for that reason; the component gains a mode and a picker and
   nothing else.
 
 ## Open questions
 
-Whether near-square snapping earns its place. It is the one piece here chosen to
-reconcile "squares and circles" with free proportions, and it is the one that can
-fight the reader. Dropping it is a deleted function and a deleted test.
+None blocking. Two things are deliberately left to the device: whether a 0.99 px
+corner reads as soft, and whether 5° is the right latitude for a line's snap.
+Both have a costed remedy and neither changes the design.
