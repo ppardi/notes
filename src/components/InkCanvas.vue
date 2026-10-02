@@ -406,7 +406,14 @@ export default {
 			   thing this format must never produce. A stroke from before color
 			   existed gets the default, which is what it has always drawn in. */
 			const placed = placeInk(
-				(existing?.strokes ?? []).map((stroke) => ({ ...stroke, color: knownColor(stroke.color) })),
+				(existing?.strokes ?? []).map(({ ruled, ...stroke }) => ({
+					...stroke,
+					color: knownColor(stroke.color),
+					/* Anything but true draws as a hand. Dropped rather than
+					   kept as false, so a page of handwriting does not carry a
+					   field per stroke saying what it is not. */
+					...(ruled === true ? { ruled: true } : {}),
+				})),
 				existing?.origin,
 				canvas?.clientWidth ?? 0,
 				canvas?.clientHeight ?? 0,
@@ -964,7 +971,10 @@ export default {
 			}
 			const drawn = this.shaping.points
 			if (drawn.length) {
-				const stroke = { points: drawn, color: this.color }
+				/* Ruled: the points are a construction, not a hand's path, and
+				   the renderer must not smooth them - which is what keeps a
+				   corner square rather than tapering into the turn. */
+				const stroke = { points: drawn, color: this.color, ruled: true }
 				this.strokes.push(stroke)
 				this.history.push({ drew: stroke })
 				const context = this.contextFor('page')
@@ -972,7 +982,7 @@ export default {
 					context.save()
 					context.translate(0, -this.panY)
 					context.fillStyle = this.colorOf(stroke)
-					traceStroke(context, stroke.points)
+					traceStroke(context, stroke.points, stroke.ruled)
 					context.restore()
 				}
 			}
@@ -1221,7 +1231,7 @@ export default {
 			context.translate(0, -this.panY)
 			for (const stroke of this.strokes) {
 				context.fillStyle = this.colorOf(stroke)
-				traceStroke(context, stroke.points)
+				traceStroke(context, stroke.points, stroke.ruled)
 			}
 			context.restore()
 		},
@@ -1261,7 +1271,7 @@ export default {
 				this.painted = this.onScreen(this.boundsOf(points))
 			} else if (this.shaping?.points.length) {
 				context.fillStyle = this.colorOf({ color: this.color })
-				traceStroke(context, this.shaping.points)
+				traceStroke(context, this.shaping.points, true)
 				this.painted = this.onScreen(this.boundsOf(this.shaping.points))
 			} else {
 				const [x, y] = this.rubbedFrom
@@ -1323,7 +1333,7 @@ export default {
 				context.scale(ratio, ratio)
 				for (const stroke of strokes) {
 					context.fillStyle = this.colorOf(stroke)
-					traceStroke(context, stroke.points)
+					traceStroke(context, stroke.points, stroke.ruled)
 				}
 			}
 			return new Promise((resolve) => picture.toBlob(resolve, 'image/png'))

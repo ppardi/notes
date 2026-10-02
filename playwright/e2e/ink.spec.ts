@@ -162,6 +162,39 @@ async function inkColorsInTheNoteImage(image: Locator): Promise<string[]> {
 	})
 }
 
+// The strokes stored beside the picture, read out of the saved PNG itself.
+//
+// The sheet the dialog re-traces on reopen is built from these, so reading the
+// sheet can only say that *something* came back. This reads the file: the
+// `notes-ink` tEXt chunk holds base64 of the JSON the canvas saved, and it is
+// the one place a field that never reached the file shows up missing.
+//
+// Fetched through the app's own attachment endpoint rather than from the
+// <img> in the note, whose src is served by a route that may re-encode the
+// picture - pixels would survive that, a text chunk would not.
+async function inkStrokesInTheFile(page: Page, noteId: number, path: string): Promise<Array<Record<string, unknown>>> {
+	return await page.evaluate(async ({ noteId, path }) => {
+		const url = `/index.php/apps/notes/notes/${noteId}/attachment?path=${encodeURIComponent(path)}`
+		const response = await fetch(url)
+		if (!response.ok) {
+			throw new Error(`the attachment answered ${response.status}`)
+		}
+		const bytes = new Uint8Array(await response.arrayBuffer())
+		const text = (from: number, length: number) => String.fromCharCode(...bytes.subarray(from, from + length))
+		// Walk the chunks past the 8-byte signature: length, type, data, CRC.
+		for (let at = 8; at + 8 <= bytes.length;) {
+			const length = new DataView(bytes.buffer, bytes.byteOffset + at, 4).getUint32(0)
+			const type = text(at + 4, 4)
+			const data = at + 8
+			if (type === 'tEXt' && text(data, 9) === 'notes-ink') {
+				return JSON.parse(atob(text(data + 10, length - 10))).strokes
+			}
+			at = data + length + 4
+		}
+		throw new Error('the picture carries no strokes')
+	}, { noteId, path })
+}
+
 // Put the page on a known theme, whatever the account is set to.
 //
 // Three tests here assert what a filter computes to in light and then in dark.
@@ -1112,7 +1145,7 @@ test.describe('Ink', () => {
 	})
 
 	test('a rectangle survives the picture and the reopen', async ({ page, request }) => {
-		await openInkedNote(page, request)
+		const noteId = await openInkedNote(page, request)
 		await page.getByRole('button', { name: 'Ink', exact: true }).click()
 		const canvas = page.locator('.ink__canvas--live')
 		await expect(canvas).toBeVisible()
@@ -1132,8 +1165,22 @@ test.describe('Ink', () => {
 		await page.mouse.up()
 		await page.getByRole('button', { name: 'Done' }).click()
 
-		// Reopen and measure what came back.
 		await expect(page.locator('figure[data-component="image-view"] img').first()).toBeVisible()
+
+		// The shape is marked ruled in the file. That flag is what makes the
+		// renderer draw it without the smoothing a hand needs, which is the
+		// difference between a square corner and one that tapers into the
+		// turn. Dropped anywhere between the canvas and the PNG, it would cost
+		// nothing the pixel assertions below could see, so it is read from the
+		// file itself.
+		const attachment = new RegExp(`\\.attachments\\.${noteId}/ink-[A-Za-z0-9_-]+\\.png`)
+		await expect.poll(async () => await noteContent(noteId), { timeout: 15000 }).toMatch(attachment)
+		const saved = (await noteContent(noteId)).match(attachment)![0]
+		const stored = await inkStrokesInTheFile(page, noteId, saved)
+		expect(stored).toHaveLength(1)
+		expect(stored[0].ruled).toBe(true)
+
+		// Reopen and measure what came back.
 		await page.locator('figure[data-component="image-view"] img').first().click()
 		await expect(page.locator('.ink__canvas--page')).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()

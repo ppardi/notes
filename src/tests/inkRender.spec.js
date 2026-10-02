@@ -23,7 +23,59 @@ function recorder() {
    real outline rather than the few points it gives a dot. */
 const CURVE = Array.from({ length: 12 }, (_, i) => [i * 4, Math.sin(i / 2) * 10, 0.5])
 
+/* A path that turns a square corner, sampled as a shape is. */
+const RIGHT_ANGLE = [
+	...Array.from({ length: 21 }, (_, i) => [i * 5, 0, 0.5]),
+	...Array.from({ length: 20 }, (_, i) => [100, (i + 1) * 5, 0.5]),
+]
+
+/* How far the traced outline reaches past a corner, along the diagonal
+   pointing out of it. A square join reaches STROKE_SIZE / 2 * sqrt(2) beyond
+   the corner; a path smoothed into the turn falls short of it, and the edge
+   is seen to taper into the corner. */
+function pastTheCorner(calls, corner, out) {
+	let furthest = -Infinity
+	for (const [name, ...args] of calls) {
+		const traced = name === 'quadraticCurveTo'
+			? [[args[0], args[1]], [args[2], args[3]]]
+			: name === 'moveTo' || name === 'lineTo'
+				? [[args[0], args[1]]]
+				: []
+		for (const [x, y] of traced) {
+			furthest = Math.max(furthest, (x - corner[0]) * out[0] + (y - corner[1]) * out[1])
+		}
+	}
+	return furthest
+}
+
 describe('traceStroke', () => {
+	it('keeps a ruled corner square, where a hand is smoothed into the turn', () => {
+		/* perfect-freehand smooths the path it is given, which is right for a
+		   hand and wrong for a construction: it cuts the corner of a rectangle
+		   into a long chamfer that reads as the edges tapering away. Ruled
+		   says the points are exact and are not to be smoothed. */
+		const away = [Math.SQRT1_2, -Math.SQRT1_2]
+		const hand = recorder()
+		traceStroke(hand.context, RIGHT_ANGLE)
+		const ruled = recorder()
+		traceStroke(ruled.context, RIGHT_ANGLE, true)
+
+		expect(pastTheCorner(ruled.calls, [100, 0], away))
+			.toBeGreaterThan(pastTheCorner(hand.calls, [100, 0], away) + 1)
+	})
+
+	it('reaches a ruled corner within half a nib of the join itself', () => {
+		const ruled = recorder()
+		traceStroke(ruled.context, RIGHT_ANGLE, true)
+
+		/* A square join puts the outer corner STROKE_SIZE / 2 * sqrt(2) out
+		   along the diagonal. Within half a nib of that is a corner, not a
+		   taper. */
+		const square = (STROKE_SIZE / 2) * Math.SQRT2
+		expect(pastTheCorner(ruled.calls, [100, 0], [Math.SQRT1_2, -Math.SQRT1_2]))
+			.toBeGreaterThan(square - STROKE_SIZE / 2)
+	})
+
 	it('draws the outline as curves, so a stroke has no facets', () => {
 		const { context, names } = recorder()
 		traceStroke(context, CURVE)

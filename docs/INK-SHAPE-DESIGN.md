@@ -24,9 +24,8 @@ be a rectangle. Nothing in the canvas can make a straight line straight.
 
 | Question | Answer |
 | --- | --- |
-| Does a dense polyline keep its corners through `traceStroke`? | **Almost.** A 200×100 rectangle sampled every 5 px comes back with its corner 0.99 px inside where the nib alone would put it, because perfect-freehand's `streamline` defaults to 0.5 and smooths the path it is given. |
-| And with `streamline: 0`? | **Exactly.** The nearest outline vertex is 1.25 px from the corner, which is `STROKE_SIZE / 2` — a perfect corner. |
-| Is 0.99 px visible? | Unknown. It is under half the 2.5 px nib's width, so it should not be. Not seen on a screen, only computed. |
+| Does a dense polyline keep its corners through `traceStroke`? | **No.** The filled corner of a 200×100 rectangle lands 1.75 px *inside* the corner, where a square join reaches 1.77 px *outside* it — the turn is cut back by 3.5 px in all, and the edges are seen to taper into it. An earlier figure of 0.99 px measured the nearest outline *vertex*, which is not where the ink ends: `traceStroke` draws the outline as curves through those vertices, and the curve cuts further. |
+| And with `streamline: 0`? | **Yes.** The filled corner lands 0.06 px inside it — square to within a fortieth of the nib. |
 | Does the Catmull-Rom gap filling interfere? | **No**, as long as vertices are no further apart than `SMOOTH_GAP` (6 px): `smoothed()` inserts nothing between points closer than that, so edges stay straight and corners stay sharp. |
 | Do the icons exist? | Yes — `Pencil`, `VectorLine`, `RectangleOutline`, `EllipseOutline` are all in `vue-material-design-icons`. |
 | How much room is in the bar? | Enough. It holds five controls today; six compact ones plus a labeled Done is comfortable at 768 pt, an iPad's portrait width. |
@@ -56,16 +55,21 @@ working the day shapes ship, with no new code and no change to the file format:
   compatibility. Nobody asked to move a shape. If that day comes, polylines do
   not block it — a drawing is still just strokes.
 
-### The corner is left slightly soft, for now
+### A shape is ruled, and ruled strokes are not smoothed
 
-`streamline: 0.5` rounds a corner by 0.99 px beyond the nib. The nib is 2.5 px
-wide, so the rounding is under half a line width and is expected to be invisible.
+A shape carries `ruled: true` beside its points and color, and `traceStroke`
+draws a ruled stroke with `streamline: 0`.
 
-Shipping without a fix is deliberate: the fix is a flag on the stroke that
-renders it with `streamline: 0`, and that is an additive field in the file format
-that should not be spent on a number nobody has seen yet. If the corners read as
-soft on the device, the flag is a small change and the measurement above says
-exactly what it buys.
+This was designed as a contingency and then spent: shipped without it, the
+corners read as tapering on the device, which the measurement above explains —
+the smoothing that keeps handwriting from showing the pen's own jitter has
+nothing to do on a construction but cut its corners.
+
+`ruled` is an additive field. A stroke without it draws as a hand, which is
+every stroke written before this and every freehand stroke after it. Anything
+but `true` in the file is dropped on the way in, and the field is left off
+rather than stored as `false`, so a page of handwriting carries no field per
+stroke saying what it is not.
 
 ### One tool picker, with the pen inside it
 
@@ -202,8 +206,8 @@ could be added on top of this later; it would share the same geometry.
 
 ## Testing
 
-- **Unit, `src/inkShape.js`.** A rectangle's points lie on four straight edges and
-  close. An ellipse's points satisfy its equation within a tolerance. No two
+- **Unit, `src/inkShape.js`.** A rectangle's points lie on four straight edges,
+  come back round to where they started and carry on past the join. An ellipse's points satisfy its equation within a tolerance. No two
   consecutive points are further apart than `SMOOTH_GAP`, which is the property
   the whole design rests on. A line snaps inside 5° and does not outside it. A rectangle and an ellipse keep whatever proportions they were
   dragged to, since neither snaps.
@@ -213,13 +217,16 @@ could be added on top of this later; it would share the same geometry.
 - **End to end.** Pick Rectangle, drag, Done, reopen, and read the pixels on the
   page sheet — the proof used for color, and the only one that covers the whole
   path through the file.
-- **Not testable here.** Whether a 0.99 px corner reads as soft, and whether the
-  snap threshold feels helpful or interfering. Both are Paul's eye on the device.
+- **Unit, `src/inkRender.js`.** A ruled stroke's traced outline reaches further
+  past a square corner than a smoothed one does, and comes within half a nib of
+  where a square join puts it. Measuring the traced path rather than the pixels
+  is what makes this a unit test; the pixels were measured in a browser, once,
+  and the figures are in the table above.
+- **Not testable here.** Whether the snap threshold feels helpful or
+  interfering. That is Paul's eye on the device.
 
 ## Risks
 
-- **The corner rounding is a guess about perception.** Measured, not seen. The
-  remedy is designed and costed; it just has not been spent.
 - **A stateful tool is a stateful tool.** Showing it on the button is the
   mitigation, not a cure.
 - **The 5° snap threshold is chosen, not measured.** It is one constant and
@@ -230,17 +237,14 @@ could be added on top of this later; it would share the same geometry.
 
 ## Open questions
 
-Two things are left to the device:
-
-- **Whether a rectangle's corner reads as soft.** The corner comes out 0.99 px
-  inside where the nib alone would put it, because perfect-freehand's `streamline`
-  defaults to 0.5 and smooths the path. The rounding is under half the 2.5 px nib
-  and is expected to be invisible. If it reads as soft on the device, a fix is
-  designed: render the shape with `streamline: 0` and store the choice in a new
-  stroke field. The cost is one field in the file format; the return is a visibly
-  sharp corner.
-
 - **Whether 5° is the right latitude for a line's snap.** The threshold was chosen,
   not measured. One constant in `src/inkShape.js` and trivial to move once there
   is an opinion about it on the device. Lines shallower than 5° from horizontal or
   vertical snap true; anything outside that latitude draws at the angle it was dragged.
+
+Settled on the device: the corners did read as soft, and `ruled` was spent on
+them. Even ruled, the apex stops at the corner rather than reaching the 1.77 px
+beyond it that a stroked path with a round join would — recovering that would
+mean drawing shapes with `ctx.stroke()` instead of filling perfect-freehand's
+outline, which is a second renderer for the sake of a pixel nobody has asked
+about.

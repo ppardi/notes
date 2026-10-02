@@ -1223,6 +1223,42 @@ describe('InkCanvas', () => {
 		expect(wrapper.vm.choosingTool).toBe(false)
 	})
 
+	it('marks a committed shape ruled, and a handwritten stroke not', async () => {
+		/* The flag is what tells the renderer the points are a construction
+		   and are not to be smoothed, which is what keeps a corner square. It
+		   has to survive the file, so it lives on the stroke. */
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 120, offsetY: 90 })
+		await pointer(wrapper, 'pointerup')
+
+		wrapper.vm.tool = 'pen'
+		await pointer(wrapper, 'pointerdown', { offsetX: 200, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 220, offsetY: 40 })
+		await pointer(wrapper, 'pointerup')
+
+		const [shape, hand] = wrapper.vm.strokes
+		expect(shape.ruled).toBe(true)
+		expect(hand.ruled).toBeFalsy()
+	})
+
+	it('trusts nothing but true for ruled in a file', async () => {
+		/* Strokes arrive from a file anything could have written. A stroke
+		   carrying something else must draw as a hand, not throw. */
+		const wrapper = await open({
+			png: new Blob(),
+			origin: [0, 0],
+			strokes: [
+				{ points: [[1, 1, 0.5], [9, 9, 0.5]], color: '#000000', ruled: 'yes' },
+				{ points: [[2, 2, 0.5], [8, 8, 0.5]], color: '#000000', ruled: true },
+				{ points: [[3, 3, 0.5], [7, 7, 0.5]], color: '#000000' },
+			],
+		})
+
+		expect(wrapper.vm.strokes.map((stroke) => stroke.ruled)).toEqual([undefined, true, undefined])
+	})
+
 	it('shuts the tool menu when the color picker opens', async () => {
 		/* Two popovers over one small bar. Whichever way a menu is opened -
 		   the component's own click, or the pen's toggle - the other one goes,

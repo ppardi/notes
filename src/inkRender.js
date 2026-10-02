@@ -21,6 +21,18 @@ export const STROKE_SIZE = 2.5
 
 const STROKE = { size: STROKE_SIZE, thinning: 0, simulatePressure: false }
 
+/* What a stroke whose points are a construction rather than a hand is drawn
+   with.
+ *
+ * perfect-freehand smooths the path it is given - `streamline` defaults to 0.5
+ * - which is what keeps handwriting from showing the pen's own jitter. On a
+ * shape there is no jitter to take out and the smoothing has nothing to do but
+ * cut the corners: a rectangle's corner came out 1.75 px inside where the nib
+ * alone would put it, against the 1.77 px outside a square join reaches, so the
+ * edges were seen to taper into every turn. Off, the corner is square to within
+ * a quarter of a pixel. */
+const RULED = { ...STROKE, streamline: 0 }
+
 /**
  * Image pixels per CSS pixel of drawing in a saved picture.
  *
@@ -231,6 +243,10 @@ export function smoothed(points, maxGap = SMOOTH_GAP) {
  * the curve comes back round to where it started and the closing join is as
  * smooth as the rest.
  *
+ * A ruled stroke is one whose points were computed rather than drawn - a line,
+ * a rectangle, an ellipse. Those are traced without the smoothing a hand needs,
+ * which is what keeps a corner square.
+ *
  * The fill is whatever `fillStyle` the context carries, so the caller must set
  * it before calling: a stroke traced without one is drawn in the last color
  * the context held, which for the picture saved to the file is a wrong color
@@ -238,9 +254,11 @@ export function smoothed(points, maxGap = SMOOTH_GAP) {
  *
  * @param {CanvasRenderingContext2D} context where to trace
  * @param {Array<Array<number>>} points the stroke's [x, y, pressure] samples
+ * @param {boolean} ruled whether the points are a construction rather than a
+ *   hand's path, and so are to be drawn exactly rather than smoothed
  */
-export function traceStroke(context, points) {
-	const outline = getStroke(smoothed(points), STROKE)
+export function traceStroke(context, points, ruled = false) {
+	const outline = getStroke(smoothed(points), ruled ? RULED : STROKE)
 	if (!outline.length) {
 		return
 	}
