@@ -738,11 +738,11 @@ describe('InkCanvas', () => {
 		/* An icon with no name is a button nobody can describe: not to a screen
 		   reader, not in a bug report, and not to themselves. */
 		const wrapper = await open()
-		/* Not the color picker's choices: the real menu is a popover outside
-		   the bar, and the stub that stands in for it here renders them in
-		   place. They are named by their text, and tested above. */
+		/* Not the color or tool pickers' choices: the real menus are popovers
+		   outside the bar, and the stub that stands in for them here renders
+		   them in place. They are named by their text, and tested above. */
 		const buttons = wrapper.find('.ink__bar').findAll('button')
-			.filter((b) => !b.element.closest('.ink__color'))
+			.filter((b) => !b.element.closest('.ink__color, .ink__tool-picker'))
 		expect(buttons.map((b) => b.attributes('aria-label') || b.text()))
 			.toEqual(['Erase', 'Undo', 'Cancel', 'Done'])
 		/* The three tools are icons, so the name has to be written down; Done
@@ -1138,6 +1138,106 @@ describe('InkCanvas', () => {
 		wrapper.vm.chooseColor('#cc0000')
 
 		expect(wrapper.vm.strokes[0].color).toBe(DEFAULT_INK_COLOR)
+	})
+
+	it('names every tool, so the picker is not four unlabeled icons', async () => {
+		const wrapper = await open()
+
+		expect(wrapper.vm.toolChoices.map((choice) => choice.label))
+			.toEqual(['Pen', 'Line', 'Rectangle', 'Ellipse'])
+	})
+
+	it('marks which tool is in use', async () => {
+		const wrapper = await open()
+
+		wrapper.vm.chooseTool('rectangle')
+
+		const chosen = wrapper.vm.toolChoices.filter((choice) => choice.chosen)
+		expect(chosen).toHaveLength(1)
+		expect(chosen[0].key).toBe('rectangle')
+	})
+
+	it('opens on the pen, however the last drawing ended', async () => {
+		/* Deliberately unlike the color, which is remembered: a tool is a
+		   momentary intent, and a reader coming back means to write. */
+		const wrapper = await open()
+
+		expect(wrapper.vm.tool).toBe('pen')
+	})
+
+	it('closes the tool menu when a tool is chosen', async () => {
+		const wrapper = await open()
+		wrapper.vm.choosingTool = true
+
+		wrapper.vm.chooseTool('line')
+
+		expect(wrapper.vm.choosingTool).toBe(false)
+	})
+
+	it('turns the eraser off when a tool is chosen', async () => {
+		/* Choosing a tool says the next thing is a stroke, which is the rule
+		   choosing a color already follows. The eraser is the one thing on this
+		   canvas that destroys work. */
+		const wrapper = await open()
+		wrapper.vm.erasing = true
+
+		wrapper.vm.chooseTool('ellipse')
+
+		expect(wrapper.vm.erasing).toBe(false)
+		expect(wrapper.vm.tool).toBe('ellipse')
+	})
+
+	it('refuses a tool it does not know', async () => {
+		const wrapper = await open()
+
+		wrapper.vm.chooseTool('triangle')
+
+		expect(wrapper.vm.tool).toBe('pen')
+	})
+
+	it('leaves the tool alone when a color is chosen', async () => {
+		/* They are orthogonal: a color says what the ink looks like, a tool
+		   says what shape it takes. */
+		const wrapper = await open()
+		wrapper.vm.chooseTool('rectangle')
+
+		wrapper.vm.chooseColor('#cc0000')
+
+		expect(wrapper.vm.tool).toBe('rectangle')
+	})
+
+	it('opens the tool menu from a pen tap', async () => {
+		const wrapper = await open()
+
+		await tap(wrapper, wrapper.find('.ink__tool-picker'), 'pointerup', { pointerType: 'pen' })
+
+		expect(wrapper.vm.choosingTool).toBe(true)
+	})
+
+	it('closes the tool menu when a pen taps the trigger again', async () => {
+		const wrapper = await open()
+		wrapper.vm.choosingTool = true
+
+		await tap(wrapper, wrapper.find('.ink__tool-picker'), 'pointerup', { pointerType: 'pen' })
+
+		expect(wrapper.vm.choosingTool).toBe(false)
+	})
+
+	it('leaves the focus alone while the tool menu is open', async () => {
+		/* The tool menu is a popover too, teleported out of the dialog, so
+		   claimFocus() would take the focus back from it and shut it mid-choice
+		   - on a rotation, which is where the color picker's twin was found. */
+		const wrapper = await open(null, { attachTo: document.body })
+		wrapper.vm.choosingTool = true
+		const elsewhere = document.createElement('button')
+		document.body.appendChild(elsewhere)
+		elsewhere.focus()
+
+		wrapper.vm.claimFocus()
+
+		expect(document.activeElement).toBe(elsewhere)
+		elsewhere.remove()
+		wrapper.unmount()
 	})
 
 	it('leaves the focus alone while the picker is open', async () => {

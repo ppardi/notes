@@ -41,6 +41,33 @@
 			     name, which is what a screen reader reads and what a tooltip
 			     shows. -->
 			<div class="ink__bar">
+				<!-- The tool in use is the button, so what the next stroke will
+				     be is where the eye already is. A stateful tool's usual
+				     failure is "why is my pen drawing boxes". -->
+				<NcActions v-model:open="choosingTool"
+					class="ink__tool-picker"
+					:aria-label="t('notes', 'Tool: {tool}', { tool: toolLabel })"
+					:title="t('notes', 'Tool: {tool}', { tool: toolLabel })"
+					:disabled="!accepting()"
+					@pointerup="toggleToolPicker"
+				>
+					<template #icon>
+						<component :is="toolIcons[tool]" :size="20" />
+					</template>
+					<NcActionButton v-for="choice in toolChoices"
+						:key="choice.key"
+						type="radio"
+						:modelValue="tool"
+						:value="choice.key"
+						@update:modelValue="chooseTool(choice.key)"
+						@click="chooseTool(choice.key)"
+					>
+						<template #icon>
+							<component :is="toolIcons[choice.key]" :size="20" />
+						</template>
+						{{ choice.label }}
+					</NcActionButton>
+				</NcActions>
 				<!-- The color in use is the button: a reader can see what the
 				     pen will draw without opening anything. Six swatches in
 				     the bar itself would be faster by one tap and leave no
@@ -132,14 +159,18 @@ import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcActions from '@nextcloud/vue/components/NcActions'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import CloseIcon from 'vue-material-design-icons/Close.vue'
+import EllipseIcon from 'vue-material-design-icons/EllipseOutline.vue'
 import EraserIcon from 'vue-material-design-icons/Eraser.vue'
+import PenIcon from 'vue-material-design-icons/Pencil.vue'
+import RectangleIcon from 'vue-material-design-icons/RectangleOutline.vue'
 import UndoIcon from 'vue-material-design-icons/UndoVariant.vue'
+import LineIcon from 'vue-material-design-icons/VectorLine.vue'
 import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
 import { INK_COLORS, knownColor, rememberColor, rememberedColor } from '../inkPalette.js'
 import { INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
-import { DEFAULT_TOOL, knownTool, shapePoints } from '../inkShape.js'
+import { DEFAULT_TOOL, INK_TOOLS, knownTool, shapePoints } from '../inkShape.js'
 
 /* How far a finger travels before it is moving the page rather than resting on
    it. A tap, and a hand settling, both report a little movement. */
@@ -155,10 +186,14 @@ export default {
 
 	components: {
 		CloseIcon,
+		EllipseIcon,
 		EraserIcon,
+		LineIcon,
 		NcActionButton,
 		NcActions,
 		NcButton,
+		PenIcon,
+		RectangleIcon,
 		UndoIcon,
 	},
 
@@ -196,6 +231,10 @@ export default {
 			   remembered between drawings - a color is a preference, a tool is
 			   a momentary intent. */
 			tool: DEFAULT_TOOL,
+			/* Whether the tool menu is open. NcActions manages this itself; the
+			   component has to know because the menu lives outside the dialog
+			   and the dialog takes the focus back from anything outside it. */
+			choosingTool: false,
 			/* The shape being dragged out, before it is a stroke:
 			   { from: [x, y], points: [...] }. Null the rest of the time. */
 			shaping: null,
@@ -268,6 +307,38 @@ export default {
 		/* What the picker's own button says it will draw in. */
 		colorLabel() {
 			return this.colorChoices.find((choice) => choice.chosen)?.label ?? ''
+		},
+
+		/* The tools, named and with the one in use marked.
+		 *
+		 * Named here rather than in the module for the reason the colors are:
+		 * the names are translated, and a module of geometry should not need
+		 * the translation globals to be testable. An icon is also a poor label
+		 * on its own to a reader who is listening rather than looking.
+		 */
+		toolChoices() {
+			const named = {
+				pen: t('notes', 'Pen'),
+				line: t('notes', 'Line'),
+				rectangle: t('notes', 'Rectangle'),
+				ellipse: t('notes', 'Ellipse'),
+			}
+			return INK_TOOLS.map((key) => ({
+				key,
+				label: named[key],
+				chosen: key === this.tool,
+			}))
+		},
+
+		/* What the picker's own button says it will draw. */
+		toolLabel() {
+			return this.toolChoices.find((choice) => choice.chosen)?.label ?? ''
+		},
+
+		/* The icon for each tool, by name, so the template does not need four
+		   conditionals to show one of them. */
+		toolIcons() {
+			return { pen: 'PenIcon', line: 'LineIcon', rectangle: 'RectangleIcon', ellipse: 'EllipseIcon' }
 		},
 	},
 
@@ -419,14 +490,14 @@ export default {
 		 * Focus the reader moved themselves, onto a button in the bar, is
 		 * left where they put it.
 		 *
-		 * The color picker's menu is the one thing outside this dialog that
-		 * belongs to it: it is a popover, so it is teleported to the body and
-		 * `contains` says no. Taking the focus back from it would shut it
+		 * The color picker's menu and the tool menu are the things outside this
+		 * dialog that belong to it: each is a popover, so it is teleported to
+		 * the body and `contains` says no. Taking the focus back from it would shut it
 		 * mid-choice, which a resize - a rotation, or the error message
 		 * appearing - is enough to cause. */
 		claimFocus() {
 			const dialog = this.$refs.dialog
-			if (!dialog || this.picking || dialog.contains(document.activeElement)) {
+			if (!dialog || this.picking || this.choosingTool || dialog.contains(document.activeElement)) {
 				return
 			}
 			/* Once: by the second call the focus is the body's, and handing
@@ -962,6 +1033,30 @@ export default {
 			}
 			const pad = STROKE_SIZE + 2
 			return [minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2]
+		},
+
+		/* Set what the pen draws.
+		 *
+		 * Nothing already on the page changes: a stroke keeps the shape it was
+		 * drawn as, the same way it keeps its color.
+		 *
+		 * @param {string} key the chosen tool
+		 */
+		chooseTool(key) {
+			this.tool = knownTool(key)
+			/* Choosing a tool says the next thing is a stroke, so the eraser
+			   stands down - the rule choosing a color already follows. */
+			this.erasing = false
+			this.choosingTool = false
+		},
+
+		/* The tool menu's own way in and out for a pen, which sends no click to
+		 * anything inside this dialog. Toggles, so a menu opened by mistake can
+		 * be shut without choosing a tool. */
+		toggleToolPicker(event) {
+			if (event.pointerType === 'pen' && this.accepting()) {
+				this.choosingTool = !this.choosingTool
+			}
 		},
 
 		/* Set what the next stroke will be drawn in.
