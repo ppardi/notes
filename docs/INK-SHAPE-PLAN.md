@@ -1362,8 +1362,19 @@ Run: `npx playwright test ink.spec.ts -g "a rectangle survives"`
 Expected: PASS.
 
 Then change `'Rectangle'` to `'Ellipse'` in both places and run it again.
-Expected: FAIL on the hollow ratio or the proportions — an ellipse fills its
-middle third far more than a rectangle's two sides do.
+Expected: FAIL on the corner check.
+
+**Not on the hollow ratio or the proportions** — that expectation was wrong and
+cost a run to discover. An ellipse is an outline too: measured, it gives a hollow
+ratio of 0.168 against a rectangle's 0.156, at the same 200:120 proportions.
+Neither number separates them. What does is the corners: a tenth-of-the-box
+square at each corner of the ink's own bounding box holds ink for a rectangle
+(measured [97, 87, 86, 92]) and none at all for an ellipse ([0, 0, 0, 0]).
+
+Also measure the hollow ratio against the **ink's own bounding rows**, not the
+canvas's. The canvas is 1280x677 and the rectangle sits at rows 277-399 —
+entirely inside the canvas's middle third — so a ratio taken over the whole
+canvas is exactly 1 and fails on a correct drawing.
 
 Change it back and confirm it passes again. Put both outputs in your report.
 
