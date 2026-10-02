@@ -613,7 +613,7 @@ export default {
 		 * as a touch like any other, and the page lurching under a stroke is
 		 * the palm problem in a new place. */
 		startPan(event) {
-			if (this.current || this.rubbing) {
+			if (this.current || this.rubbing || this.shaping) {
 				return
 			}
 			this.panning = { pointerId: event.pointerId, from: event.offsetY, at: this.panY, moved: false }

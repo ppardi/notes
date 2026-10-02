@@ -1745,6 +1745,20 @@ describe('InkCanvas drawing', () => {
 		expect(Math.max(...xs)).toBe(160)
 	})
 
+	it('does not let a finger pan the page while a shape is being dragged', async () => {
+		/* A palm landing mid-drag would pan the page, and the anchor was taken
+		   in the coordinates the old pan gave it - the shape would reanchor
+		   under the pen. Freehand and the eraser are already refused here. */
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 160, offsetY: 120 })
+		await pointer(wrapper, 'pointerdown', { pointerType: 'touch', pointerId: 2, offsetX: 400, offsetY: 400 })
+
+		expect(wrapper.vm.panning).toBeNull()
+	})
+
 	it('draws freehand when the tool is one it does not know', async () => {
 		/* Refusing to draw at all would be the worst outcome available. */
 		const wrapper = await open()
