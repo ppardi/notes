@@ -5,7 +5,7 @@
 
 # Shapes in ink
 
-Status: design, awaiting approval. Target: the `6.1.x` private build. Extends
+Status: built. Target: the `6.1.x` private build. Extends
 [INK-DESIGN.md](INK-DESIGN.md) and follows [INK-COLOR-DESIGN.md](INK-COLOR-DESIGN.md),
 whose picker this one is built in the image of.
 
@@ -215,7 +215,7 @@ could be added on top of this later; it would share the same geometry.
   page sheet — the proof used for color, and the only one that covers the whole
   path through the file.
 - **Not testable here.** Whether a 0.99 px corner reads as soft, and whether the
-  snap thresholds feel helpful or interfering. Both are Paul's eye on the device.
+  snap threshold feels helpful or interfering. Both are Paul's eye on the device.
 
 ## Risks
 
@@ -231,6 +231,17 @@ could be added on top of this later; it would share the same geometry.
 
 ## Open questions
 
-None blocking. Two things are deliberately left to the device: whether a 0.99 px
-corner reads as soft, and whether 5° is the right latitude for a line's snap.
-Both have a costed remedy and neither changes the design.
+Two things are left to the device:
+
+- **Whether a rectangle's corner reads as soft.** The corner comes out 0.99 px
+  inside where the nib alone would put it, because perfect-freehand's `streamline`
+  defaults to 0.5 and smooths the path. The rounding is under half the 2.5 px nib
+  and is expected to be invisible. If it reads as soft on the device, a fix is
+  designed: render the shape with `streamline: 0` and store the choice in a new
+  stroke field. The cost is one field in the file format; the return is a visibly
+  sharp corner.
+
+- **Whether 5° is the right latitude for a line's snap.** The threshold was chosen,
+  not measured. One constant in `src/inkShape.js` and trivial to move once there
+  is an opinion about it on the device. Lines shallower than 5° from horizontal or
+  vertical snap true; anything outside that latitude draws at the angle it was dragged.
