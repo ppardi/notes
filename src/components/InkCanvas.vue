@@ -50,7 +50,7 @@
 					:aria-label="t('notes', 'Color: {color}', { color: colorLabel })"
 					:title="t('notes', 'Color: {color}', { color: colorLabel })"
 					:disabled="!accepting()"
-					@pointerup="openPicker"
+					@pointerup="togglePicker"
 				>
 					<template #icon>
 						<span class="ink__swatch" :style="{ background: color }" />
@@ -856,6 +856,17 @@ export default {
 		chooseColor(value) {
 			this.color = knownColor(value)
 			rememberColor(this.color)
+			/* Picking a color is saying what to draw in, so the eraser stands
+			   down. Leaving it on is worse than inconvenient: the reader means
+			   to write, and what they get instead takes away strokes they
+			   meant to keep. */
+			this.erasing = false
+			/* And the menu has done what it was opened for. A radio choice does
+			   not dismiss it on its own - the component keeps a menu of them
+			   open so several can be toggled - but there is only one pen, so
+			   the choice is the end of the exchange. It is also the pen's way
+			   out of the menu, which a tap on the trigger is not. */
+			this.picking = false
 		},
 
 		/* Run what a tap on a tool should run, from whichever event carries it.
@@ -912,12 +923,13 @@ export default {
 			this.$emit('close')
 		},
 
-		/* The picker opens itself for a finger and a mouse; this is only the
-		 * pen's way in. Left alone while it is open, so the popover's own
-		 * dismissal keeps working. */
-		openPicker(event) {
-			if (event.pointerType === 'pen' && !this.picking && this.accepting()) {
-				this.picking = true
+		/* The picker opens and closes itself for a finger and a mouse; this is
+		 * only the pen's way in and out, since no click reaches the trigger
+		 * from a Pencil. It toggles rather than opens so that a reader who
+		 * opened the menu by mistake can shut it without choosing a color. */
+		togglePicker(event) {
+			if (event.pointerType === 'pen' && this.accepting()) {
+				this.picking = !this.picking
 			}
 		},
 

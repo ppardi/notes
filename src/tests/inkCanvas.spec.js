@@ -1024,14 +1024,15 @@ describe('InkCanvas', () => {
 		expect(wrapper.vm.picking).toBe(true)
 	})
 
-	it('does not reopen the picker when a pen taps it while it is open', async () => {
-		/* Closing is the popover's own business; re-opening here would fight it. */
+	it('closes the picker when a pen taps the trigger again', async () => {
+		/* No click reaches the trigger from a Pencil, so without this the menu
+		   can only be left by choosing a color or reaching for a finger. */
 		const wrapper = await open()
 		wrapper.vm.picking = true
 
 		await tap(wrapper, wrapper.find('.ink__color'), 'pointerup', { pointerType: 'pen' })
 
-		expect(wrapper.vm.picking).toBe(true)
+		expect(wrapper.vm.picking).toBe(false)
 	})
 
 	it('refuses a pen tap on a tool the canvas is refusing', async () => {
@@ -1044,6 +1045,31 @@ describe('InkCanvas', () => {
 		await tap(wrapper, button(wrapper, 'Erase'), 'pointerup', { pointerType: 'pen', timeStamp: 1000 })
 
 		expect(wrapper.vm.erasing).toBe(false)
+	})
+
+	it('closes the picker when a color is chosen', async () => {
+		/* A radio choice does not dismiss an NcActions menu on its own, and a
+		   menu left open over the canvas is in the way of the next stroke. */
+		const wrapper = await open()
+		wrapper.vm.picking = true
+
+		wrapper.vm.chooseColor('#cc0000')
+
+		expect(wrapper.vm.picking).toBe(false)
+	})
+
+	it('turns the eraser off when a color is chosen', async () => {
+		/* Choosing a color says the next thing is a stroke. Staying in erase
+		   mode means the reader draws expecting ink and takes away work
+		   instead - which is the one thing on this canvas that destroys
+		   something. */
+		const wrapper = await open()
+		wrapper.vm.erasing = true
+
+		wrapper.vm.chooseColor('#0044cc')
+
+		expect(wrapper.vm.erasing).toBe(false)
+		expect(wrapper.vm.color).toBe('#0044cc')
 	})
 
 	it('names every color, so the picker is not six unlabeled squares', async () => {
