@@ -94,6 +94,13 @@ export function straighten(from, to) {
 	return [to[0], to[1]]
 }
 
+/* What the points are sampled at, which is `SHAPE_STEP` less what rounding
+   may add back. Each coordinate moves by at most 0.05 when it is kept to a
+   tenth, so two neighbors can end up 0.05 * sqrt(2) * 2, about 0.14, further
+   apart than they were computed; 0.15 covers it, which keeps `SHAPE_STEP` a
+   ceiling on the points as stored and not only as computed. */
+const SAMPLE_STEP = SHAPE_STEP - 0.15
+
 /**
  * The points between two, no further apart than `SHAPE_STEP`.
  *
@@ -105,7 +112,7 @@ export function straighten(from, to) {
  * @return {Array<Array<number>>} [x, y, pressure] along the way
  */
 function along(from, to) {
-	const steps = Math.max(1, Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) / SHAPE_STEP))
+	const steps = Math.max(1, Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) / SAMPLE_STEP))
 	const out = []
 	for (let step = 0; step < steps; step++) {
 		out.push([
@@ -115,6 +122,16 @@ function along(from, to) {
 		])
 	}
 	return out
+}
+
+/* Coordinates are kept to a tenth of a pixel.
+ *
+ * Freehand points come from offsetX and offsetY and serialize short; a shape's
+ * are computed, and left alone they run to sixteen digits each. A tenth of a
+ * pixel is invisible against a nib this wide and costs the file a third of
+ * what the full digits do. */
+function tenth(value) {
+	return Math.round(value * 10) / 10
 }
 
 /**
@@ -130,6 +147,18 @@ function along(from, to) {
  * @return {Array<Array<number>>} the stroke's points, or none at all
  */
 export function shapePoints(tool, from, to) {
+	return outline(tool, from, to).map(([x, y, pressure]) => [tenth(x), tenth(y), pressure])
+}
+
+/**
+ * A shape's points at full precision, before they are kept.
+ *
+ * @param {string} tool which shape, or the pen
+ * @param {Array<number>} from where the drag started, [x, y]
+ * @param {Array<number>} to where it ended, [x, y]
+ * @return {Array<Array<number>>} the stroke's points, or none at all
+ */
+function outline(tool, from, to) {
 	const wanted = knownTool(tool)
 	if (wanted === 'pen') {
 		return []
@@ -157,7 +186,7 @@ export function shapePoints(tool, from, to) {
 	}
 	const a = (right - left) / 2
 	const b = (bottom - top) / 2
-	const steps = Math.max(8, Math.ceil((2 * Math.PI * Math.max(a, b)) / SHAPE_STEP))
+	const steps = Math.max(8, Math.ceil((2 * Math.PI * Math.max(a, b)) / SAMPLE_STEP))
 	const out = []
 	for (let step = 0; step <= steps; step++) {
 		const angle = (step / steps) * 2 * Math.PI

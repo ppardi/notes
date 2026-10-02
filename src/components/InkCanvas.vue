@@ -659,6 +659,16 @@ export default {
 
 		/* Look at the page from here, within what there is to look at. */
 		panTo(y) {
+			/* Not while a shape is being dragged. A freehand stroke converts
+			   every sample through the live panY, so a page that moves under it
+			   leaves each point right. A shape converts its anchor once, when
+			   the pen lands, and reuses it for every later corner: moving the
+			   page puts its two corners in different frames and the box comes
+			   out as tall as the drag plus the pan. Held here rather than in
+			   each caller so the wheel, undo and a finger all stay covered. */
+			if (this.shaping) {
+				return
+			}
 			const next = Math.max(0, Math.min(y, this.panLimit()))
 			if (next === this.panY) {
 				return
@@ -988,6 +998,14 @@ export default {
 		 * pass that took three strokes brings all three back, because that is
 		 * the one thing the reader did. */
 		undo() {
+			/* The reader is looking at an uncommitted box, so that is what Undo
+			   takes back. History is ink already laid down: reaching past the
+			   shape for it would remove a stroke they meant to keep, and the
+			   shape would then land on top. */
+			if (this.shaping) {
+				this.dropShape()
+				return
+			}
 			/* The same condition its button is disabled on: a tool reached by
 			   pointerup cannot rely on the button having refused the event. An
 			   empty history is already a no-op below. */
@@ -1043,6 +1061,12 @@ export default {
 		 * @param {string} key the chosen tool
 		 */
 		chooseTool(key) {
+			/* A shape being dragged is the old tool's. Left alive it would
+			   commit or vanish depending on whether the pen happened to move
+			   again, so the choice ends it. */
+			if (this.shaping) {
+				this.dropShape()
+			}
 			this.tool = knownTool(key)
 			/* Choosing a tool says the next thing is a stroke, so the eraser
 			   stands down - the rule choosing a color already follows. */

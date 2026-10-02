@@ -1139,8 +1139,10 @@ test.describe('Ink', () => {
 		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
 
 		// A rectangle is its outline: ink along the edges and none through the
-		// middle. Reading the pixels rather than the strokes is what makes this
-		// about the drawing rather than about the metadata.
+		// middle. The page sheet is re-traced from the strokes the PNG's metadata
+		// restored, so this proves the stroke data survived the save and the
+		// reopen and still draws a hollow rectangle. That the saved raster
+		// itself shows the shape is covered elsewhere.
 		const painted = await inkOnThePage(page)
 		expect(painted).toBeGreaterThan(0)
 		const shape = await inkBoxOnScreen(page)

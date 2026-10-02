@@ -1800,9 +1800,31 @@ describe('InkCanvas drawing', () => {
 		await pointer(wrapper, 'pointerup')
 
 		const xs = wrapper.vm.strokes[0].points.map(([x]) => x)
-		const ys = wrapper.vm.strokes[0].points.map(([, y]) => y)
 		expect(Math.max(...xs)).toBeLessThanOrEqual(800)
-		expect(Math.min(...ys)).toBeGreaterThanOrEqual(0)
+	})
+
+	it('clamps a rectangle dragged off the top and the side, where a line would only be snapped', async () => {
+		/* A line this far off level is snapped flat, which would put every y
+		   on the anchor whether or not the clamp did anything. A rectangle
+		   is not snapped, so its extent is the clamp's alone. */
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 400, offsetY: 200 })
+		await pointer(wrapper, 'pointermove', { offsetX: 420, offsetY: -300 })
+		await pointer(wrapper, 'pointerup')
+
+		const ys = wrapper.vm.strokes[0].points.map(([, y]) => y)
+		expect(Math.min(...ys)).toBe(0)
+		expect(Math.max(...ys)).toBe(200)
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 100, offsetY: 200 })
+		await pointer(wrapper, 'pointermove', { offsetX: -500, offsetY: 300 })
+		await pointer(wrapper, 'pointerup')
+
+		const xs = wrapper.vm.strokes[1].points.map(([x]) => x)
+		expect(Math.min(...xs)).toBe(0)
+		expect(Math.max(...xs)).toBe(100)
 	})
 
 	it('commits nothing for a drag that never grew', async () => {
@@ -1832,6 +1854,20 @@ describe('InkCanvas drawing', () => {
 		expect(wrapper.vm.shaping).toBeNull()
 	})
 
+	it('still commits a freehand stroke when the pointer is cancelled', async () => {
+		/* The other half of the rule above: a stroke is ink that was laid
+		   down, and cancelling keeps it as lifting the pen would. */
+		const wrapper = await open()
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 160, offsetY: 120 })
+		await pointer(wrapper, 'pointercancel')
+
+		expect(wrapper.vm.strokes).toHaveLength(1)
+		expect(wrapper.vm.strokes[0].points.length).toBeGreaterThan(1)
+		expect(wrapper.vm.current).toBeNull()
+	})
+
 	it('ignores a second pointer during a shape, as a palm beside the pen', async () => {
 		const wrapper = await open()
 		wrapper.vm.tool = 'rectangle'
@@ -1857,6 +1893,124 @@ describe('InkCanvas drawing', () => {
 		await pointer(wrapper, 'pointerdown', { pointerType: 'touch', pointerId: 2, offsetX: 400, offsetY: 400 })
 
 		expect(wrapper.vm.panning).toBeNull()
+	})
+
+	describe('the page cannot move under a shape being dragged', () => {
+		/* A shape's anchor is converted to page coordinates once, in the
+		   panY of the moment the pen landed. Anything that changes panY
+		   after that puts its two corners in different frames. */
+		const stroke = { points: [[10, 0, 0.5], [10, 2000, 0.5]] }
+
+		async function dragged(wrapper, move) {
+			await pointer(wrapper, 'pointermove', move)
+			await pointer(wrapper, 'pointerup')
+			const ys = wrapper.vm.strokes.at(-1).points.map(([, y]) => y)
+			return Math.max(...ys) - Math.min(...ys)
+		}
+
+		it('holds still for the wheel', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [stroke] })
+			wrapper.vm.tool = 'rectangle'
+			await wrapper.vm.$nextTick()
+			/* A stubbed Teleport hands back a new canvas after a re-render, and
+			   the wheel listener belongs to the one that was there. The app
+			   does this itself whenever the sheet is refitted. */
+			wrapper.vm.refuseTouchDefaults()
+
+			await pointer(wrapper, 'pointerdown', { offsetX: 100, offsetY: 20 })
+			const wheel = new Event('wheel', { bubbles: true, cancelable: true })
+			Object.defineProperty(wheel, 'deltaY', { value: 200 })
+			wrapper.find('.ink__canvas--live').element.dispatchEvent(wheel)
+			await wrapper.vm.$nextTick()
+
+			/* Without this the test passes on a listener that is not there. */
+			expect(wheel.defaultPrevented).toBe(true)
+			expect(wrapper.vm.panY).toBe(0)
+			expect(await dragged(wrapper, { offsetX: 200, offsetY: 120 })).toBe(100)
+		})
+
+		it('holds still for anything that asks the page to move', async () => {
+			/* The chokepoint, so a caller added later is covered too. */
+			const wrapper = await open({ png: new Blob(), strokes: [stroke] })
+			wrapper.vm.tool = 'rectangle'
+			wrapper.vm.panY = 300
+
+			await pointer(wrapper, 'pointerdown', { offsetX: 100, offsetY: 20 })
+			wrapper.vm.panTo(0)
+
+			expect(wrapper.vm.panY).toBe(300)
+			expect(await dragged(wrapper, { offsetX: 200, offsetY: 120 })).toBe(100)
+		})
+
+		it('moves again once the shape has landed', async () => {
+			const wrapper = await open({ png: new Blob(), strokes: [stroke] })
+			wrapper.vm.tool = 'rectangle'
+
+			await pointer(wrapper, 'pointerdown', { offsetX: 100, offsetY: 20 })
+			await pointer(wrapper, 'pointermove', { offsetX: 200, offsetY: 120 })
+			await pointer(wrapper, 'pointerup')
+			wrapper.vm.panTo(150)
+
+			expect(wrapper.vm.panY).toBe(150)
+		})
+	})
+
+	describe('undo while a shape is being dragged', () => {
+		it('takes back the shape in progress and leaves the earlier stroke alone', async () => {
+			const wrapper = await open()
+			await pointer(wrapper, 'pointerdown', { offsetX: 5, offsetY: 5 })
+			await pointer(wrapper, 'pointermove', { offsetX: 50, offsetY: 5 })
+			await pointer(wrapper, 'pointerup')
+			wrapper.vm.tool = 'rectangle'
+
+			await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+			await pointer(wrapper, 'pointermove', { offsetX: 160, offsetY: 120 })
+			wrapper.vm.undo()
+
+			expect(wrapper.vm.shaping).toBeNull()
+			expect(wrapper.vm.strokes).toHaveLength(1)
+			expect(wrapper.vm.history).toHaveLength(1)
+
+			/* And lifting the pen afterwards does not bring it back. */
+			await pointer(wrapper, 'pointerup')
+			expect(wrapper.vm.strokes).toHaveLength(1)
+		})
+
+		it('does not move the page, so the box is the size that was dragged', async () => {
+			/* Undo used to take the page's only stroke and with it the page's
+			   length, dropping panY under the anchor. */
+			const wrapper = await open()
+			wrapper.vm.panY = 300
+			await pointer(wrapper, 'pointerdown', { offsetX: 5, offsetY: 20 })
+			await pointer(wrapper, 'pointermove', { offsetX: 50, offsetY: 20 })
+			await pointer(wrapper, 'pointerup')
+			expect(wrapper.vm.history).toHaveLength(1)
+			wrapper.vm.tool = 'rectangle'
+
+			await pointer(wrapper, 'pointerdown', { offsetX: 100, offsetY: 20 })
+			wrapper.vm.undo()
+			await pointer(wrapper, 'pointermove', { offsetX: 200, offsetY: 120 })
+			await pointer(wrapper, 'pointerup')
+
+			expect(wrapper.vm.panY).toBe(300)
+			expect(wrapper.vm.strokes).toHaveLength(1)
+		})
+	})
+
+	it('drops a shape in progress when another tool is chosen', async () => {
+		/* Otherwise whether it commits depends on a pointermove arriving
+		   after the choice: with one it vanishes, without one it lands. */
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 160, offsetY: 120 })
+		wrapper.vm.chooseTool('pen')
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.shaping).toBeNull()
+		expect(wrapper.vm.strokes).toHaveLength(0)
+		expect(wrapper.vm.history).toHaveLength(0)
 	})
 
 	it('draws freehand when the tool is one it does not know', async () => {
@@ -1888,11 +2042,14 @@ describe('InkCanvas drawing', () => {
 	})
 
 	it('erases rather than drawing a shape while the eraser is on', async () => {
-		const wrapper = await open()
+		/* A stroke under the pen, so there is something for an eraser to take:
+		   without it this holds on a canvas whose pointerdown does nothing. */
+		const wrapper = await open({ png: new Blob(), strokes: [{ points: [[10, 20, 0.5], [60, 20, 0.5]] }] })
 		wrapper.vm.tool = 'rectangle'
 		wrapper.vm.erasing = true
+		expect(wrapper.vm.strokes).toHaveLength(1)
 
-		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointerdown', { offsetX: 30, offsetY: 20 })
 		await pointer(wrapper, 'pointerup')
 
 		expect(wrapper.vm.strokes).toHaveLength(0)

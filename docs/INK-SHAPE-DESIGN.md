@@ -205,8 +205,7 @@ could be added on top of this later; it would share the same geometry.
 - **Unit, `src/inkShape.js`.** A rectangle's points lie on four straight edges and
   close. An ellipse's points satisfy its equation within a tolerance. No two
   consecutive points are further apart than `SMOOTH_GAP`, which is the property
-  the whole design rests on. A line snaps inside 5° and does not outside it. A
-  does not. A rectangle and an ellipse keep whatever proportions they were
+  the whole design rests on. A line snaps inside 5° and does not outside it. A rectangle and an ellipse keep whatever proportions they were
   dragged to, since neither snaps.
 - **Unit, the canvas.** The tool selected is the shape committed. Choosing a tool
   turns erasing off. A drag under the threshold commits nothing. `pointercancel`

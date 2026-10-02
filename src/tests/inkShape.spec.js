@@ -100,6 +100,26 @@ describe('shapePoints', () => {
 		expect(shapePoints('rectangle', [50, 50], [50 + SHAPE_MINIMUM + 1, 50 + SHAPE_MINIMUM + 1]).length).toBeGreaterThan(0)
 	})
 
+	it('keeps every coordinate to a tenth of a pixel, so a shape does not bloat the file', () => {
+		for (const tool of ['line', 'rectangle', 'ellipse']) {
+			for (const [x, y] of shapePoints(tool, [3.3, 4.7], [333.3, 221.7])) {
+				expect(Math.round(x * 10) / 10).toBe(x)
+				expect(Math.round(y * 10) / 10).toBe(y)
+			}
+		}
+	})
+
+	it('still steps no further than SHAPE_STEP once the points are rounded', () => {
+		/* Rounding can widen a gap, so the sampling leaves room for it. */
+		for (const tool of ['line', 'rectangle', 'ellipse']) {
+			for (let width = 10; width < 800; width += 37) {
+				for (let height = 10; height < 500; height += 41) {
+					expect(longestStep(shapePoints(tool, [3.3, 4.7], [3.3 + width, 4.7 + height]))).toBeLessThanOrEqual(SHAPE_STEP)
+				}
+			}
+		}
+	})
+
 	it('gives every point a pressure, since a stroke carries one', () => {
 		const points = shapePoints('line', [0, 0], [100, 0])
 		expect(points.every((point) => point.length === 3)).toBe(true)
@@ -146,8 +166,8 @@ describe('shapePoints', () => {
 		})
 
 		it('is drawn the same whichever corner it was dragged from', () => {
-			const forwards = shapePoints('rectangle', [10, 20], [110, 80]).map(([x, y]) => `${x},${y}`).sort()
-			const backwards = shapePoints('rectangle', [110, 80], [10, 20]).map(([x, y]) => `${x},${y}`).sort()
+			const forwards = shapePoints('rectangle', [10, 20], [110, 80])
+			const backwards = shapePoints('rectangle', [110, 80], [10, 20])
 			expect(forwards).toEqual(backwards)
 		})
 
@@ -162,7 +182,8 @@ describe('shapePoints', () => {
 			for (const [x, y] of points) {
 				const u = (x - 100) / 100
 				const v = (y - 50) / 50
-				expect(u * u + v * v).toBeCloseTo(1, 3)
+				/* Kept to a tenth of a pixel, so on the ellipse to within that. */
+				expect(u * u + v * v).toBeCloseTo(1, 2)
 			}
 		})
 
@@ -179,7 +200,7 @@ describe('shapePoints', () => {
 		it('is drawn the same whichever corner it was dragged from', () => {
 			const forwards = shapePoints('ellipse', [0, 0], [200, 100])
 			const backwards = shapePoints('ellipse', [200, 100], [0, 0])
-			expect(backwards).toHaveLength(forwards.length)
+			expect(backwards).toEqual(forwards)
 		})
 	})
 })
