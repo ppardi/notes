@@ -1110,4 +1110,106 @@ test.describe('Ink', () => {
 		expect(await filterOf(choice), 'menu swatch').toBe('invert(1) hue-rotate(180deg)')
 		await expectSwatchBox(choice, 'menu swatch')
 	})
+
+	test('a rectangle survives the picture and the reopen', async ({ page, request }) => {
+		await openInkedNote(page, request)
+		await page.getByRole('button', { name: 'Ink', exact: true }).click()
+		const canvas = page.locator('.ink__canvas--live')
+		await expect(canvas).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		// The tool names itself on its button, so it is found by what it says.
+		await page.getByRole('button', { name: /^Tool:/ }).click()
+		await page.getByRole('menuitemradio', { name: 'Rectangle', exact: true }).click()
+		await expect(page.getByRole('button', { name: 'Tool: Rectangle' })).toBeVisible()
+
+		const box = (await canvas.boundingBox())!
+		const x = box.x + box.width / 2 - 100
+		const y = box.y + box.height / 2 - 60
+		await page.mouse.move(x, y)
+		await page.mouse.down()
+		await page.mouse.move(x + 200, y + 120, { steps: 10 })
+		await page.mouse.up()
+		await page.getByRole('button', { name: 'Done' }).click()
+
+		// Reopen and measure what came back.
+		await expect(page.locator('figure[data-component="image-view"] img').first()).toBeVisible()
+		await page.locator('figure[data-component="image-view"] img').first().click()
+		await expect(page.locator('.ink__canvas--page')).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Done' })).toBeEnabled()
+
+		// A rectangle is its outline: ink along the edges and none through the
+		// middle. Reading the pixels rather than the strokes is what makes this
+		// about the drawing rather than about the metadata.
+		const painted = await inkOnThePage(page)
+		expect(painted).toBeGreaterThan(0)
+		const shape = await inkBoxOnScreen(page)
+		// Drawn 200x120 and saved at INK_DENSITY; the page sheet is at the
+		// device ratio, so compare proportions rather than absolute sizes.
+		expect(shape.width / shape.height).toBeGreaterThan(1.4)
+		expect(shape.width / shape.height).toBeLessThan(1.9)
+
+		const measured = await page.locator('.ink__canvas--page').evaluate((element: HTMLCanvasElement) => {
+			const context = element.getContext('2d')!
+			const { data, width } = context.getImageData(0, 0, element.width, element.height)
+			// The page sheet is the size of the page and the shape sits somewhere
+			// on it, so everything below is taken of the box the ink occupies, not
+			// of the sheet.
+			let left = Infinity
+			let top = Infinity
+			let right = -Infinity
+			let bottom = -Infinity
+			for (let i = 3; i < data.length; i += 4) {
+				if (data[i] !== 0) {
+					const at = (i - 3) / 4
+					left = Math.min(left, at % width)
+					right = Math.max(right, at % width)
+					top = Math.min(top, Math.floor(at / width))
+					bottom = Math.max(bottom, Math.floor(at / width))
+				}
+			}
+			const third = (bottom - top) / 3
+			// A square a tenth of the box on a side, at each corner of the box.
+			const reach = { x: (right - left) / 10, y: (bottom - top) / 10 }
+			const corners = [0, 0, 0, 0]
+			let edge = 0
+			let middle = 0
+			for (let i = 3; i < data.length; i += 4) {
+				if (data[i] === 0) {
+					continue
+				}
+				const at = (i - 3) / 4
+				const x = at % width
+				const y = Math.floor(at / width)
+				// Count ink in the middle third of the painted rows against ink
+				// anywhere. A filled shape would put plenty in the middle.
+				if (y > top + third && y < bottom - third) {
+					middle++
+				}
+				edge++
+				const nearLeft = x < left + reach.x
+				const nearRight = x > right - reach.x
+				const nearTop = y < top + reach.y
+				const nearBottom = y > bottom - reach.y
+				corners[0] += nearLeft && nearTop ? 1 : 0
+				corners[1] += nearRight && nearTop ? 1 : 0
+				corners[2] += nearLeft && nearBottom ? 1 : 0
+				corners[3] += nearRight && nearBottom ? 1 : 0
+			}
+			return { edge, middle, corners }
+		})
+		expect(measured.edge).toBeGreaterThan(0)
+		// The sides still cross the middle third, so this is a ratio and not a
+		// zero: a filled rectangle would put far more there than its two sides.
+		expect(measured.middle / measured.edge).toBeLessThan(0.35)
+		// An ellipse is an outline too, so hollow does not make it a rectangle.
+		// What does is the corners: a rectangle's sides meet at the corners of
+		// its box, while an ellipse curves away from every one of them.
+		for (const corner of measured.corners) {
+			expect(corner).toBeGreaterThan(0)
+		}
+
+		// And the tool opens on the pen next time, unlike the color.
+		await expect(page.getByRole('button', { name: 'Tool: Pen' })).toBeVisible()
+	})
 })
