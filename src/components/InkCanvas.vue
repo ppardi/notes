@@ -342,6 +342,24 @@ export default {
 		},
 	},
 
+	watch: {
+		/* Two popovers over one small bar, and only one decision is being made
+		   at a time. Watched rather than handled in the togglers, because a
+		   finger and a mouse open these menus through the component's own
+		   click and never reach them. */
+		picking(open) {
+			if (open) {
+				this.choosingTool = false
+			}
+		},
+
+		choosingTool(open) {
+			if (open) {
+				this.picking = false
+			}
+		},
+	},
+
 	async mounted() {
 		/* Both before the load: the pen can land before it finishes, and
 		   Scribble claims it on the touch it is not refused on. */

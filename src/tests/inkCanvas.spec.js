@@ -1223,6 +1223,37 @@ describe('InkCanvas', () => {
 		expect(wrapper.vm.choosingTool).toBe(false)
 	})
 
+	it('shuts the tool menu when the color picker opens', async () => {
+		/* Two popovers over one small bar. Whichever way a menu is opened -
+		   the component's own click, or the pen's toggle - the other one goes,
+		   so a reader is never choosing between two open lists. */
+		const wrapper = await open()
+		wrapper.vm.choosingTool = true
+		/* Settled before the other is touched: one menu is already open when
+		   the reader reaches for the other. */
+		await wrapper.vm.$nextTick()
+
+		wrapper.vm.picking = true
+		await wrapper.vm.$nextTick()
+
+		expect(wrapper.vm.choosingTool).toBe(false)
+		expect(wrapper.vm.picking).toBe(true)
+	})
+
+	it('shuts the color picker when the tool menu opens', async () => {
+		const wrapper = await open()
+		wrapper.vm.picking = true
+		/* Settled before the other is touched: one menu is already open when
+		   the reader reaches for the other. */
+		await wrapper.vm.$nextTick()
+
+		wrapper.vm.choosingTool = true
+		await wrapper.vm.$nextTick()
+
+		expect(wrapper.vm.picking).toBe(false)
+		expect(wrapper.vm.choosingTool).toBe(true)
+	})
+
 	it('leaves the focus alone while the tool menu is open', async () => {
 		/* The tool menu is a popover too, teleported out of the dialog, so
 		   claimFocus() would take the focus back from it and shut it mid-choice
