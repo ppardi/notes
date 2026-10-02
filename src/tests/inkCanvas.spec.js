@@ -146,6 +146,20 @@ async function pointer(wrapper, type, init) {
    place in the bar, does not change when a tool is added beside it. The tools
    carry an icon and no text, so the name is the one a screen reader would
    read out. */
+/* Drives a real event on a control, as the browser does.
+ *
+ * Built by hand rather than through trigger(): jsdom's Event has a read-only
+ * timeStamp, and these assertions are about how close two events are in time.
+ */
+async function tap(wrapper, target, type, fields = {}) {
+	const event = new Event(type, { bubbles: true })
+	for (const [key, value] of Object.entries(fields)) {
+		Object.defineProperty(event, key, { value })
+	}
+	target.element.dispatchEvent(event)
+	await wrapper.vm.$nextTick()
+}
+
 function button(wrapper, label) {
 	return wrapper.findAll('button').find((candidate) => {
 		return candidate.attributes('aria-label') === label || candidate.text() === label
@@ -945,6 +959,91 @@ describe('InkCanvas', () => {
 			wrapper.unmount()
 			expect(disconnect).toHaveBeenCalled()
 		})
+	})
+
+	/* A Pencil tap on a control in this dialog never arrives as a click: the
+	   dialog refuses touchmove so a stroke dragged over the bar is not handed
+	   to Scribble, and refusing it is enough for WebKit to call the tap a drag
+	   and synthesize nothing. Reported from the device, and located by the one
+	   control that did work - the colors in the menu, which is a popover and so
+	   teleported out from under the guard. */
+	it('runs a tool from a pen tap, which arrives as no click at all', async () => {
+		const wrapper = await open()
+		const erase = button(wrapper, 'Erase')
+
+		await tap(wrapper, erase, 'pointerup', { pointerType: 'pen', timeStamp: 1000 })
+
+		expect(wrapper.vm.erasing).toBe(true)
+	})
+
+	it('leaves a finger and a mouse to the click they already send', async () => {
+		/* Those still click, so acting on their pointerup too would run the
+		   tool twice and undo it. */
+		const wrapper = await open()
+		const erase = button(wrapper, 'Erase')
+
+		await tap(wrapper, erase, 'pointerup', { pointerType: 'touch', timeStamp: 1000 })
+		expect(wrapper.vm.erasing).toBe(false)
+
+		await tap(wrapper, erase, 'pointerup', { pointerType: 'mouse', timeStamp: 1000 })
+		expect(wrapper.vm.erasing).toBe(false)
+
+		await tap(wrapper, erase, 'click', { timeStamp: 1000 })
+		expect(wrapper.vm.erasing).toBe(true)
+	})
+
+	it('drops the click a pen tap may still send, so the tool runs once', async () => {
+		const wrapper = await open()
+		const erase = button(wrapper, 'Erase')
+
+		await tap(wrapper, erase, 'pointerup', { pointerType: 'pen', timeStamp: 1000 })
+		await tap(wrapper, erase, 'click', { timeStamp: 1050 })
+
+		/* Not toggled back off. */
+		expect(wrapper.vm.erasing).toBe(true)
+	})
+
+	it('takes a later click normally, so one pen tap cannot eat the next one', async () => {
+		const wrapper = await open()
+		const erase = button(wrapper, 'Erase')
+
+		await tap(wrapper, erase, 'pointerup', { pointerType: 'pen', timeStamp: 1000 })
+		expect(wrapper.vm.erasing).toBe(true)
+
+		/* Well past the window: a separate tap, from a finger this time. */
+		await tap(wrapper, erase, 'click', { timeStamp: 5000 })
+
+		expect(wrapper.vm.erasing).toBe(false)
+	})
+
+	it('opens the color picker from a pen tap', async () => {
+		const wrapper = await open()
+
+		await tap(wrapper, wrapper.find('.ink__color'), 'pointerup', { pointerType: 'pen' })
+
+		expect(wrapper.vm.picking).toBe(true)
+	})
+
+	it('does not reopen the picker when a pen taps it while it is open', async () => {
+		/* Closing is the popover's own business; re-opening here would fight it. */
+		const wrapper = await open()
+		wrapper.vm.picking = true
+
+		await tap(wrapper, wrapper.find('.ink__color'), 'pointerup', { pointerType: 'pen' })
+
+		expect(wrapper.vm.picking).toBe(true)
+	})
+
+	it('refuses a pen tap on a tool the canvas is refusing', async () => {
+		/* A disabled button is not reliably excused from pointer events, so the
+		   tool repeats the condition its button is disabled on. */
+		const wrapper = await open()
+		wrapper.vm.refusing = true
+		await wrapper.vm.$nextTick()
+
+		await tap(wrapper, button(wrapper, 'Erase'), 'pointerup', { pointerType: 'pen', timeStamp: 1000 })
+
+		expect(wrapper.vm.erasing).toBe(false)
 	})
 
 	it('names every color, so the picker is not six unlabeled squares', async () => {

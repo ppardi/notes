@@ -50,6 +50,7 @@
 					:aria-label="t('notes', 'Color: {color}', { color: colorLabel })"
 					:title="t('notes', 'Color: {color}', { color: colorLabel })"
 					:disabled="!accepting()"
+					@pointerup="openPicker"
 				>
 					<template #icon>
 						<span class="ink__swatch" :style="{ background: color }" />
@@ -77,7 +78,8 @@
 					:title="t('notes', 'Erase')"
 					:pressed="erasing"
 					:disabled="!accepting()"
-					@click="erasing = !erasing"
+					@pointerup="onTool($event, toggleErasing)"
+					@click="onTool($event, toggleErasing)"
 				>
 					<template #icon>
 						<EraserIcon :size="20" />
@@ -86,7 +88,8 @@
 				<NcButton :aria-label="t('notes', 'Undo')"
 					:title="t('notes', 'Undo')"
 					:disabled="!history.length || saving"
-					@click="undo"
+					@pointerup="onTool($event, undo)"
+					@click="onTool($event, undo)"
 				>
 					<template #icon>
 						<UndoIcon :size="20" />
@@ -94,13 +97,18 @@
 				</NcButton>
 				<NcButton :aria-label="t('notes', 'Cancel')"
 					:title="t('notes', 'Cancel')"
-					@click="$emit('close')"
+					@pointerup="onTool($event, cancel)"
+					@click="onTool($event, cancel)"
 				>
 					<template #icon>
 						<CloseIcon :size="20" />
 					</template>
 				</NcButton>
-				<NcButton variant="primary" :disabled="!ready || saving" @click="done">
+				<NcButton variant="primary"
+					:disabled="!ready || saving"
+					@pointerup="onTool($event, done)"
+					@click="onTool($event, done)"
+				>
 					{{ t('notes', 'Done') }}
 				</NcButton>
 			</div>
@@ -127,6 +135,11 @@ import { INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStrok
 /* How far a finger travels before it is moving the page rather than resting on
    it. A tap, and a hand settling, both report a little movement. */
 const PAN_THRESHOLD = 8
+
+/* How long after a pen's tap a click is the same tap arriving twice, in ms.
+   Generous: the cost of being wrong is one ignored click, and the cost of
+   being too strict is a tool that fires twice and undoes itself. */
+const PEN_TAP_CLICK = 700
 
 export default {
 	name: 'InkCanvas',
@@ -163,6 +176,9 @@ export default {
 			   how a mark that was there before is taken out. */
 			history: [],
 			erasing: false,
+			/* When a pen last activated a tool, so the click that may follow
+			   the same tap can be told from a new one. */
+			penTapAt: -Infinity,
 			/* What the next stroke will be drawn in, starting where the last
 			   canvas left it. A stroke keeps the color it was drawn with, so
 			   changing this never alters the page. */
@@ -782,6 +798,12 @@ export default {
 		 * pass that took three strokes brings all three back, because that is
 		 * the one thing the reader did. */
 		undo() {
+			/* The same condition its button is disabled on: a tool reached by
+			   pointerup cannot rely on the button having refused the event. An
+			   empty history is already a no-op below. */
+			if (this.saving) {
+				return
+			}
 			const last = this.history.pop()
 			if (!last) {
 				return
@@ -834,6 +856,69 @@ export default {
 		chooseColor(value) {
 			this.color = knownColor(value)
 			rememberColor(this.color)
+		},
+
+		/* Run what a tap on a tool should run, from whichever event carries it.
+		 *
+		 * A Pencil tap on a control in this dialog never arrives as a click.
+		 * The dialog refuses touchmove so that a stroke dragged over the bar is
+		 * not handed to Scribble as handwriting, and refusing it is enough for
+		 * WebKit to call the tap a drag and synthesize nothing from it. A
+		 * finger stays inside the movement the browser ignores and still
+		 * clicks; a Pencil reports finely enough that it does not.
+		 *
+		 * The colors in the menu were always reachable with a pen, which is
+		 * what located this: the menu is a popover, teleported out of the
+		 * dialog and so out from under the guard.
+		 *
+		 * Pointer events are untouched by that preventDefault - the canvas
+		 * draws from them with both touch events refused - so the pen is served
+		 * from pointerup. A click within a moment of one is the same tap
+		 * arriving twice and is dropped; every other click, from a finger, a
+		 * mouse, or Enter on a focused button, is the only event that tap
+		 * produces and runs as it always did.
+		 *
+		 * @param {PointerEvent | MouseEvent} event the event that arrived
+		 * @param {Function} run what the tool does
+		 */
+		onTool(event, run) {
+			if (event.type === 'pointerup') {
+				if (event.pointerType !== 'pen') {
+					return
+				}
+				this.penTapAt = event.timeStamp
+				run()
+				return
+			}
+			if (event.timeStamp - this.penTapAt < PEN_TAP_CLICK) {
+				return
+			}
+			run()
+		},
+
+		/* The tools, named so one function serves both of a tap's events.
+		 *
+		 * Each repeats the condition its button is disabled on: a disabled
+		 * button is not reliably excused from pointer events, and a tool that
+		 * fires while the canvas is saving would act on strokes already on
+		 * their way to the file. */
+		toggleErasing() {
+			if (this.accepting()) {
+				this.erasing = !this.erasing
+			}
+		},
+
+		cancel() {
+			this.$emit('close')
+		},
+
+		/* The picker opens itself for a finger and a mouse; this is only the
+		 * pen's way in. Left alone while it is open, so the popover's own
+		 * dismissal keeps working. */
+		openPicker(event) {
+			if (event.pointerType === 'pen' && !this.picking && this.accepting()) {
+				this.picking = true
+			}
 		},
 
 		/* The color to fill a stroke with.
