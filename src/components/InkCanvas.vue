@@ -32,7 +32,7 @@
 					@pointerdown="onDown"
 					@pointermove="onMove"
 					@pointerup="onUp"
-					@pointercancel="onUp"
+					@pointercancel="onCancel"
 				/>
 			</div>
 			<!-- The tools are icons and Done is words: the three that change
@@ -139,6 +139,7 @@ import { loadInk, saveInk } from '../inkFile.js'
 import { predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
 import { INK_COLORS, knownColor, rememberColor, rememberedColor } from '../inkPalette.js'
 import { INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
+import { DEFAULT_TOOL, knownTool, shapePoints } from '../inkShape.js'
 
 /* How far a finger travels before it is moving the page rather than resting on
    it. A tap, and a hand settling, both report a little movement. */
@@ -191,6 +192,13 @@ export default {
 			   canvas left it. A stroke keeps the color it was drawn with, so
 			   changing this never alters the page. */
 			color: rememberedColor(),
+			/* What the pen draws: the pen itself, or one of the shapes. Not
+			   remembered between drawings - a color is a preference, a tool is
+			   a momentary intent. */
+			tool: DEFAULT_TOOL,
+			/* The shape being dragged out, before it is a stroke:
+			   { from: [x, y], points: [...] }. Null the rest of the time. */
+			shaping: null,
 			/* Whether the picker's menu is open. NcActions manages this
 			   itself; the component has to know because the menu lives
 			   outside the dialog and the dialog takes the focus back from
@@ -643,7 +651,7 @@ export default {
 			/* One gesture at a time. Nothing preempts one in progress now that
 			   a finger cannot start one: what used to arrive first and have to
 			   be undone was the palm. */
-			if (this.current || this.rubbing) {
+			if (this.current || this.rubbing || this.shaping) {
 				return
 			}
 			this.$refs.canvas?.setPointerCapture?.(event.pointerId)
@@ -656,6 +664,10 @@ export default {
 				   it happened to cross. */
 				this.rubbedFrom = null
 				this.rubOut(this.onPage(samplesFrom(event)))
+				return
+			}
+			if (knownTool(this.tool) !== 'pen') {
+				this.startShape(event)
 				return
 			}
 			this.predicted = []
@@ -687,6 +699,10 @@ export default {
 				this.rubOut(this.onPage(samplesFrom(event)))
 				return
 			}
+			if (this.shaping) {
+				this.stretchShape(event)
+				return
+			}
 			if (!this.current) {
 				return
 			}
@@ -713,9 +729,30 @@ export default {
 				this.finishRub()
 				return
 			}
+			if (this.shaping) {
+				this.finishShape()
+				return
+			}
 			if (this.current) {
 				this.finishStroke()
 			}
+		},
+
+		/* The system took the pointer away.
+		 *
+		 * A half-drawn stroke is ink that was really laid down, so it is kept,
+		 * exactly as lifting the pen would keep it. A shape is not: it is only
+		 * itself once the reader has said where it ends, and committing one the
+		 * reader never finished would put a box on the page they did not draw.
+		 *
+		 * @param {PointerEvent} event the pointer that was cancelled
+		 */
+		onCancel(event) {
+			if (this.shaping && event.pointerId === this.pointerId) {
+				this.dropShape()
+				return
+			}
+			this.onUp(event)
 		},
 
 		/* Rub out every stroke the eraser has just passed over.
@@ -774,6 +811,75 @@ export default {
 			this.pointerId = null
 			this.pointerType = null
 			/* Takes the outline off the page with it. */
+			this.paintNow()
+		},
+
+		/* Start a shape where the pen landed.
+		 *
+		 * Nothing is drawn yet: a shape with no size is not a shape, and
+		 * shapePoints says so by returning no points at all.
+		 *
+		 * @param {PointerEvent} event the pointer that landed
+		 */
+		startShape(event) {
+			const [at] = this.onPage(samplesFrom(event))
+			this.shaping = { from: [at[0], at[1]], points: [] }
+		},
+
+		/* Follow the far corner.
+		 *
+		 * The whole shape is recomputed from its two corners rather than being
+		 * extended, which is what lets a rectangle become an ellipse become a
+		 * line without any of them keeping a trace of the others.
+		 *
+		 * @param {PointerEvent} event the pointer that moved
+		 */
+		stretchShape(event) {
+			const [at] = this.onPage(samplesFrom(event))
+			this.shaping.points = shapePoints(knownTool(this.tool), this.shaping.from, this.onCanvas(at))
+			this.requestPaint()
+		},
+
+		/* The far corner, brought onto the page.
+		 *
+		 * Ink off the sides can be neither seen nor rubbed out. There is no
+		 * bottom to bring it back from: the page is as long as what is drawn on
+		 * it, which is what panLimit computes.
+		 *
+		 * @param {Array<number>} at where the pointer is, in page coordinates
+		 * @return {Array<number>} where the shape may reach
+		 */
+		onCanvas(at) {
+			const width = this.$refs.canvas?.clientWidth ?? 0
+			return [Math.max(0, Math.min(at[0], width)), Math.max(0, at[1])]
+		},
+
+		/* Commit the shape, if the drag made one.
+		 *
+		 * One stroke and one thing to undo, however many points it took. */
+		finishShape() {
+			const drawn = this.shaping?.points ?? []
+			if (drawn.length) {
+				const stroke = { points: drawn, color: this.color }
+				this.strokes.push(stroke)
+				this.history.push({ drew: stroke })
+				const context = this.contextFor('page')
+				if (context) {
+					context.save()
+					context.translate(0, -this.panY)
+					context.fillStyle = this.colorOf(stroke)
+					traceStroke(context, stroke.points)
+					context.restore()
+				}
+			}
+			this.dropShape()
+		},
+
+		/* Let go of the shape without committing it. */
+		dropShape() {
+			this.shaping = null
+			this.pointerId = null
+			this.pointerType = null
 			this.paintNow()
 		},
 
@@ -995,7 +1101,7 @@ export default {
 			if (this.painted) {
 				context.clearRect(...this.painted)
 			}
-			if (!this.current && !(this.rubbing && this.rubbedFrom)) {
+			if (!this.current && !this.shaping?.points.length && !(this.rubbing && this.rubbedFrom)) {
 				this.painted = null
 				return
 			}
@@ -1011,6 +1117,10 @@ export default {
 				context.fillStyle = this.colorOf(this.current)
 				traceStroke(context, points)
 				this.painted = this.onScreen(this.boundsOf(points))
+			} else if (this.shaping?.points.length) {
+				context.fillStyle = this.colorOf({ color: this.color })
+				traceStroke(context, this.shaping.points)
+				this.painted = this.onScreen(this.boundsOf(this.shaping.points))
 			} else {
 				const [x, y] = this.rubbedFrom
 				traceEraser(context, x, y)

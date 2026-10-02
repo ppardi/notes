@@ -34,6 +34,7 @@ vi.mock('@nextcloud/vue/components/NcActionButton', () => ({
 const InkCanvas = (await import('../components/InkCanvas.vue')).default
 const { CROP_MARGIN, INK_DENSITY } = await import('../inkRender.js')
 const { DEFAULT_INK_COLOR } = await import('../inkPalette.js')
+const { DEFAULT_TOOL } = await import('../inkShape.js')
 
 /* Runs whatever is waiting for the next frame. Set up in beforeAll, where the
    queue it drains lives. */
@@ -109,6 +110,9 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+	/* The color a canvas opens in is remembered in storage, which outlives a
+	   test: without this, a test that chose red hands red to the next. */
+	window.localStorage.clear()
 	traceStroke.mockReset()
 	saveInk.mockReset()
 	loadInk.mockReset()
@@ -1637,5 +1641,147 @@ describe('InkCanvas drawing', () => {
 		expect(canvas.width).toBe(800 * (window.devicePixelRatio || 1))
 		/* The page went with it, so it is put back. */
 		expect(traceStroke).toHaveBeenCalledTimes(3)
+	})
+
+	it('commits a rectangle as an ordinary stroke', async () => {
+		/* The whole design in one assertion: what a shape leaves behind is a
+		   stroke like any other, so everything downstream keeps working. */
+		const wrapper = await open()
+		/* A canvas opens on the pen. */
+		expect(wrapper.vm.tool).toBe(DEFAULT_TOOL)
+		wrapper.vm.tool = 'rectangle'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 160, offsetY: 120 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes).toHaveLength(1)
+		expect(wrapper.vm.strokes[0].color).toBe(DEFAULT_INK_COLOR)
+		expect(wrapper.vm.strokes[0].points.length).toBeGreaterThan(50)
+		/* One shape is one thing to undo. */
+		expect(wrapper.vm.history).toHaveLength(1)
+	})
+
+	it('draws the shape in the color in force', async () => {
+		const wrapper = await open()
+		wrapper.vm.tool = 'line'
+		wrapper.vm.chooseColor('#0044cc')
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 200, offsetY: 20 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes[0].color).toBe('#0044cc')
+	})
+
+	it('builds a shape from page coordinates, so a panned page draws under the pen', async () => {
+		/* Strokes are kept in the page's coordinates and the sheets are the
+		   screen's. A shape built from screen coordinates would land panY
+		   pixels from the pen. */
+		const wrapper = await open()
+		wrapper.vm.tool = 'line'
+		wrapper.vm.panY = 100
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 200, offsetY: 20 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes[0].points[0][1]).toBe(120)
+	})
+
+	it('clamps a shape dragged off the side of the canvas', async () => {
+		/* Ink off the sides can be neither seen nor rubbed out. There is no
+		   bottom to clamp to: the page grows with what is drawn on it. */
+		const wrapper = await open()
+		wrapper.vm.tool = 'line'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 40 })
+		await pointer(wrapper, 'pointermove', { offsetX: 5000, offsetY: -200 })
+		await pointer(wrapper, 'pointerup')
+
+		const xs = wrapper.vm.strokes[0].points.map(([x]) => x)
+		const ys = wrapper.vm.strokes[0].points.map(([, y]) => y)
+		expect(Math.max(...xs)).toBeLessThanOrEqual(800)
+		expect(Math.min(...ys)).toBeGreaterThanOrEqual(0)
+	})
+
+	it('commits nothing for a drag that never grew', async () => {
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 50, offsetY: 50 })
+		await pointer(wrapper, 'pointermove', { offsetX: 53, offsetY: 51 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes).toHaveLength(0)
+		expect(wrapper.vm.history).toHaveLength(0)
+	})
+
+	it('abandons a shape when the pointer is cancelled', async () => {
+		/* A half-drawn freehand stroke is real ink that was really laid down,
+		   so it commits. A shape is only itself once the reader has said where
+		   it ends. */
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 160, offsetY: 120 })
+		await pointer(wrapper, 'pointercancel')
+
+		expect(wrapper.vm.strokes).toHaveLength(0)
+		expect(wrapper.vm.shaping).toBeNull()
+	})
+
+	it('ignores a second pointer during a shape, as a palm beside the pen', async () => {
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 160, offsetY: 120 })
+		await pointer(wrapper, 'pointermove', { offsetX: 400, offsetY: 400, pointerId: 2 })
+		await pointer(wrapper, 'pointerup')
+
+		const xs = wrapper.vm.strokes[0].points.map(([x]) => x)
+		expect(Math.max(...xs)).toBe(160)
+	})
+
+	it('draws freehand when the tool is one it does not know', async () => {
+		/* Refusing to draw at all would be the worst outcome available. */
+		const wrapper = await open()
+		wrapper.vm.tool = 'triangle'
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 60, offsetY: 60 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes).toHaveLength(1)
+		/* Two samples, not a rectangle's hundred. */
+		expect(wrapper.vm.strokes[0].points.length).toBeLessThan(10)
+	})
+
+	it('previews the shape on the live sheet while it is being dragged', async () => {
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+		traceStroke.mockClear()
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointermove', { offsetX: 160, offsetY: 120 })
+		runFrame()
+
+		expect(traceStroke).toHaveBeenCalled()
+		/* And nothing is on the page yet. */
+		expect(wrapper.vm.strokes).toHaveLength(0)
+	})
+
+	it('erases rather than drawing a shape while the eraser is on', async () => {
+		const wrapper = await open()
+		wrapper.vm.tool = 'rectangle'
+		wrapper.vm.erasing = true
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 20, offsetY: 20 })
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes).toHaveLength(0)
+		expect(wrapper.vm.shaping).toBeNull()
 	})
 })
