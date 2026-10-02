@@ -1168,12 +1168,18 @@ test.describe('Ink', () => {
 					bottom = Math.max(bottom, Math.floor(at / width))
 				}
 			}
-			const third = (bottom - top) / 3
+			// The central half of the box on both axes: an outline leaves it empty.
+			const inner = {
+				left: left + (right - left) / 4,
+				right: right - (right - left) / 4,
+				top: top + (bottom - top) / 4,
+				bottom: bottom - (bottom - top) / 4,
+			}
 			// A square a tenth of the box on a side, at each corner of the box.
 			const reach = { x: (right - left) / 10, y: (bottom - top) / 10 }
 			const corners = [0, 0, 0, 0]
 			let edge = 0
-			let middle = 0
+			let interior = 0
 			for (let i = 3; i < data.length; i += 4) {
 				if (data[i] === 0) {
 					continue
@@ -1181,10 +1187,8 @@ test.describe('Ink', () => {
 				const at = (i - 3) / 4
 				const x = at % width
 				const y = Math.floor(at / width)
-				// Count ink in the middle third of the painted rows against ink
-				// anywhere. A filled shape would put plenty in the middle.
-				if (y > top + third && y < bottom - third) {
-					middle++
+				if (x > inner.left && x < inner.right && y > inner.top && y < inner.bottom) {
+					interior++
 				}
 				edge++
 				const nearLeft = x < left + reach.x
@@ -1196,17 +1200,21 @@ test.describe('Ink', () => {
 				corners[2] += nearLeft && nearBottom ? 1 : 0
 				corners[3] += nearRight && nearBottom ? 1 : 0
 			}
-			return { edge, middle, corners }
+			return { edge, interior, corners }
 		})
 		expect(measured.edge).toBeGreaterThan(0)
-		// The sides still cross the middle third, so this is a ratio and not a
-		// zero: a filled rectangle would put far more there than its two sides.
-		expect(measured.middle / measured.edge).toBeLessThan(0.35)
+		// A rectangle is its outline, so nothing is inked in the middle of it. A
+		// solid box would put about a quarter of its ink there, which is the gap
+		// this measures: everything against nothing, not a ratio near a threshold.
+		expect(measured.interior / measured.edge).toBeLessThan(0.02)
 		// An ellipse is an outline too, so hollow does not make it a rectangle.
 		// What does is the corners: a rectangle's sides meet at the corners of
-		// its box, while an ellipse curves away from every one of them.
+		// its box, while an ellipse curves away from every one of them. This only
+		// tells shapes apart while the box is much larger than the stroke; for a
+		// very flat rectangle or a line the corner squares shrink to the stroke
+		// width and every shape has ink in them.
 		for (const corner of measured.corners) {
-			expect(corner).toBeGreaterThan(0)
+			expect(corner).toBeGreaterThan(30)
 		}
 
 		// And the tool opens on the pen next time, unlike the color.
