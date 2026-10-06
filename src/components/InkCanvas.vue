@@ -207,6 +207,19 @@ export default {
 			type: String,
 			required: true,
 		},
+
+		/* What this dialog covers, held out of reach while it is open.
+		 *
+		 * iPadOS Scribble writes into the focused text field, and holding the
+		 * focus in here is a race this dialog can lose - the pen straying into
+		 * the browser's own address bar takes the focus out of the page
+		 * altogether. An inert editor is neither focusable nor editable, so
+		 * there is nothing behind the canvas to write into whoever has the
+		 * focus. */
+		behind: {
+			type: Object,
+			default: null,
+		},
 	},
 
 	emits: ['saved', 'close'],
@@ -247,6 +260,10 @@ export default {
 			   the same batch of samples to more than one move on a busy page,
 			   and this is what stops the second one being drawn again. */
 			sampledTo: -Infinity,
+			/* The element this dialog put out of reach, remembered rather
+			   than looked up again: the editor is replaced when a note is
+			   reloaded, and the one to make reachable is the one we held. */
+			held: null,
 			/* How far down the page the top of the screen is. The two sheets
 			   stay the size of the screen and the page is as long as it needs
 			   to be: this is the one number that turns the one into a window
@@ -369,6 +386,13 @@ export default {
 		   Scribble claims it on the touch it is not refused on. */
 		this.refuseTouchDefaults()
 		this.claimFocus()
+		this.holdBack()
+		/* Claimed once at mount, the focus is gone the first time anything
+		   takes it - and the pen straying into the browser's own chrome does,
+		   which is outside the page and fires nothing on the document. The
+		   window hearing it come back is what covers that one. */
+		document.addEventListener('focusin', this.claimFocus)
+		window.addEventListener('focus', this.claimFocus)
 		/* Rotating an iPad changes the canvas size. Without this the backing
 		   store keeps the old dimensions and every stroke drawn afterwards
 		   lands offset from the pen - on the one device this is built for. */
@@ -440,9 +464,15 @@ export default {
 	},
 
 	beforeUnmount() {
+		/* Reachable before the focus is handed to it: focusing an inert
+		   element does nothing at all, and the note would be left without a
+		   caret for the next thing typed. */
+		this.releaseBack()
 		/* The note gets the focus back, which is where the ink is written. */
 		this.returnFocusTo?.focus?.()
 		window.removeEventListener('resize', this.onResize)
+		document.removeEventListener('focusin', this.claimFocus)
+		window.removeEventListener('focus', this.claimFocus)
 		this.observer?.disconnect()
 		this.releaseTouchGuards()
 		if (this.backdrop) {
@@ -524,6 +554,23 @@ export default {
 		 * the body and `contains` says no. Taking the focus back from it would shut it
 		 * mid-choice, which a resize - a rotation, or the error message
 		 * appearing - is enough to cause. */
+		/* Put what this dialog covers out of a recognizer's reach. */
+		holdBack() {
+			const behind = this.behind
+			/* An inert that was already there is somebody else's, and taking
+			   it off on the way out would be taking away their guard. */
+			if (behind && !behind.hasAttribute('inert')) {
+				behind.setAttribute('inert', '')
+				this.held = behind
+			}
+		},
+
+		/* Give it back, if it was ours to hold. */
+		releaseBack() {
+			this.held?.removeAttribute('inert')
+			this.held = null
+		},
+
 		claimFocus() {
 			const dialog = this.$refs.dialog
 			if (!dialog || this.picking || this.choosingTool || dialog.contains(document.activeElement)) {

@@ -1307,6 +1307,91 @@ describe('InkCanvas', () => {
 		wrapper.unmount()
 	})
 
+	it('takes the focus back when it lands outside the dialog', async () => {
+		/* The dialog's whole defence against Scribble is holding the focus:
+		   nothing inside it is a text field, so there is nothing for a
+		   recognizer to write into. Claiming it once at mount is not enough.
+		   Moving the pen into the browser's own address bar takes the focus
+		   out of the page entirely, and on the way back it lands wherever
+		   WebKit puts it - which leaves the note's editor as the nearest text
+		   field, and handwriting arrived there as text. */
+		const wrapper = await open(null, { attachTo: document.body })
+		const elsewhere = document.createElement('input')
+		document.body.appendChild(elsewhere)
+
+		elsewhere.focus()
+		document.dispatchEvent(new Event('focusin', { bubbles: true }))
+
+		expect(wrapper.find('.ink').element.contains(document.activeElement)).toBe(true)
+		elsewhere.remove()
+		wrapper.unmount()
+	})
+
+	it('takes the focus back when the page itself regains it', async () => {
+		/* Coming back from the browser's chrome fires this on the window and
+		   may fire nothing on the document. */
+		const wrapper = await open(null, { attachTo: document.body })
+		const elsewhere = document.createElement('input')
+		document.body.appendChild(elsewhere)
+		elsewhere.focus()
+
+		window.dispatchEvent(new Event('focus'))
+
+		expect(wrapper.find('.ink').element.contains(document.activeElement)).toBe(true)
+		elsewhere.remove()
+		wrapper.unmount()
+	})
+
+	it('does not take the focus from a picker that is open', async () => {
+		/* The menus are popovers, teleported out of the dialog, so `contains`
+		   says no. Taking the focus back would shut one mid-choice. */
+		const wrapper = await open(null, { attachTo: document.body })
+		wrapper.vm.picking = true
+		await wrapper.vm.$nextTick()
+		const choice = document.createElement('button')
+		document.body.appendChild(choice)
+		choice.focus()
+
+		document.dispatchEvent(new Event('focusin', { bubbles: true }))
+
+		expect(document.activeElement).toBe(choice)
+		choice.remove()
+		wrapper.unmount()
+	})
+
+	it('holds the editor behind it out of reach while it is open', async () => {
+		/* Holding the focus is a race the dialog can lose; this removes what
+		   the recognizer would write into. An inert editor is not focusable
+		   and not editable, so there is no text field behind the canvas. */
+		const behind = document.createElement('div')
+		behind.setAttribute('contenteditable', 'true')
+		document.body.appendChild(behind)
+		const wrapper = await open(null, { attachTo: document.body, props: { noteId: 5, inkId: 'abc', behind } })
+
+		expect(behind.hasAttribute('inert')).toBe(true)
+
+		wrapper.unmount()
+		expect(behind.hasAttribute('inert')).toBe(false)
+		behind.remove()
+	})
+
+	it('lets the note have the focus back as it closes', async () => {
+		/* The editor is made reachable again before the focus is handed to
+		   it: focusing an inert element does nothing, which would leave the
+		   note with no caret. */
+		const behind = document.createElement('div')
+		behind.tabIndex = -1
+		document.body.appendChild(behind)
+		behind.focus()
+		const wrapper = await open(null, { attachTo: document.body, props: { noteId: 5, inkId: 'abc', behind } })
+
+		wrapper.unmount()
+
+		expect(behind.hasAttribute('inert')).toBe(false)
+		expect(document.activeElement).toBe(behind)
+		behind.remove()
+	})
+
 	it('leaves the focus alone while the picker is open', async () => {
 		/* The dialog holds the focus on purpose: iPadOS Scribble writes into
 		   whatever text field has it, and the note's editor is right behind

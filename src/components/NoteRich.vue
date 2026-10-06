@@ -22,6 +22,7 @@
 			v-if="inkId"
 			:noteId="Number(noteId)"
 			:inkId="inkId"
+			:behind="editorElement"
 			@saved="onInkSaved"
 			@close="inkId = null"
 		/>
