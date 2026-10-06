@@ -167,7 +167,7 @@ import UndoIcon from 'vue-material-design-icons/UndoVariant.vue'
 import LineIcon from 'vue-material-design-icons/VectorLine.vue'
 import { erasedBy, ERASER_SIZE, traceEraser } from '../inkErase.js'
 import { loadInk, saveInk } from '../inkFile.js'
-import { predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
+import { lastSampleTime, predictedFrom, samplesFrom, shouldDraw, withoutRepeats } from '../inkInput.js'
 import { INK_COLORS, knownColor, rememberColor, rememberedColor } from '../inkPalette.js'
 import { INK_DENSITY, inkBounds, placeInk, shiftStrokes, STROKE_SIZE, traceStroke } from '../inkRender.js'
 import { DEFAULT_TOOL, INK_TOOLS, knownTool, shapePoints } from '../inkShape.js'
@@ -243,6 +243,10 @@ export default {
 			   outside the dialog and the dialog takes the focus back from
 			   anything outside it. */
 			picking: false,
+			/* The time of the last position taken from the pen. Safari hands
+			   the same batch of samples to more than one move on a busy page,
+			   and this is what stops the second one being drawn again. */
+			sampledTo: -Infinity,
 			/* How far down the page the top of the screen is. The two sheets
 			   stay the size of the screen and the page is as long as it needs
 			   to be: this is the one number that turns the one into a window
@@ -769,6 +773,7 @@ export default {
 				   line back to where it was last lifted would rub out whatever
 				   it happened to cross. */
 				this.rubbedFrom = null
+				this.sampledTo = lastSampleTime(event)
 				this.rubOut(this.onPage(samplesFrom(event)))
 				return
 			}
@@ -777,6 +782,7 @@ export default {
 				return
 			}
 			this.predicted = []
+			this.sampledTo = lastSampleTime(event)
 			this.current = {
 				points: withoutRepeats(this.onPage(samplesFrom(event)), null),
 				color: this.color,
@@ -802,7 +808,9 @@ export default {
 				return
 			}
 			if (this.rubbing) {
-				this.rubOut(this.onPage(samplesFrom(event)))
+				const rubbed = this.onPage(samplesFrom(event, this.sampledTo))
+				this.sampledTo = lastSampleTime(event, this.sampledTo)
+				this.rubOut(rubbed)
 				return
 			}
 			if (this.shaping) {
@@ -814,7 +822,8 @@ export default {
 			}
 			/* Only what moved. The Pencil reports each position twice, and the
 			   pairs make the stroke a staircase for the smoothing to follow. */
-			const samples = withoutRepeats(this.onPage(samplesFrom(event)), this.current.points.at(-1))
+			const samples = withoutRepeats(this.onPage(samplesFrom(event, this.sampledTo)), this.current.points.at(-1))
+			this.sampledTo = lastSampleTime(event, this.sampledTo)
 			this.current.points.push(...samples)
 			/* Drawn, never kept: the file holds what the pen did, not what it
 			   was expected to do. */

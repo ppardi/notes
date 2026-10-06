@@ -6,20 +6,74 @@
 /** What a device that reports no pressure draws at. */
 const FLAT_PRESSURE = 0.5
 
+/* The batch this event gathered, or nothing when it carries only itself. */
+function batchOf(event) {
+	const coalesced = event.getCoalescedEvents?.()
+	return coalesced?.length ? coalesced : null
+}
+
+/* Whether a sample is one we have not taken yet. A sample with no time at all
+   is taken: a device that does not stamp its readings is no reason to draw
+   nothing. */
+function after(report, taken) {
+	return typeof report.timeStamp !== 'number' || report.timeStamp > taken
+}
+
 /**
- * Every position this event carries.
+ * Every position this event carries that has not been taken already.
  *
  * Safari reports one pointermove per frame but the digitizer samples faster;
  * the samples in between are what make a fast stroke a curve rather than a few
  * straight segments. Safari has had getCoalescedEvents since 18.2.
  *
+ * What it gathers, though, is the samples since the last animation *frame*,
+ * not since the last move. On a quiet page the two are the same and the
+ * batches never overlap. On a busy one Safari dispatches more than one move in
+ * a frame and hands each of them the same batch - so taking every batch whole
+ * put the stroke through the same run of samples twice, and the pen appeared
+ * to run forward, jump back and retrace itself. Measured in a drawing made on
+ * a loaded server, 49% of one stroke's samples were repeats and the path
+ * jumped backwards as far as 28.9 px; the same iPad on an empty page gave
+ * 0.6% and no repeats at all.
+ *
+ * The sample's own time is what tells them apart. Positions repeat - a pen
+ * held still reports the same place for as long as it is there - but the time
+ * a reading was taken does not.
+ *
  * @param {PointerEvent} event the move
+ * @param {number} taken the time of the last sample already taken, so the
+ *   samples a previous move already reported are left out
  * @return {Array<Array<number>>} [x, y, pressure] for each sample
  */
-export function samplesFrom(event) {
-	const coalesced = event.getCoalescedEvents?.()
-	const events = coalesced?.length ? coalesced : [event]
-	return events.map(toSample)
+export function samplesFrom(event, taken = -Infinity) {
+	const batch = batchOf(event)
+	/* An event carrying no batch is one position. A repeat of it is a repeat
+	   of a place, which `withoutRepeats` already drops - and the event's own
+	   stamp is no use for telling batches apart, because Safari rounds it for
+	   privacy and two moves inside the same millisecond share one. */
+	return batch
+		? batch.filter((report) => after(report, taken)).map(toSample)
+		: [toSample(event)]
+}
+
+/**
+ * The time of the last position this event carries.
+ *
+ * Kept by the caller and handed back to `samplesFrom` on the next move, which
+ * is what makes a repeated batch cost nothing.
+ *
+ * @param {PointerEvent} event the move
+ * @param {number} taken what to keep if this event stamps nothing
+ * @return {number} the newest time reported, or `taken`
+ */
+export function lastSampleTime(event, taken = -Infinity) {
+	let latest = taken
+	for (const report of batchOf(event) ?? []) {
+		if (typeof report.timeStamp === 'number' && report.timeStamp > latest) {
+			latest = report.timeStamp
+		}
+	}
+	return latest
 }
 
 /**

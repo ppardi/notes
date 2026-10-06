@@ -2080,6 +2080,48 @@ describe('InkCanvas drawing', () => {
 		expect(wrapper.vm.history).toHaveLength(0)
 	})
 
+	it('takes a coalesced batch once, even when two moves report the same one', async () => {
+		/* getCoalescedEvents reports the samples gathered since the last
+		   animation frame. On a quiet page Safari dispatches one pointermove
+		   per frame and the batches never overlap; on a busy one it dispatches
+		   more than one, and each reports the same batch. Appending both made
+		   the stroke run forward, jump back and retrace itself.
+		 *
+		 * Measured in a drawing made on a real server: 49% of the samples in
+		 * one stroke were repeats, and the path jumped backwards up to 28.9 px,
+		 * 64 times. The same iPad on an empty page produced 0.6%. */
+		const wrapper = await open()
+		const batch = (points, at) => ({
+			getCoalescedEvents: () => points.map(([x, y], i) => ({ offsetX: x, offsetY: y, pressure: 0.5, timeStamp: at + i })),
+			timeStamp: at + points.length,
+		})
+		const samples = [[20, 20], [24, 24], [28, 28], [32, 32]]
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 10, offsetY: 10 })
+		await pointer(wrapper, 'pointermove', batch(samples, 100))
+		/* The same frame's batch, reported again by a second move. */
+		await pointer(wrapper, 'pointermove', batch(samples, 100))
+		await pointer(wrapper, 'pointerup')
+
+		/* The one sample the pen landed on, and the four it moved through. */
+		expect(wrapper.vm.strokes[0].points).toHaveLength(5)
+	})
+
+	it('still takes a later batch that carries on from the one before', async () => {
+		const wrapper = await open()
+		const batch = (points, at) => ({
+			getCoalescedEvents: () => points.map(([x, y], i) => ({ offsetX: x, offsetY: y, pressure: 0.5, timeStamp: at + i })),
+			timeStamp: at + points.length,
+		})
+
+		await pointer(wrapper, 'pointerdown', { offsetX: 10, offsetY: 10 })
+		await pointer(wrapper, 'pointermove', batch([[20, 20], [24, 24]], 100))
+		await pointer(wrapper, 'pointermove', batch([[28, 28], [32, 32]], 110))
+		await pointer(wrapper, 'pointerup')
+
+		expect(wrapper.vm.strokes[0].points).toHaveLength(5)
+	})
+
 	it('draws freehand when the tool is one it does not know', async () => {
 		/* Refusing to draw at all would be the worst outcome available. */
 		const wrapper = await open()
