@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import type { Locator, Page, TestInfo } from '@playwright/test'
+import type { APIRequestContext, Locator, Page, TestInfo } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
@@ -100,6 +100,26 @@ async function createNoteInSelectedCategory(page: Page, category: string): Promi
 	return noteId
 }
 
+/* The selected category is remembered server-side, so leaving one selected
+   would change where unrelated specs start. A category that holds no notes
+   now survives a reload, and landing on one opens the welcome screen rather
+   than a notes list. The request fixture carries no session cookie, which the
+   settings route needs. */
+async function clearStoredCategory(request: APIRequestContext): Promise<void> {
+	const user = process.env.NC_USER ?? 'admin'
+	const password = process.env.NC_PASS ?? 'admin'
+	const headers = {
+		Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+		// Without this the settings route answers 412 and the reset does nothing.
+		'OCS-APIRequest': 'true',
+	}
+	const response = await request.put('/index.php/apps/notes/settings', {
+		headers,
+		data: { lastViewedCategory: 'all', collapsedCategories: [] },
+	})
+	expect(response.ok(), 'resetting the stored navigation state').toBeTruthy()
+}
+
 async function openCategoryActions(page: Page, category: string): Promise<void> {
 	const row = navigationRow(page, category)
 
@@ -115,6 +135,45 @@ test.describe('Category actions', () => {
 	test.beforeEach(async ({ page }) => {
 		await login(page)
 		await openNotesApp(page)
+	})
+
+	test.afterEach(async ({ request }) => {
+		await clearStoredCategory(request)
+	})
+
+	test('brings back a category that holds no notes', async ({ page }, testInfo: TestInfo) => {
+		const category = uniqueTitle('empty', testInfo)
+
+		await createCategory(page, category)
+
+		/* Nothing has been filed in it, so nothing but a folder on the server can
+		   bring it back. */
+		await page.reload()
+		await expect(addCategoryButton(page)).toBeVisible()
+		await expect(navigationRow(page, category)).toBeVisible()
+	})
+
+	test('shows a new category under the name a folder can hold', async ({ page }, testInfo: TestInfo) => {
+		/* A colon cannot go in a folder name on every platform, so the server
+		   drops it. The sidebar has to show what was made, not what was typed. */
+		const typed = `${uniqueTitle('colon', testInfo)}: B`
+		const stored = typed.replace(':', '')
+
+		const navigation = appNavigation(page)
+		await startNewCategory(page)
+		const input = navigation.getByPlaceholder('New category', { exact: true })
+		await expect(input).toBeVisible()
+		await input.fill(typed)
+		await input.press('Enter')
+
+		await expect(navigationRow(page, stored)).toBeVisible()
+		await expect(navigationRow(page, typed)).toHaveCount(0)
+		await expectNavigationItemActive(page, stored)
+
+		// And it is the stored name that comes back.
+		await page.reload()
+		await expect(addCategoryButton(page)).toBeVisible()
+		await expect(navigationRow(page, stored)).toBeVisible()
 	})
 
 	test('renames a category from the actions menu', async ({ page }, testInfo: TestInfo) => {

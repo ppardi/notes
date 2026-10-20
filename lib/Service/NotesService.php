@@ -365,6 +365,27 @@ class NotesService {
 	}
 
 	/**
+	 * Create a category, with its parent categories, and hold on to it.
+	 *
+	 * A category is a folder, so one that holds no notes needs a folder of its
+	 * own to exist at all. Creating it again is no error: the folder that is
+	 * already there is the result asked for.
+	 */
+	public function createCategory(string $userId, string $category) : array {
+		$category = $this->noteUtil->normalizeCategoryPath($category);
+		if ($category === '') {
+			throw new \InvalidArgumentException('Category must not be empty');
+		}
+
+		$notesFolder = $this->getNotesFolder($userId);
+		$this->noteUtil->getCategoryFolder($notesFolder, $category, true);
+
+		return [
+			'category' => $category,
+		];
+	}
+
+	/**
 	 * @throws NoteDoesNotExistException
 	 */
 	public function renameCategory(string $userId, string $oldCategory, string $newCategory) : array {

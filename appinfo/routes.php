@@ -103,6 +103,11 @@ return ['routes' => [
 		'requirements' => ['id' => '\d+'],
 	],
 	[
+		'name' => 'notes#createCategory',
+		'url' => '/notes/category',
+		'verb' => 'POST',
+	],
+	[
 		'name' => 'notes#renameCategory',
 		'url' => '/notes/category',
 		'verb' => 'PATCH',

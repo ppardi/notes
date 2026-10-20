@@ -412,6 +412,19 @@ export function setCategory(noteId, category) {
 		})
 }
 
+export function createCategory(category) {
+	return axios
+		.post(url('/notes/category'), null, { params: { category } })
+		.then((response) => {
+			return response.data
+		})
+		.catch((err) => {
+			logger.error('Creating category has failed', { category, error: err })
+			handleSyncError(t('notes', 'Creating category "{category}" has failed.', { category }), err)
+			throw err
+		})
+}
+
 export function renameCategory(oldCategory, newCategory) {
 	return axios
 		.patch(url('/notes/category'), null, { params: { oldCategory, newCategory } })

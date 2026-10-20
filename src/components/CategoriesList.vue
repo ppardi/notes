@@ -99,7 +99,7 @@ import SmartCategoryDialog from './SmartCategoryDialog.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
 import { categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
 import { SECTION_CATEGORIES } from '../navigationSections.js'
-import { deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
+import { createCategory as createCategoryRequest, deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import { sectionCollapse } from '../sectionCollapse.js'
 import { reparentOnDelete, reparentOnRename } from '../smartCategories.js'
 import store from '../store.js'
@@ -525,7 +525,7 @@ export default {
 			this.newCategoryMonitor = requestAnimationFrame(check)
 		},
 
-		onCreateCategory(newCategory) {
+		async onCreateCategory(newCategory) {
 			const parent = this.newCategoryParent
 			this.newCategoryDraft = false
 			this.newCategoryParent = null
@@ -536,13 +536,26 @@ export default {
 			if (!name) {
 				return
 			}
+			let stored = name
 			const exists = this.categories.some((category) => category.name === name)
 			if (!exists) {
-				store.notes.addLocalCategory(name)
+				/* A category is a folder, and one that holds no notes has nothing
+				   else to bring it into being. Until the folder is there the
+				   category cannot be moved, renamed or reloaded, so nothing goes
+				   in the sidebar until the server has it - under the name the
+				   server made, which drops what a folder name cannot hold. */
+				try {
+					const created = await createCategoryRequest(name)
+					stored = created?.category || name
+				} catch {
+					// NotesService already shows a toast on failure.
+					return
+				}
+				store.notes.addLocalCategory(stored)
 			}
-			this.selectCategory(name)
+			this.selectCategory(stored)
 			if (droppedNoteId !== null) {
-				setCategory(droppedNoteId, name).catch(() => {})
+				setCategory(droppedNoteId, stored).catch(() => {})
 			}
 		},
 

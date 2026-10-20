@@ -120,6 +120,20 @@ async function dragCategoryBeside(page: Page, from: string, to: string, drop = t
 	}, [from, to, drop] as [string, string, boolean])
 }
 
+/* A category made from the Categories heading, which is the only way a person
+   makes one that holds no notes yet. */
+async function createCategoryInSidebar(page: Page, name: string): Promise<void> {
+	await page.getByRole('button', { name: 'Add category', exact: true }).click()
+	await page.getByRole('menuitem', { name: 'New category', exact: true }).click()
+
+	const input = page.getByPlaceholder('New category', { exact: true })
+	await expect(input).toBeVisible()
+	await input.fill(name)
+	await input.press('Enter')
+
+	await expect(categoryLink(page, name)).toBeVisible()
+}
+
 function highlightedCategories(page: Page): Promise<string[]> {
 	return page.evaluate(() => Array.from(document.querySelectorAll('li.drop-over'))
 		.map((li) => (li.querySelector('.app-navigation-entry-link') as HTMLElement)?.title))
@@ -262,6 +276,26 @@ test.describe('Category tree', () => {
 			expect(await indentOf(page, 'Deskspace')).toBeGreaterThan(sage)
 		}).toPass()
 		await expect(categoryCounter(page, 'Deskspace')).toContainText('1')
+	})
+
+	test('re-parents a category that holds no notes yet', async ({ page }) => {
+		/* A category made in the sidebar is a folder on the server from the start,
+		   so it can be filed somewhere before anything is in it. */
+		await createCategoryInSidebar(page, 'Scratch')
+		const sage = await indentOf(page, 'SAGE')
+
+		await dragCategoryOnto(page, 'Scratch', 'SAGE')
+
+		await expect(async () => {
+			expect(await indentOf(page, 'Scratch')).toBeGreaterThan(sage)
+		}).toPass()
+
+		// Nested after a reload is what shows the move reached the server.
+		await page.reload()
+		await expect(newNoteButton(page).first()).toBeVisible()
+		await expect(async () => {
+			expect(await indentOf(page, 'Scratch')).toBeGreaterThan(await indentOf(page, 'SAGE'))
+		}).toPass()
 	})
 
 	test('moves a category to the top level when dropped on a top-level row edge', async ({ page }) => {

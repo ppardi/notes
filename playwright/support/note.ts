@@ -98,12 +98,45 @@ export async function setNoteContent(noteId: number, content: string): Promise<v
 }
 
 /**
+ * Remove every category folder left behind in the notes folder.
+ *
+ * Deleting a note does not take its category with it, so a run that files
+ * notes in categories would otherwise hand its folders to the next one.
+ *
+ * @see onOwnContext for why this does not use the page's own context
+ */
+async function removeCategoryFolders(): Promise<void> {
+	return onOwnContext(async (request) => {
+		const root = `/remote.php/dav/files/${apiUser()}/Notes/`
+		const listing = await request.fetch(root, {
+			method: 'PROPFIND',
+			headers: { ...apiHeaders(), Depth: '1' },
+		})
+		if (listing.status() === 404) {
+			return
+		}
+		expect(listing.ok(), 'listing the notes folder').toBeTruthy()
+
+		const hrefs = [...(await listing.text()).matchAll(/<[a-z]*:?href>([^<]*)<\/[a-z]*:?href>/gi)]
+			.map((match) => match[1])
+		for (const href of hrefs) {
+			// The folders one level down, never the notes folder itself.
+			if (!href.endsWith('/') || decodeURIComponent(href) === root) {
+				continue
+			}
+			const deletion = await request.delete(href, { headers: apiHeaders() })
+			expect(deletion.ok(), `deleting category folder ${href}`).toBeTruthy()
+		}
+	})
+}
+
+/**
  * Remove every note, on a request context of its own.
  *
  * @see onOwnContext for why these calls do not use the page's own context
  */
 export async function deleteAllNotesVia(): Promise<void> {
-	return onOwnContext(async (request) => {
+	await onOwnContext(async (request) => {
 		const headers = apiHeaders()
 		const response = await request.get('/index.php/apps/notes/api/v1/notes', { headers })
 		expect(response.ok()).toBeTruthy()
@@ -113,6 +146,8 @@ export async function deleteAllNotesVia(): Promise<void> {
 			expect(deletion.ok(), `deleting note ${note.id}`).toBeTruthy()
 		}
 	})
+
+	await removeCategoryFolders()
 }
 
 /**
@@ -312,6 +347,8 @@ export async function deleteAllNotes(page: Page): Promise<void> {
 		const deletion = await page.request.delete(`/index.php/apps/notes/api/v1/notes/${note.id}`, { headers })
 		expect(deletion.ok(), `deleting note ${note.id}`).toBeTruthy()
 	}
+
+	await removeCategoryFolders()
 }
 
 export async function createNote(page: Page, title: string): Promise<number> {

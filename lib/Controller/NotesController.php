@@ -345,6 +345,16 @@ class NotesController extends Controller {
 	 *
 	 */
 	#[NoAdminRequired]
+	public function createCategory(string $category) : JSONResponse {
+		return $this->helper->handleErrorResponse(function () use ($category) {
+			return $this->notesService->createCategory($this->helper->getUID(), $category);
+		});
+	}
+
+	/**
+	 *
+	 */
+	#[NoAdminRequired]
 	public function renameCategory(string $oldCategory, string $newCategory) : JSONResponse {
 		return $this->helper->handleErrorResponse(function () use ($oldCategory, $newCategory) {
 			return $this->notesService->renameCategory($this->helper->getUID(), $oldCategory, $newCategory);
