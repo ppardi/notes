@@ -361,7 +361,6 @@ class NotesService {
 		$parent = $file->getParent();
 		$this->noteUtil->deleteAttachmentFolder($parent, $id);
 		$file->delete();
-		$this->noteUtil->deleteEmptyFolder($parent, $notesFolder);
 	}
 
 	/**
@@ -421,12 +420,8 @@ class NotesService {
 		}
 		$targetParent = $this->noteUtil->getCategoryFolder($notesFolder, $targetParentCategory, true);
 
-		$oldParent = $oldFolder->getParent();
 		$targetPath = $targetParent->getPath() . '/' . basename($newCategory);
 		$oldFolder->move($targetPath);
-		if ($oldParent instanceof Folder) {
-			$this->noteUtil->deleteEmptyFolder($oldParent, $notesFolder);
-		}
 
 		return [
 			'oldCategory' => $oldCategory,
@@ -454,11 +449,7 @@ class NotesService {
 			];
 		}
 
-		$parent = $folder->getParent();
 		$folder->delete();
-		if ($parent instanceof Folder) {
-			$this->noteUtil->deleteEmptyFolder($parent, $notesFolder);
-		}
 
 		return [
 			'category' => $category,

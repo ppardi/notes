@@ -278,23 +278,6 @@ class NoteUtil {
 		return $folder;
 	}
 
-	/*
-	 * Delete a folder and it's parent(s) if it's/they're empty
-	 * @param Folder $folder folder to delete
-	 * @param Folder $notesFolder root notes folder
-	 */
-	public function deleteEmptyFolder(Folder $folder, Folder $notesFolder) : void {
-		$content = $folder->getDirectoryListing();
-		$isEmpty = !count($content);
-		$isNotesFolder = $folder->getPath() === $notesFolder->getPath();
-		if ($isEmpty && !$isNotesFolder) {
-			$this->util->logger->debug('Deleting empty category folder ' . $folder->getPath());
-			$parent = $folder->getParent();
-			$folder->delete();
-			$this->deleteEmptyFolder($parent, $notesFolder);
-		}
-	}
-
 	/**
 	 * Checks if there is enough space left on storage. Throws an Exception if storage is not sufficient.
 	 * @param Folder $folder that needs storage

@@ -166,7 +166,6 @@ class Note {
 			$this->file->move($newFilePath);
 			$this->noteUtil->moveAttachmentFolder($oldParent, $folder, $this->getId());
 		}
-		$this->noteUtil->deleteEmptyFolder($oldParent, $this->notesFolder);
 	}
 
 	public function setContent(string $content) : void {

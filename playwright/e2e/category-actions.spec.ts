@@ -7,7 +7,7 @@ import type { APIRequestContext, Locator, Page, TestInfo } from '@playwright/tes
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { createNote, currentNoteId, newNoteButton, noteRow, uniqueTitle, waitForNoteRoute } from '../support/note.ts'
+import { createNote, createNoteViaApi, currentNoteId, newNoteButton, noteRow, uniqueTitle, waitForNoteRoute } from '../support/note.ts'
 
 function appNavigation(page: Page): Locator {
 	return page.getByRole('navigation').filter({
@@ -100,6 +100,17 @@ async function createNoteInSelectedCategory(page: Page, category: string): Promi
 	return noteId
 }
 
+async function fileNoteViaApi(page: Page, noteId: number, category: string): Promise<void> {
+	const user = process.env.NC_USER ?? 'admin'
+	const password = process.env.NC_PASS ?? 'admin'
+	const headers = { Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}` }
+	const response = await page.request.put(`/index.php/apps/notes/api/v1/notes/${noteId}`, {
+		headers,
+		data: { category },
+	})
+	expect(response.ok(), `filing note ${noteId} in "${category}": HTTP ${response.status()}`).toBeTruthy()
+}
+
 /* The selected category is remembered server-side, so leaving one selected
    would change where unrelated specs start. A category that holds no notes
    now survives a reload, and landing on one opens the welcome screen rather
@@ -174,6 +185,22 @@ test.describe('Category actions', () => {
 		await page.reload()
 		await expect(addCategoryButton(page)).toBeVisible()
 		await expect(navigationRow(page, stored)).toBeVisible()
+	})
+
+	test('keeps a category whose last note is filed elsewhere', async ({ page }, testInfo: TestInfo) => {
+		const category = uniqueTitle('emptied', testInfo)
+		await createCategory(page, category)
+
+		/* Through the API, so the note is never open in the editor: a note held
+		   open is locked, and the move out would be refused rather than tested. */
+		const noteId = await createNoteViaApi(page, category, 'Passing through')
+
+		// Going empty is no reason to destroy a category somebody made on purpose.
+		await fileNoteViaApi(page, noteId, '')
+
+		await page.reload()
+		await expect(addCategoryButton(page)).toBeVisible()
+		await expect(navigationRow(page, category)).toBeVisible()
 	})
 
 	test('renames a category from the actions menu', async ({ page }, testInfo: TestInfo) => {
