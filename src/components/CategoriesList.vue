@@ -192,6 +192,7 @@ export default {
 			collapsedCategories: [],
 			collapsedLoaded: false,
 			settled: false,
+			startedOnNote: false,
 		}
 	},
 
@@ -223,6 +224,13 @@ export default {
 
 		categoryOrder() {
 			return store.app.settings?.categoryOrder ?? []
+		},
+
+		/* The category of the note the route names, once it is known. */
+		openNoteCategory() {
+			const noteId = Number.parseInt(this.$route.params.noteId, 10)
+			const note = Number.isFinite(noteId) ? store.notes.getNote(noteId) : null
+			return note?.category ?? null
 		},
 
 		selectedSmartId() {
@@ -258,6 +266,13 @@ export default {
 			},
 		},
 
+		openNoteCategory: {
+			immediate: true,
+			handler(category) {
+				this.revealDeepLinkedNote(category)
+			},
+		},
+
 		/* The app has finished bringing itself up, so a selection from here on
 		   is somebody choosing rather than the app restoring. */
 		loading: {
@@ -279,6 +294,11 @@ export default {
 		this.stopNewCategoryMonitor()
 	},
 
+	created() {
+		// the URL named a note before the app did anything, so somebody linked to it
+		this.startedOnNote = this.$route.name === 'note'
+	},
+
 	methods: {
 		setCategoryOpen(category, open) {
 			this.applyCollapsed(withCategoryCollapsed(this.collapsedCategories, category, !open))
@@ -286,31 +306,42 @@ export default {
 
 		/* Stored so the tree looks the same next time. Entries for categories
 		   that have since gone are dropped rather than kept forever. */
-		applyCollapsed(collapsed) {
+		applyCollapsed(collapsed, remember = true) {
 			const pruned = pruneCollapsed(collapsed, categoryNames(this.categoryTree))
 			if (pruned.join('\n') === this.collapsedCategories.join('\n')) {
 				return
 			}
 			this.collapsedCategories = pruned
-			if (this.collapsedLoaded) {
+			if (remember && this.collapsedLoaded) {
 				setSettings({ collapsedCategories: pruned })
 			}
 		},
 
 		/* A selection is useless if it is hidden inside a collapsed ancestor. */
-		revealCategory(category) {
-			/* Not while the app is still bringing itself up. Starting on a note
-			   filed deep in the tree would otherwise open every category above
-			   it and write that back, quietly undoing a collapse somebody made
-			   on purpose. Opening one later, by choosing it, still reveals it. */
-			if (!this.settled) {
+		revealCategory(category, remember = true) {
+			/* Not while the app is still bringing itself up. Restoring a
+			   selection would otherwise open every category above it and write
+			   that back, quietly undoing a collapse somebody made on purpose. */
+			if (!this.settled && remember) {
 				return
 			}
 			const ancestors = categoryAncestors(category)
 			if (ancestors.length === 0) {
 				return
 			}
-			this.applyCollapsed(withCategoriesExpanded(this.collapsedCategories, ancestors))
+			this.applyCollapsed(withCategoriesExpanded(this.collapsedCategories, ancestors), remember)
+		},
+
+		/* A link straight to a note is somebody saying which note they want, so
+		   the tree opens far enough to show where it is - but it is the link
+		   talking, not them rearranging, so the collapse they stored is left
+		   as they left it. Come back without a link and it is still shut. */
+		revealDeepLinkedNote(category) {
+			if (!this.startedOnNote || category === null) {
+				return
+			}
+			this.startedOnNote = false
+			this.revealCategory(category, false)
 		},
 
 		setSmartItemRef(id, el) {

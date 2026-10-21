@@ -45,6 +45,20 @@ async function indentOf(page: Page, name: string): Promise<number> {
 	return Math.round(box?.x ?? -1)
 }
 
+/** The categories the server has recorded as collapsed. */
+async function storedCollapsed(request: APIRequestContext): Promise<string[]> {
+	const user = process.env.NC_USER ?? 'admin'
+	const password = process.env.NC_PASS ?? 'admin'
+	const response = await request.get('/index.php/apps/notes/settings', {
+		headers: {
+			Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+			'OCS-APIRequest': 'true',
+		},
+	})
+	expect(response.ok(), 'reading the settings').toBeTruthy()
+	return (await response.json()).collapsedCategories as string[]
+}
+
 /* The selected category is remembered server-side, so leaving one selected
    would change where unrelated specs start. The request fixture carries no
    session cookie, which the settings route needs. */
@@ -219,7 +233,7 @@ test.describe('Category tree', () => {
 		await expect(noteRow(page, deepNote)).toBeHidden()
 	})
 
-	test('remembers a collapsed category across a reload', async ({ page }) => {
+	test('remembers a collapsed category across a reload', async ({ page, request }) => {
 		await expect(categoryLink(page, 'SAGE')).toBeVisible()
 
 		const stored = page.waitForResponse((response) => response.url().includes('/apps/notes/settings') && response.request().method() === 'PUT')
@@ -230,9 +244,25 @@ test.describe('Category tree', () => {
 
 		await page.reload()
 		await expect(newNoteButton(page).first()).toBeVisible()
-
 		await expect(categoryLink(page, 'Apps')).toBeVisible()
-		await expect(categoryLink(page, 'SAGE')).toBeHidden()
+
+		/* The collapse is still stored. The app came back on a note filed
+		   inside Apps - a URL naming a note is somebody saying which note they
+		   want - so the tree is open far enough to show it, without rewriting
+		   what was stored. */
+		expect(await storedCollapsed(request)).toContain('PROJECTS/Apps')
+	})
+
+	test('keeps a collapse the note being shown is not inside', async ({ page }) => {
+		// Deskspace holds a note of its own and the app is not showing it.
+		await categoryRow(page, 'SAGE').getByRole('button', { name: 'Collapse' }).first().click()
+		await expect(categoryLink(page, 'Architecture')).toBeHidden()
+
+		await page.reload()
+		await expect(newNoteButton(page).first()).toBeVisible()
+
+		await expect(categoryLink(page, 'SAGE')).toBeVisible()
+		await expect(categoryLink(page, 'Architecture')).toBeHidden()
 	})
 
 	test('moves a note into a nested category by dragging it', async ({ page }) => {
