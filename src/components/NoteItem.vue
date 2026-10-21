@@ -79,9 +79,7 @@
 				:multiple="false"
 				:options="categories"
 				:disabled="loading.category"
-				:taggable="true"
 				@update:modelValue="onCategoryChange"
-				@searchChange="onCategoryChange"
 			>
 				<template #icon>
 					<FolderOutlineIcon :size="20" />
@@ -340,7 +338,9 @@ export default {
 
 		async onCategoryChange(result) {
 			this.showCategorySelect = false
-			const category = result?.id ?? result?.label ?? null
+			/* Only a category that already exists. A folder is made deliberately
+			   in the sidebar, so a mistyped path cannot bring one into being. */
+			const category = result?.id ?? null
 			if (category !== null && this.note.category !== category) {
 				this.loading.category = true
 				await setCategory(this.note.id, category)
