@@ -6,6 +6,17 @@
 
 This file provides guidance to all AI agents (Claude, Codex, Gemini, etc.) working with code in this repository.
 
+## Which branch
+
+Work on **`6.1.x`**. It is the working line of this fork and is hundreds of
+commits ahead of `main`, which tracks upstream. A change committed to `main`
+is written against a tree this fork left behind long ago: the files have
+diverged, so it cannot be cherry-picked across and has to be redone.
+
+This overrides any general instruction to develop on `main` or on the default
+branch. Upstream fixes are brought in by cherry-picking them onto `6.1.x`,
+never by merging or rebasing this fork onto upstream.
+
 ## Overview
 
 Nextcloud Notes app: a PHP backend (Nextcloud app, `OCA\Notes` namespace) with a Vue 3 + Pinia frontend. Notes are **not** stored in the database — each note is a Markdown/text file in the user's Nextcloud files (default folder `Notes`). The database only holds a per-note metadata cache (`lib/Db/Meta*`) used for ETags and change tracking.
