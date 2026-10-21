@@ -386,13 +386,11 @@ export default {
 			   is always there. */
 			const known = stored !== null
 				&& (stored === '' || store.notes.getCategories(0, false).includes(stored))
-			/* With nothing stored there is no list of everything to fall back
-			   on, so the app opens the unfiled category: it is always there,
-			   and it needs to know nothing about how the rest is arranged. */
-			const category = known ? stored : ''
-			if (category === null) {
-				return
-			}
+			/* With nothing stored, every note: landing on one category would
+			   hide the rest, and there is no reason to prefer any of them. The
+			   all-notes selection is the absent parameter, which is what tells
+			   it apart from the unfiled one. */
+			const category = known ? stored : null
 			await this.$router.replace(categoryRoute(this.$route, category)).catch(() => {})
 		},
 
@@ -440,7 +438,7 @@ export default {
 				if (!this.categoryRestored) {
 					return
 				}
-				this.$router.replace(categoryRoute(this.$route, '')).catch(() => {})
+				this.$router.replace(categoryRoute(this.$route, null)).catch(() => {})
 				return
 			}
 			/* Every settings write reaches this watcher - collapsing a category

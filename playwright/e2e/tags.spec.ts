@@ -23,14 +23,6 @@ async function openNotesApp(page: Page): Promise<void> {
 	await expect(newNoteButton(page).first()).toBeVisible()
 }
 
-/* These notes are filed in Personal, and with nothing remembered the app opens
-   on the unfiled category - which holds none of them. Selecting the category
-   is what the reader would do; the tags under test are unaffected either way. */
-async function openPersonal(page: Page): Promise<void> {
-	await openNotesApp(page)
-	await page.getByRole('link', { name: 'Personal', exact: true }).click()
-}
-
 /**
  * Leave a particular note open in the editor.
  *
@@ -41,7 +33,9 @@ async function openPersonal(page: Page): Promise<void> {
  * @param title the note to open
  */
 async function parkTheEditorOn(page: Page, title: string): Promise<void> {
-	await page.getByRole('link', { name: title, exact: true }).click()
+	/* Not an exact name: a row in the all-notes list, which is where the app
+	   opens with nothing remembered, carries its category alongside its title. */
+	await page.getByRole('link', { name: new RegExp(title) }).click()
 	await expect(page.locator('.text-editor, .note-editor').first()).toBeVisible()
 }
 
@@ -69,10 +63,10 @@ test.describe('Tags', () => {
 
 	test('shows a tag as soon as it is typed, without a reload', async ({ page }) => {
 		await createNoteViaApi(page, 'Personal', 'Untagged so far', 'nothing here yet')
-		await openPersonal(page)
+		await openNotesApp(page)
 		await expect(tagsCaption(page)).toHaveCount(0)
 
-		await page.getByRole('link', { name: 'Untagged so far', exact: true }).click()
+		await page.getByRole('link', { name: /Untagged so far/ }).click()
 		const editor = new NoteEditor(page)
 		await editor.replaceAll('now tagged #fresh')
 		await editor.expectText('now tagged #fresh')
@@ -114,7 +108,7 @@ test.describe('Tags', () => {
 
 	test('renames the tag in the note the editor is holding', async ({ page }) => {
 		const held = await createNoteViaApi(page, 'Personal', 'Held open', 'tagged #heldtag')
-		await openPersonal(page)
+		await openNotesApp(page)
 		/* The note being renamed is the one on screen, which is the ordinary
 		   case: the app opens a note by itself, and the Text app locks whatever
 		   it opens, so the server cannot write that file at all. The rename has
@@ -141,7 +135,7 @@ test.describe('Tags', () => {
 	test('leaves a note alone while someone still has it open', async ({ page }) => {
 		const held = await createNoteViaApi(page, 'Personal', 'Left open', 'tagged #strandedtag')
 		await createNoteViaApi(page, 'Personal', 'Somewhere else', 'no tag here')
-		await openPersonal(page)
+		await openNotesApp(page)
 
 		/* Closing a tab sends the editor no warning, so the note stays locked.
 		   The rename can clear a lock whose session has been quiet for five

@@ -384,7 +384,7 @@ export default {
 			/* Deleting what the list is showing would otherwise leave the app on
 			   a selection that no longer exists. */
 			if (this.selectedSmartId === id) {
-				const category = ''
+				const category = null
 				this.$router.replace(categoryRoute(this.$route, category)).catch(() => {})
 			}
 		},
@@ -638,7 +638,7 @@ export default {
 		clearSelectedCategoryForDelete(category) {
 			const selected = this.selectedCategory
 			if (selected === category || (selected && selected.startsWith(category + '/'))) {
-				this.selectCategory('')
+				this.selectCategory(null)
 			}
 		},
 

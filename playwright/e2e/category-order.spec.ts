@@ -302,12 +302,18 @@ test.describe('Category order', () => {
 			await expect.poll(async () => (await getSettings(request)).categoryOrder).not.toContain('Zulu')
 		})
 
-		test('opens on the unfiled category when nothing was last viewed', async ({ page, request }) => {
+		/* Every note, whatever it is filed in. Landing on one category would
+		   hide the rest, and with nothing remembered there is no reason to
+		   prefer any of them. */
+		test('opens on all notes when nothing was last viewed', async ({ page, request }) => {
 			await putSettings(request, { lastViewedCategory: null })
 			await page.goto('/index.php/apps/notes/')
 			await expect(newNoteButton(page).first()).toBeVisible()
-			await expect(page.getByRole('link', { name: 'Unfiled', exact: true }))
-				.toHaveAttribute('aria-current', 'page')
+
+			/* Not an exact name: a row in the all-notes list carries the
+			   category it is filed in alongside its title. */
+			await expect(page.getByRole('link', { name: /In Alpha/ })).toBeVisible()
+			await expect(page.getByRole('link', { name: /In Zulu/ })).toBeVisible()
 		})
 
 		test('still welcomes a first run that lands on unfiled', async ({ page, request }) => {

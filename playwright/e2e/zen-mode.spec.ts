@@ -206,10 +206,7 @@ test.describe('Zen mode', () => {
 	test('is not offered while no note is open', async ({ page }) => {
 		await deleteAllNotes(page)
 		await page.goto('/index.php/apps/notes/')
-		/* The unfiled category is a selection like any other, so the route
-		   records it - landing there is what the app does with nothing
-		   remembered. */
-		await expect(page).toHaveURL(/\/welcome(\?.*)?$/)
+		await expect(page).toHaveURL(/\/welcome$/)
 
 		await expect(zenModeEntry(page)).toHaveCount(0)
 
