@@ -61,6 +61,8 @@
 				:node="node"
 				:loading="loading"
 				:selectedSmartId="selectedSmartId"
+				:dropBesideSmart="dropBesideSmart"
+				:dropBesideSide="dropBesideSide"
 			/>
 			<CategoryTreeItem v-else
 				:node="node"
@@ -148,6 +150,8 @@ export default {
 				editSmart: (id) => this.onEditSmart(id),
 				removeSmart: (id) => this.onRemoveSmart(id),
 				smartDragStart: (id, event) => this.onSmartDragStart(id, event),
+				smartDragOver: (id, event) => this.onSmartDragOver(id, event),
+				smartDrop: (id, event) => this.onSmartDrop(id, event),
 				clearDropMarks: () => this.clearCategoryDropMarks(),
 				startSubSmartCategory: (name) => this.startNewSmartCategory(name),
 			},
@@ -168,6 +172,7 @@ export default {
 			draggedCategory: null,
 			draggedSmart: null,
 			dropBesideCategory: null,
+			dropBesideSmart: null,
 			dropBesideSide: 'before',
 			dragOverNewCategory: false,
 			newCategoryDraft: false,
@@ -435,10 +440,11 @@ export default {
 				...(smart.parent === parent
 					? {}
 					: {
-						smartCategories: this.smartCategories.map((entry) => (
-							entry.id === id ? { ...entry, parent } : entry
-						)),
-					}),
+							smartCategories: this.smartCategories.map((entry) => (
+								entry.id === id ? { ...entry, parent } : entry
+							)),
+						}),
+
 				...(categoryOrder ? { categoryOrder } : {}),
 			}
 			if (Object.keys(settings).length === 0) {
@@ -647,11 +653,15 @@ export default {
 			if (!rect?.height) {
 				return 'into'
 			}
+			/* Equal thirds. A quarter at each edge left about eleven pixels of
+			   row to aim at, which is why the line came and went while the
+			   pointer barely moved; now no one of the three outcomes is harder
+			   to hit than the others. */
 			const offset = (event.clientY - rect.top) / rect.height
-			if (offset < 0.25) {
+			if (offset < 1 / 3) {
 				return 'before'
 			}
-			if (offset > 0.75) {
+			if (offset > 2 / 3) {
 				return 'after'
 			}
 			return 'into'
@@ -666,6 +676,7 @@ export default {
 		clearCategoryDropMarks() {
 			this.dragOverCategory = null
 			this.dropBesideCategory = null
+			this.dropBesideSmart = null
 		},
 
 		/* Where a category dropped on a row's edge would land: the group it
@@ -736,6 +747,120 @@ export default {
 			const parent = parentOf(newName)
 			const rest = this.groupKeys(parent).filter((key) => key !== oldName && key !== newName)
 			return withKeyAt(order, [...rest, newName], newName, 0)
+		},
+
+		/* The arrangement after a key is placed beside a row in a group, or
+		   null when the row is not in that group to be placed beside. */
+		orderAfterSlot(key, parent, rowKey, side, order = null) {
+			const rest = this.groupKeys(parent).filter((candidate) => candidate !== key)
+			const at = rest.indexOf(rowKey)
+			if (at < 0) {
+				return null
+			}
+			return withKeyAt(
+				order ?? this.categoryOrder,
+				[...rest, key],
+				key,
+				side === 'after' ? at + 1 : at,
+			)
+		},
+
+		/* A smart category takes no children, so its whole row is a slot and
+		   the half the pointer is in decides which. */
+		smartDropSide(event) {
+			const entry = event.currentTarget?.querySelector?.(':scope > .app-navigation-entry')
+			const rect = entry?.getBoundingClientRect()
+			if (!rect?.height) {
+				return 'before'
+			}
+			return (event.clientY - rect.top) / rect.height < 0.5 ? 'before' : 'after'
+		},
+
+		onSmartDragOver(id, event) {
+			event.stopPropagation()
+			/* Notes are still refused. The category this row sits in would
+			   otherwise keep its own highlight, because its dragleave never
+			   fires while the pointer is inside this row. */
+			if (!isCategoryDrag(event) && !isSmartDrag(event)) {
+				if (event.dataTransfer) {
+					event.dataTransfer.dropEffect = 'none'
+				}
+				this.clearCategoryDropMarks()
+				return
+			}
+			event.preventDefault()
+			this.dragOverCategory = null
+			this.dropBesideCategory = null
+			this.dropBesideSmart = id
+			this.dropBesideSide = this.smartDropSide(event)
+		},
+
+		async onSmartDrop(id, event) {
+			event.stopPropagation()
+			event.preventDefault()
+			const side = this.smartDropSide(event)
+			this.clearCategoryDropMarks()
+
+			const row = this.smartCategories.find((entry) => entry.id === id)
+			if (!row) {
+				return
+			}
+			const parent = row.parent === '' ? null : row.parent
+			const rowKey = SMART_PREFIX + id
+
+			if (isSmartDrag(event)) {
+				const dragged = getDraggedSmart(event) || this.draggedSmart
+				this.draggedSmart = null
+				if (!dragged || dragged === id) {
+					return
+				}
+				const order = this.orderAfterSlot(SMART_PREFIX + dragged, parent, rowKey, side)
+				if (order !== null) {
+					await this.moveSmart(dragged, row.parent, order)
+				}
+				return
+			}
+
+			const dragged = getDraggedCategory(event) || this.draggedCategory
+			if (!dragged) {
+				return
+			}
+			await this.moveCategoryBesideKey(dragged, parent, rowKey, side)
+		},
+
+		/* Placing a category beside a row that is not itself a category: the
+		   group is given rather than read off the row's path. */
+		async moveCategoryBesideKey(dragged, parent, rowKey, side) {
+			const parentOf = (path) => {
+				const separator = path.lastIndexOf('/')
+				return separator === -1 ? null : path.slice(0, separator)
+			}
+			if (parentOf(dragged) === parent) {
+				const order = this.orderAfterSlot(dragged, parent, rowKey, side)
+				if (order === null) {
+					return
+				}
+				try {
+					await setSettings({ categoryOrder: order })
+				} catch {
+					// NotesService already shows a toast on failure.
+				}
+				return
+			}
+			const moved = categoryDropTarget(dragged, parent)
+			if (moved === null) {
+				return
+			}
+			await this.onRenameCategory(dragged, moved, (newName) => {
+				const order = this.orderAfterSlot(
+					newName,
+					parent,
+					rowKey,
+					side,
+					rekeyOnRename(this.categoryOrder, dragged, newName) ?? this.categoryOrder,
+				)
+				return order === null ? {} : { categoryOrder: order }
+			})
 		},
 
 		async moveCategoryBeside(dragged, row, side) {

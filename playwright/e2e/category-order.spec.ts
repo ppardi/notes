@@ -33,6 +33,30 @@ async function getSettings(request: APIRequestContext): Promise<Record<string, u
 	return await response.json() as Record<string, unknown>
 }
 
+/** Which row carries the slot line, and which carries the group shading. */
+async function dropMarks(page: Page): Promise<{ line: string | null, group: string | null }> {
+	return page.evaluate(() => {
+		const titleOf = (el: Element | null) => (el?.querySelector('.app-navigation-entry-link[title]') as HTMLElement)?.title ?? null
+		return {
+			line: titleOf(document.querySelector('.drop-before, .drop-after')),
+			group: titleOf(document.querySelector('.drop-over')),
+		}
+	})
+}
+
+/** Whether the children of a row are shaded along with it. */
+async function groupShaded(page: Page, parent: string): Promise<boolean> {
+	return page.evaluate((name) => {
+		const wrapper = document.querySelector(`[title="${name}"]`)?.closest('.app-navigation-entry-wrapper')
+		const children = wrapper?.querySelector('.app-navigation-entry__children') as HTMLElement
+		if (!children) {
+			return false
+		}
+		const background = getComputedStyle(children).backgroundColor
+		return background !== '' && background !== 'rgba(0, 0, 0, 0)' && background !== 'transparent'
+	}, parent)
+}
+
 /** The arrangement as the server has it. */
 async function storedOrder(request: APIRequestContext): Promise<string[]> {
 	return (await getSettings(request)).categoryOrder as string[]
@@ -75,8 +99,8 @@ async function dragCategoryBeside(page: Page, from: string, to: string, side: 'b
 }
 
 /** Drop a category onto the middle of a row: the nesting band. */
-async function dragCategoryOnto(page: Page, from: string, to: string): Promise<void> {
-	await page.evaluate(([fromName, toName]) => {
+async function dragCategoryOnto(page: Page, from: string, to: string, drop = true): Promise<void> {
+	await page.evaluate(([fromName, toName, shouldDrop]) => {
 		const source = document.querySelector(`[title="${fromName}"]`)
 			?.closest('.app-navigation-entry') as HTMLElement
 		const target = document.querySelector(`[title="${toName}"]`)
@@ -86,8 +110,10 @@ async function dragCategoryOnto(page: Page, from: string, to: string): Promise<v
 		const transfer = new DataTransfer()
 		source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }))
 		target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer, ...at }))
-		target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer, ...at }))
-	}, [from, to])
+		if (shouldDrop) {
+			target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer, ...at }))
+		}
+	}, [from, to, drop] as [string, string, boolean])
 }
 
 /** The category a note is filed in, read straight from the API. */
@@ -289,6 +315,32 @@ test.describe('Category order', () => {
 			await putSettings(request, { lastViewedCategory: null })
 			await page.goto('/index.php/apps/notes/')
 			await expect(page.getByText('Write down your thoughts without any distractions.')).toBeVisible()
+		})
+
+		test('shows a line for a slot and a shaded group for a nest, never both', async ({ page }) => {
+			await dragCategoryBeside(page, 'Zulu', 'Alpha', 'before', false)
+			expect(await dropMarks(page)).toEqual({ line: 'Alpha', group: null })
+
+			await dragCategoryOnto(page, 'Zulu', 'Alpha', false)
+			expect(await dropMarks(page)).toEqual({ line: null, group: 'Alpha' })
+		})
+
+		test('shades the children of the group a nest would land in', async ({ page }) => {
+			await dragCategoryOnto(page, 'Zulu', 'Alpha', false)
+			expect(await groupShaded(page, 'Alpha')).toBe(true)
+		})
+
+		test('offers a slot below a smart category as well as above', async ({ page, request }) => {
+			await createNoteViaRequest('', 'Tagged', 'On #reading')
+			await setSmartCategories([
+				{ id: 'reading', name: 'Reading', tags: ['reading'], mode: 'any', parent: '' },
+			])
+			await page.reload()
+			await expect(newNoteButton(page).first()).toBeVisible()
+
+			await dragCategoryBeside(page, 'Zulu', '#reading', 'after')
+			await expect.poll(() => storedOrder(request)).toContain('Zulu')
+			await expect.poll(() => topLevelOrder(page)).toEqual(['Alpha', 'Mike', '#reading', 'Zulu'])
 		})
 
 		test('refuses a drop inside the dragged category and writes nothing', async ({ page, request }) => {

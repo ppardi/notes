@@ -14,6 +14,14 @@
 	border-radius: var(--border-radius-element, var(--border-radius-large));
 }
 
+/* A nest lands in a group, not on a row, so the children are shaded with it:
+   the row says which group and the block says how far it reaches. Lighter than
+   the row, which is the thing being aimed at. */
+.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry__children) {
+	background-color: var(--color-primary-element-light);
+	border-radius: var(--border-radius-element, var(--border-radius-large));
+}
+
 /* Dropping a category on a row's edge places it at that row's level. The line
    is drawn on the row itself so that it picks up the indentation of the level
    the category would land in. */

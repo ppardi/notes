@@ -14,11 +14,15 @@
 		:title="describe"
 		forceMenu
 		class="smart-category-entry"
+		:class="{
+			'drop-before': node.id === dropBesideSmart && dropBesideSide === 'before',
+			'drop-after': node.id === dropBesideSmart && dropBesideSide === 'after',
+		}"
 		@click.prevent.stop="tree.selectSmart(node.id)"
 		@dragstart="tree.smartDragStart(node.id, $event)"
 		@dragend="tree.dragEnd()"
-		@dragover="onDragOver"
-		@drop="onDrop"
+		@dragover="tree.smartDragOver(node.id, $event)"
+		@drop="tree.smartDrop(node.id, $event)"
 		@update:name="tree.renameSmart(node.id, $event)"
 	>
 		<template #icon>
@@ -91,6 +95,16 @@ export default {
 			type: String,
 			default: null,
 		},
+
+		dropBesideSmart: {
+			type: String,
+			default: null,
+		},
+
+		dropBesideSide: {
+			type: String,
+			default: 'before',
+		},
 	},
 
 	computed: {
@@ -108,22 +122,6 @@ export default {
 		   bubbles to the category this row happens to sit in, and the note is
 		   filed somewhere the pointer never was. Not calling preventDefault is
 		   what tells the browser the drop is not allowed. */
-		onDragOver(event) {
-			event.stopPropagation()
-			if (event.dataTransfer) {
-				event.dataTransfer.dropEffect = 'none'
-			}
-			/* The category this row sits in keeps its own highlight otherwise:
-			   its dragleave never fires, because the pointer is still inside
-			   it — so it would go on saying "drop here" over a row that is
-			   about to refuse the drop. */
-			this.tree.clearDropMarks()
-		},
-
-		onDrop(event) {
-			event.stopPropagation()
-			event.preventDefault()
-		},
 	},
 }
 </script>
