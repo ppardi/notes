@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { orderedLevel, orderKey, SMART_PREFIX } from '../categoryOrder.js'
+import { orderedLevel, orderKey, SMART_PREFIX, withKeyAt } from '../categoryOrder.js'
 
 describe('orderKey', () => {
 	it('is the path for a folder category', () => {
@@ -67,5 +67,36 @@ describe('orderedLevel', () => {
 		const level = [node('Alpha'), node('', ''), node('Zulu')]
 		const names = orderedLevel(level, ['Alpha', 'Zulu']).map((n) => n.name)
 		expect(names).toEqual(['', 'Alpha', 'Zulu'])
+	})
+})
+
+describe('withKeyAt', () => {
+	it('records a group that had no slots at all', () => {
+		expect(withKeyAt([], ['A', 'B', 'C'], 'C', 0)).toEqual(['C', 'A', 'B'])
+	})
+
+	it('leaves keys from other groups where they were', () => {
+		const order = ['Other/One', 'B', 'Other/Two', 'A']
+		const result = withKeyAt(order, ['A', 'B'], 'A', 0)
+		expect(result.filter((k) => k.startsWith('Other/'))).toEqual(['Other/One', 'Other/Two'])
+		expect(result.filter((k) => !k.startsWith('Other/'))).toEqual(['A', 'B'])
+	})
+
+	it('moves a key that was already placed', () => {
+		expect(withKeyAt(['A', 'B', 'C'], ['A', 'B', 'C'], 'A', 2)).toEqual(['B', 'C', 'A'])
+	})
+
+	it('puts a newly created category first in its group', () => {
+		expect(withKeyAt(['A', 'B'], ['New', 'A', 'B'], 'New', 0)).toEqual(['New', 'A', 'B'])
+	})
+
+	/* A key can already sit in the order under another group's run - a
+	   reparented category keeps its key and changes group. Emitting the group
+	   and leaving the stale copy behind would list it twice, and the index map
+	   in orderedLevel would then disagree with itself. */
+	it('never lists a key twice', () => {
+		const result = withKeyAt(['Moved', 'A', 'B'], ['A', 'Moved', 'B'], 'Moved', 1)
+		expect(result).toEqual([...new Set(result)])
+		expect(result.filter((k) => k === 'Moved')).toHaveLength(1)
 	})
 })
