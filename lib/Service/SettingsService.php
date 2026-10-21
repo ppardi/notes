@@ -115,6 +115,32 @@ class SettingsService {
 					return array_values(array_unique($names));
 				},
 			],
+			// The order a person has arranged their categories in: a flat list
+			// of keys, a folder category's path or a smart category's id
+			// behind a prefix, holding every level at once. Only the groups
+			// somebody has arranged appear; a category with no key here sorts
+			// ahead of the arranged ones, by name. Entries naming categories
+			// that are not in the listing are left alone rather than pruned -
+			// a category can be missing because a sync is mid-flight, and an
+			// arrangement is not worth losing to that.
+			'categoryOrder' => [
+				'default' => [],
+				'validate' => function (mixed $value) : array {
+					if (!is_array($value)) {
+						return [];
+					}
+					$keys = [];
+					foreach ($value as $key) {
+						if (is_string($key) && $key !== '') {
+							$keys[] = mb_substr($key, 0, 4096);
+						}
+						if (count($keys) >= 1000) {
+							break;
+						}
+					}
+					return array_values(array_unique($keys));
+				},
+			],
 			// Which navigation sections are collapsed. Only the collapsed ones
 			// are stored: a section nobody has closed needs no entry. The names
 			// are an allowlist rather than free text, because nothing else can
