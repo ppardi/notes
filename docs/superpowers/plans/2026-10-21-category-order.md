@@ -34,7 +34,34 @@ Five things the spec implies that no task's happy path exercises. Each has a tes
 2. **An order holding keys for categories that are not in the listing** — the common state after deleting a folder in the Files app, or mid-sync. Expected: the tree renders, the surviving keys keep their relative order. (Task 1)
 3. **Overflowing the 1000-key cap** — a person with many categories arranges one more. Expected: the first 1000 survive in order and the rest render as slotless at the top, never scrambled. (Task 4)
 4. **Dropping a category into its own subtree** — already refused today by `categoryDropTarget`. Expected: still refused, and no order is written. (Task 5)
-5. **Two devices arranging at once** — the settings blob is read-modify-write, so a stale read silently discards the other device's arrangement. Expected: a write sends only `categoryOrder` (and `smartCategories` where the rename path already does), never a whole settings object rebuilt from a stale copy. (Task 5)
+5. **Dragging a smart category into a slot** — smart categories are draggable today and `moveSmart` changes their parent; placing one must also record its key. Expected: a smart category dropped into a slot stays there across a reload, exactly as a folder category does. (Task 5)
+
+## What this plan deliberately does not copy
+
+`applyCollapsed` in `src/components/CategoriesList.vue:262` prunes
+`collapsedCategories` against the categories currently in the tree **and
+writes the result back** whenever it has changed. It is the nearest thing in
+the codebase to what this feature does, and it is the wrong model for two of
+the three things it demonstrates:
+
+- **It prunes entries for categories that are not in the listing.** The order
+  must not. A collapsed entry for a vanished category does nothing, so
+  dropping it costs nothing; an order entry is an arrangement, and dropping it
+  because a shared folder was briefly unreachable loses work that cannot be
+  recovered. This asymmetry is deliberate — do not make the two consistent.
+- **It writes settings from a render path.** The order never does. It is
+  written when somebody arranges something, and at no other time.
+
+Two things the review checked and found safe, recorded so nobody has to
+check them again:
+
+- `pruneCollapsed` filters the *stored* list rather than mapping over the
+  tree's names, so changing the tree's order does not change the pruned
+  list's order, and `applyCollapsed`'s equality check will not start writing
+  settings on every render once categories stop being name-sorted.
+- `withSmartCategories` has exactly one caller outside the tests
+  (`CategoriesList.vue:199`) and `buildCategoryTree` has none, so giving both
+  a trailing `order = []` parameter cannot reach code this plan has not read.
 
 ## File Structure
 
@@ -174,42 +201,41 @@ git commit -m "feat(categories): order a level by an arrangement rather than by 
 **Interfaces:**
 - Consumes: `orderKey`, `orderedLevel` from Task 1.
 - Produces:
-  - `withGroupRecorded(order: string[], groupKeys: string[]) => string[]` — every key of `groupKeys` present, in the given sequence, keeping the positions of keys from other groups. Keys of this group already in `order` are moved to match `groupKeys`.
-  - `withKeyAt(order: string[], groupKeys: string[], key: string, index: number) => string[]` — `groupKeys` is the group's current visible sequence **including** `key`; the result records the group with `key` at `index`.
-  - `withKeyAtTop(order: string[], groupKeys: string[], key: string) => string[]` — `withKeyAt(order, groupKeys, key, 0)`.
+  - `withKeyAt(order: string[], groupKeys: string[], key: string, index: number) => string[]` — `groupKeys` is the destination group's current visible sequence **including** `key`; the result records that whole group with `key` at `index`, keeps keys belonging to other groups where they were, and contains no key twice.
 
-All three return a new array and never mutate.
+One function, not three. Recording a group and inserting at the top are the same operation with a different index — a create is `index: 0` — and a second name for it would be sugar nothing needs. It returns a new array and never mutates.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```js
-describe('withGroupRecorded', () => {
+describe('withKeyAt', () => {
 	it('records a group that had no slots at all', () => {
-		expect(withGroupRecorded([], ['A', 'B', 'C'])).toEqual(['A', 'B', 'C'])
+		expect(withKeyAt([], ['A', 'B', 'C'], 'C', 0)).toEqual(['C', 'A', 'B'])
 	})
+
 	it('leaves keys from other groups where they were', () => {
 		const order = ['Other/One', 'B', 'Other/Two', 'A']
-		const result = withGroupRecorded(order, ['A', 'B'])
+		const result = withKeyAt(order, ['A', 'B'], 'A', 0)
 		expect(result.filter((k) => k.startsWith('Other/'))).toEqual(['Other/One', 'Other/Two'])
 		expect(result.filter((k) => !k.startsWith('Other/'))).toEqual(['A', 'B'])
 	})
-})
 
-describe('withKeyAt', () => {
-	it('puts the key at the index and records the rest of the group', () => {
-		expect(withKeyAt([], ['A', 'B', 'C'], 'C', 0)).toEqual(['C', 'A', 'B'])
-	})
 	it('moves a key that was already placed', () => {
 		expect(withKeyAt(['A', 'B', 'C'], ['A', 'B', 'C'], 'A', 2)).toEqual(['B', 'C', 'A'])
 	})
-	it('adds a key that is new to the group', () => {
-		expect(withKeyAt(['A', 'B'], ['A', 'B', 'New'], 'New', 1)).toEqual(['A', 'New', 'B'])
-	})
-})
 
-describe('withKeyAtTop', () => {
 	it('puts a newly created category first in its group', () => {
-		expect(withKeyAtTop(['A', 'B'], ['A', 'B', 'New'], 'New')).toEqual(['New', 'A', 'B'])
+		expect(withKeyAt(['A', 'B'], ['New', 'A', 'B'], 'New', 0)).toEqual(['New', 'A', 'B'])
+	})
+
+	/* A key can already sit in the order under another group's run - a
+	   reparented category keeps its key and changes group. Emitting the group
+	   and leaving the stale copy behind would list it twice, and the index map
+	   in orderedLevel would then disagree with itself. */
+	it('never lists a key twice', () => {
+		const result = withKeyAt(['Moved', 'A', 'B'], ['A', 'Moved', 'B'], 'Moved', 1)
+		expect(result).toEqual([...new Set(result)])
+		expect(result.filter((k) => k === 'Moved')).toHaveLength(1)
 	})
 })
 ```
@@ -221,7 +247,7 @@ Expected: FAIL — the three functions are not exported.
 
 - [ ] **Step 3: Implement the three functions**
 
-The shape that makes "leaves keys from other groups where they were" work: walk `order` once, and wherever a key belonging to this group appears, emit the next key from the desired sequence instead. Append any of the group's keys that `order` had no position for.
+The shape that makes "leaves keys from other groups where they were" work: walk `order` once, and wherever a key belonging to this group appears, emit the next key from the desired sequence instead. Append any of the group's keys that `order` had no position for, and drop any later repeat of a key already emitted.
 
 - [ ] **Step 4: Run them and watch them pass**
 
@@ -410,23 +436,39 @@ Expected: FAIL — the dropped category lands in name order, not the aimed slot.
 
 - [ ] **Step 4: Write the order on drop**
 
-A slot drop computes the destination group's visible keys with `orderKey`, finds the index the line sat at, and calls `withKeyAt`. A same-parent drop then calls `setSettings({ categoryOrder })` alone. A reparenting drop awaits `renameCategoryRequest` first and, on success, sends `categoryOrder` **in the same `setSettings` call** that `onRenameCategory` already makes for `smartCategories` (:667). Send only the keys being changed — never a settings object rebuilt from a stale read (Review Focus 5).
+A slot drop computes the destination group's visible keys with `orderKey`, finds the index the line sat at, and calls `withKeyAt`. A same-parent drop then calls `setSettings({ categoryOrder })` alone. A reparenting drop awaits `renameCategoryRequest` first and, on success, sends `categoryOrder` **in the same `setSettings` call** that `onRenameCategory` already makes for `smartCategories` (:667).
 
-- [ ] **Step 5: Run them and watch them pass**
+Send only the keys being changed. `SettingsService::set` (:320-327) loads the stored value of every attribute the request omits, so a partial write merges server-side and two devices changing *different* settings do not clobber each other. Sending a whole settings object rebuilt from a stale local copy would throw that away.
+
+- [ ] **Step 5: Record the slot when a smart category is dragged**
+
+`onCategoryDrop` has a smart branch of its own (:787-801) that calls `moveSmart(dragged, parent)` to change a smart category's parent, using the same `categoryDropSide`. A smart category dropped into a slot must record its key — `SMART_PREFIX + id` — the same way a folder category does, in the same `setSettings` call `moveSmart` already makes. Without this, smart categories are orderable in the tree and un-droppable in practice, which is half a feature.
+
+Add the Review Focus 5 test for it:
+
+```ts
+test('keeps a smart category where it was dropped', async ({ page }) => {
+	await dragSmartBeside(page, smartName, 'Alpha', 'before')
+	await page.reload()
+	await expect.poll(() => topLevelOrder(page)).toEqual([smartName, 'Alpha', 'Mike', 'Zulu'])
+})
+```
+
+- [ ] **Step 6: Run them and watch them pass**
 
 Run: `npm run build && npx playwright test playwright/e2e/category-order.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Update the two tests in `category-tree.spec.ts` that assert name-sorted placement**
+- [ ] **Step 7: Update the two tests in `category-tree.spec.ts` that assert name-sorted placement**
 
 `moves a category to the top level when dropped on a top-level row edge` keeps its subject — the category still reaches the top level — but may now assert its slot. `draws a line on the row a category would land beside` is about the affordance and belongs to Task 8; leave it until then.
 
-- [ ] **Step 7: Run both specs**
+- [ ] **Step 8: Run both specs**
 
 Run: `npx playwright test playwright/e2e/category-order.spec.ts playwright/e2e/category-tree.spec.ts`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src/components/CategoriesList.vue playwright/e2e/category-order.spec.ts playwright/e2e/category-tree.spec.ts
@@ -442,7 +484,7 @@ git commit -m "feat(categories): drop a category into the slot it was aimed at"
 - Modify: `playwright/e2e/category-order.spec.ts`
 
 **Interfaces:**
-- Consumes: `withKeyAtTop`, `rekeyOnRename`, `pruneOnDelete` (Tasks 2-3).
+- Consumes: `withKeyAt`, `rekeyOnRename`, `pruneOnDelete` (Tasks 2-3).
 
 - [ ] **Step 1: Write the failing e2e tests**
 
@@ -492,7 +534,7 @@ Expected: FAIL — a new category appears in name order; a rename loses the slot
 
 - [ ] **Step 3: Wire the three handlers**
 
-`onCreateCategory` records the new key at the top of its group with `withKeyAtTop`, in the same `setSettings` it already makes, after `createCategoryRequest` returns and under the server's returned name. `onRenameCategory` adds `rekeyOnRename`'s result to the `setSettings` it already sends for `smartCategories`. When the rename also changes the category's parent — typing `Mike/Zulu` over `Zulu` — rekeying alone leaves the key carrying an index that means nothing in its new group, so that case re-slots it at the top with `withKeyAtTop`. The two are distinguished by whether `dirname` of the old and new paths differ. `onDeleteCategory` adds `pruneOnDelete`'s result to the `setSettings` it already sends for `reparentOnDelete` — and because `reparentOnDelete` *lifts* a smart category to the grandparent rather than removing it, that smart key is re-slotted at the top of its new group with `withKeyAtTop`.
+`onCreateCategory` records the new key at the top of its group with `withKeyAt(..., 0)`, in the same `setSettings` it already makes, after `createCategoryRequest` returns and under the server's returned name. `onRenameCategory` adds `rekeyOnRename`'s result to the `setSettings` it already sends for `smartCategories`. When the rename also changes the category's parent — typing `Mike/Zulu` over `Zulu` — rekeying alone leaves the key carrying an index that means nothing in its new group, so that case re-slots it at the top with `withKeyAt(..., 0)`. The two are distinguished by whether `dirname` of the old and new paths differ. `onDeleteCategory` adds `pruneOnDelete`'s result to the `setSettings` it already sends for `reparentOnDelete` — and because `reparentOnDelete` *lifts* a smart category to the grandparent rather than removing it, that smart key is re-slotted at the top of its new group with `withKeyAt(..., 0)`.
 
 - [ ] **Step 4: Run them and watch them pass**
 
@@ -615,6 +657,8 @@ Expected: FAIL — a smart row refuses every drop, so the slot beside one is unr
 - [ ] **Step 3: Rebalance the hit zones in `categoryDropSide`**
 
 Today: `< 0.25` before, `> 0.75` after, else into — about 11px of edge on a 44px row, which is why the line flickers. Choose a split where neither target is harder to hit than the other, and say in a comment why that split. A smart row has no children, so the whole of it is slot.
+
+`categoryDropSide` is shared: the smart-drag branch of `onCategoryDrop` (:793) calls it too, so rebalancing changes where a dragged *smart* category lands as well. The tests from Task 5 cover that; run them here rather than discovering it later.
 
 - [ ] **Step 4: Make the group shading cover the row and its children**
 
