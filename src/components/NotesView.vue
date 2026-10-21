@@ -174,9 +174,11 @@ export default {
 			return this.showNote && !!this.note && isInCategory(this.note.category, this.category)
 		},
 
-		// Nothing anywhere and nowhere chosen: the app has never been used.
+		/* Nothing anywhere: the app has never been used. What is selected has
+		   no bearing on it - with nothing stored the app opens on the unfiled
+		   category, so a first run arrives with a selection like any other. */
 		isFirstRun() {
-			return store.notes.numNotes() === 0 && this.category === null
+			return store.notes.numNotes() === 0
 		},
 
 		emptyDetailsName() {

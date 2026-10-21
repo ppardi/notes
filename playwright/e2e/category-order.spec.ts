@@ -276,6 +276,21 @@ test.describe('Category order', () => {
 			await expect.poll(async () => (await getSettings(request)).categoryOrder).not.toContain('Zulu')
 		})
 
+		test('opens on the unfiled category when nothing was last viewed', async ({ page, request }) => {
+			await putSettings(request, { lastViewedCategory: null })
+			await page.goto('/index.php/apps/notes/')
+			await expect(newNoteButton(page).first()).toBeVisible()
+			await expect(page.getByRole('link', { name: 'Unfiled', exact: true }))
+				.toHaveAttribute('aria-current', 'page')
+		})
+
+		test('still welcomes a first run that lands on unfiled', async ({ page, request }) => {
+			await deleteAllNotesVia()
+			await putSettings(request, { lastViewedCategory: null })
+			await page.goto('/index.php/apps/notes/')
+			await expect(page.getByText('Write down your thoughts without any distractions.')).toBeVisible()
+		})
+
 		test('refuses a drop inside the dragged category and writes nothing', async ({ page, request }) => {
 			const before = await getSettings(request)
 

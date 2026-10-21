@@ -98,7 +98,7 @@ import NavigationSectionHeading from './NavigationSectionHeading.vue'
 import SmartCategoryDialog from './SmartCategoryDialog.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
 import { orderKey, pruneOnDelete, rekeyOnRename, SMART_PREFIX, withKeyAt } from '../categoryOrder.js'
-import { categoryAncestors, categoryDropTarget, categoryNames, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
+import { categoryAncestors, categoryDropTarget, categoryNames, joinCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
 import { SECTION_CATEGORIES } from '../navigationSections.js'
 import { createCategory as createCategoryRequest, deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import { sectionCollapse } from '../sectionCollapse.js'
@@ -379,7 +379,7 @@ export default {
 			/* Deleting what the list is showing would otherwise leave the app on
 			   a selection that no longer exists. */
 			if (this.selectedSmartId === id) {
-				const category = landingCategory(this.categories)
+				const category = ''
 				this.$router.replace(categoryRoute(this.$route, category)).catch(() => {})
 			}
 		},
@@ -632,7 +632,7 @@ export default {
 		clearSelectedCategoryForDelete(category) {
 			const selected = this.selectedCategory
 			if (selected === category || (selected && selected.startsWith(category + '/'))) {
-				this.selectCategory(landingCategory(this.categories))
+				this.selectCategory('')
 			}
 		},
 

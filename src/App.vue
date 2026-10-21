@@ -97,7 +97,6 @@ import EditorHint from './components/Modal/EditorHint.vue'
 import NoteSidebar from './components/NoteSidebar.vue'
 import NotesSearch from './components/NotesSearch.vue'
 import TagsList from './components/TagsList.vue'
-import { landingCategory } from './categoryTree.js'
 import { config } from './config.js'
 import logger from './Logger.js'
 import { fetchNotes, noteExists, setSettings, undoDeleteNote } from './NotesService.js'
@@ -387,9 +386,10 @@ export default {
 			   is always there. */
 			const known = stored !== null
 				&& (stored === '' || store.notes.getCategories(0, false).includes(stored))
-			/* With nothing stored there is no list of everything to fall back on,
-			   so the app picks somewhere real to start. */
-			const category = known ? stored : landingCategory(store.notes.getCategories(0, true))
+			/* With nothing stored there is no list of everything to fall back
+			   on, so the app opens the unfiled category: it is always there,
+			   and it needs to know nothing about how the rest is arranged. */
+			const category = known ? stored : ''
 			if (category === null) {
 				return
 			}
@@ -440,8 +440,7 @@ export default {
 				if (!this.categoryRestored) {
 					return
 				}
-				const category = landingCategory(store.notes.getCategories(0, true))
-				this.$router.replace(categoryRoute(this.$route, category)).catch(() => {})
+				this.$router.replace(categoryRoute(this.$route, '')).catch(() => {})
 				return
 			}
 			/* Every settings write reaches this watcher - collapsing a category
