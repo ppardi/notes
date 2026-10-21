@@ -492,8 +492,11 @@ class NotesService {
 				$subCategory = $categoryPrefix . $node->getName();
 				$data['categories'][] = $subCategory;
 				$data_sub = self::gatherNoteFiles($customExtension, $node, $showHidden, $subCategory . '/');
+				// Keyed by file id, so the union keeps the ids array_merge would renumber.
 				$data['files'] = $data['files'] + $data_sub['files'];
-				$data['categories'] = $data['categories'] + $data_sub['categories'];
+				/* A list, where the union would instead keep this level's entries and
+				   drop every deeper one sharing their numbering. */
+				$data['categories'] = array_merge($data['categories'], $data_sub['categories']);
 			} elseif (self::isNote($node, $customExtension)) {
 				$data['files'][$node->getId()] = $node;
 			}

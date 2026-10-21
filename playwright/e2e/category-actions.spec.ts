@@ -187,6 +187,28 @@ test.describe('Category actions', () => {
 		await expect(navigationRow(page, stored)).toBeVisible()
 	})
 
+	test('brings back a nested category that holds no notes', async ({ page }, testInfo: TestInfo) => {
+		const parent = uniqueTitle('outer', testInfo)
+		const child = uniqueTitle('inner', testInfo)
+
+		await createCategory(page, parent)
+		await openCategoryActions(page, parent)
+		await page.getByRole('menuitem', { name: 'New subcategory', exact: true }).click()
+		const input = appNavigation(page).getByPlaceholder('New category', { exact: true })
+		await expect(input).toBeVisible()
+		await input.fill(child)
+		await input.press('Enter')
+		await expect(navigationRow(page, child)).toBeVisible()
+
+		/* Nothing is filed in either, so only the folders can bring them back -
+		   which means the server has to report the nested one and not just its
+		   parent. */
+		await page.reload()
+		await expect(addCategoryButton(page)).toBeVisible()
+		await expect(navigationRow(page, parent)).toBeVisible()
+		await expect(navigationRow(page, child)).toBeVisible()
+	})
+
 	test('keeps a category whose last note is filed elsewhere', async ({ page }, testInfo: TestInfo) => {
 		const category = uniqueTitle('emptied', testInfo)
 		await createCategory(page, category)
