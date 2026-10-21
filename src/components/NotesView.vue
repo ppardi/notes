@@ -4,7 +4,7 @@
 -->
 
 <template>
-	<NcAppContent paneConfigKey="note" :showDetails="showNote" @update:showDetails="hideNote">
+	<NcAppContent paneConfigKey="note" :showDetails="showNoteDetails" @update:showDetails="hideNote">
 		<template #list>
 			<NcAppContentList class="content-list">
 				<div class="content-list__search">
@@ -50,7 +50,13 @@
 		</template>
 
 		<NcAppContentDetails>
-			<Note v-if="showNote" :noteId="noteId" @noteDeleted="onNoteDeleted" />
+			<Note v-if="showNoteDetails" :noteId="noteId" @noteDeleted="onNoteDeleted" />
+			<Welcome v-else-if="isFirstRun" />
+			<NcEmptyContent v-else :name="emptyDetailsName">
+				<template #icon>
+					<NoteTextOutlineIcon :size="44" />
+				</template>
+			</NcEmptyContent>
 		</NcAppContentDetails>
 
 		<TemplatePicker v-if="templatePickerOpen"
@@ -71,11 +77,13 @@ import NcAppContentList from '@nextcloud/vue/components/NcAppContentList'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import MagnifyIcon from 'vue-material-design-icons/Magnify.vue'
+import NoteTextOutlineIcon from 'vue-material-design-icons/NoteTextOutline.vue'
 import PlusIcon from 'vue-material-design-icons/Plus.vue'
 import Note from './Note.vue'
 import NotesCaption from './NotesCaption.vue'
 import NotesList from './NotesList.vue'
 import TemplatePicker from './TemplatePicker.vue'
+import Welcome from './Welcome.vue'
 import logger from '../Logger.js'
 import { createNote } from '../NotesService.js'
 import store from '../store.js'
@@ -95,14 +103,17 @@ export default {
 		NotesList,
 		NotesCaption,
 		MagnifyIcon,
+		NoteTextOutlineIcon,
 		PlusIcon,
 		TemplatePicker,
+		Welcome,
 	},
 
 	props: {
+		// Empty on the welcome route, which renders the list with no note open.
 		noteId: {
 			type: String,
-			required: true,
+			default: '',
 		},
 	},
 
@@ -148,6 +159,34 @@ export default {
 
 		filteredNotes() {
 			return store.notes.getFilteredNotes()
+		},
+
+		/* Whether the details pane holds a note, which is also what a narrow
+		   screen swaps to: everything else the pane can show - the welcome, or a
+		   line saying why it is empty - explains the list rather than replacing
+		   it, and taking the list away would take the New note button with it.
+
+		   A reload restores the route's note and the stored category together, so
+		   a note from somewhere else can arrive already selected without the
+		   category ever changing for the watcher to catch it. Asking here rather
+		   than hiding it on an event also waits for the notes to arrive. */
+		showNoteDetails() {
+			return this.showNote && !!this.note && isInCategory(this.note.category, this.category)
+		},
+
+		// Nothing anywhere and nowhere chosen: the app has never been used.
+		isFirstRun() {
+			return store.notes.numNotes() === 0 && this.category === null
+		},
+
+		emptyDetailsName() {
+			if (this.searching) {
+				return t('notes', 'No notes found')
+			}
+			if (this.filteredNotes.length === 0) {
+				return t('notes', 'No notes in this category')
+			}
+			return t('notes', 'Select a note')
 		},
 
 		displayedNotes() {

@@ -4,45 +4,30 @@
 -->
 
 <template>
-	<NcAppContent>
-		<div class="welcome-content">
-			<h2>{{ t('notes', 'Notes') }}</h2>
-			<div class="feature icon-add">
-				{{ t('notes', 'Start writing a note by clicking on “{newnote}”.', { newnote: t('notes', 'New note') }) }}
-			</div>
-			<div class="feature">
-				<NcButton variant="secondary" @click="onNewNote">
-					<template #icon>
-						<Plus :size="20" />
-					</template>
-					{{ t('notes', 'New note') }}
-				</NcButton>
-			</div>
-			<div class="feature icon-fullscreen">
-				{{ t('notes', 'Write down your thoughts without any distractions.') }}
-			</div>
-			<div class="feature icon-toggle-filelist">
-				{{ t('notes', 'Use Markdown markups to style your text.') }}
-			</div>
-			<div class="feature">
-				<CreateSampleButton />
-			</div>
-			<div class="feature icon-files-dark">
-				{{ t('notes', 'Organize your notes in categories.') }}
-			</div>
-			<HelpMobile />
+	<div class="welcome-content">
+		<h2>{{ t('notes', 'Notes') }}</h2>
+		<div class="feature icon-add">
+			{{ t('notes', 'Start writing a note by clicking on “{newnote}”.', { newnote: t('notes', 'New note') }) }}
 		</div>
-	</NcAppContent>
+		<div class="feature icon-fullscreen">
+			{{ t('notes', 'Write down your thoughts without any distractions.') }}
+		</div>
+		<div class="feature icon-toggle-filelist">
+			{{ t('notes', 'Use Markdown markups to style your text.') }}
+		</div>
+		<div class="feature">
+			<CreateSampleButton />
+		</div>
+		<div class="feature icon-files-dark">
+			{{ t('notes', 'Organize your notes in categories.') }}
+		</div>
+		<HelpMobile />
+	</div>
 </template>
 
 <script>
-import NcAppContent from '@nextcloud/vue/components/NcAppContent'
-import NcButton from '@nextcloud/vue/components/NcButton'
-import Plus from 'vue-material-design-icons/Plus.vue'
 import CreateSampleButton from './CreateSampleButton.vue'
 import HelpMobile from './HelpMobile.vue'
-import { createNote } from '../NotesService.js'
-import { keepCategory } from '../Util.js'
 
 export default {
 	name: 'Welcome',
@@ -50,22 +35,6 @@ export default {
 	components: {
 		CreateSampleButton,
 		HelpMobile,
-		NcAppContent,
-		NcButton,
-		Plus,
-	},
-
-	methods: {
-		onNewNote() {
-			createNote()
-				.then((note) => {
-					this.$router.push({
-						name: 'note',
-						params: { noteId: note.id.toString() },
-						query: keepCategory(this.$route),
-					})
-				})
-		},
 	},
 }
 

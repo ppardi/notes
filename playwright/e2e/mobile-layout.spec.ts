@@ -175,6 +175,19 @@ test.describe('The note pane on a touch screen', () => {
 				const found = await layoutProblems(page)
 				expect(found, found.join('\n')).toEqual([])
 			})
+
+			test('offers a way to make the first note', async ({ page, request }) => {
+				await login(page)
+				await deleteAllNotesVia()
+				await setNoteMode(request, 'rich')
+				await page.goto('/index.php/apps/notes/')
+
+				/* Nothing has ever been written, so the pane beside the list holds
+				   the welcome. A narrow screen shows one or the other, and the
+				   welcome is what explains the app rather than what runs it - take
+				   the list away here and there is no way left to make a note. */
+				await expect(page.getByRole('button', { name: 'New note', exact: true })).toBeVisible()
+			})
 		})
 	}
 })

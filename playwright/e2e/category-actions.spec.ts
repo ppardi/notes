@@ -187,6 +187,25 @@ test.describe('Category actions', () => {
 		await expect(navigationRow(page, stored)).toBeVisible()
 	})
 
+	test('shows the note list, not the welcome screen, in a category with no notes', async ({ page }, testInfo: TestInfo) => {
+		const category = uniqueTitle('bare', testInfo)
+		await createCategory(page, category)
+
+		/* Reloaded, because landing on an empty category is what opened the
+		   welcome screen: the route has no note to show. */
+		await page.reload()
+		await expect(addCategoryButton(page)).toBeVisible()
+		await expectNavigationItemActive(page, category)
+
+		/* A category somebody just made is not a first run of the app. The list
+		   and its own New note button stay in reach, and the pane beside them
+		   says why it is empty rather than offering the app store. */
+		await expect(notesViewNewNoteButton(page)).toBeVisible()
+		await expect(page.getByText('No notes in this category')).toBeVisible()
+		await expect(page.getByRole('heading', { name: 'Notes', exact: true })).toHaveCount(0)
+		await expect(page.getByText('Write down your thoughts without any distractions.')).toHaveCount(0)
+	})
+
 	test('brings back a nested category that holds no notes', async ({ page }, testInfo: TestInfo) => {
 		const parent = uniqueTitle('outer', testInfo)
 		const child = uniqueTitle('inner', testInfo)

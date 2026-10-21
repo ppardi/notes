@@ -7,7 +7,6 @@ import { generateUrl } from '@nextcloud/router'
 import { createRouter, createWebHistory } from 'vue-router'
 import Loading from './components/Loading.vue'
 import NotesView from './components/NotesView.vue'
-import Welcome from './components/Welcome.vue'
 
 export default createRouter({
 	history: createWebHistory(generateUrl('apps/notes')),
@@ -21,7 +20,11 @@ export default createRouter({
 		{
 			path: '/welcome',
 			name: 'welcome',
-			component: Welcome,
+			/* The list, with nothing selected, rather than a page of its own:
+			   having no note to show is no reason to take the list away. */
+			components: {
+				default: NotesView,
+			},
 		},
 		{
 			path: '/note/:noteId',
