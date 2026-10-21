@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { orderedLevel, orderKey, SMART_PREFIX, withKeyAt } from '../categoryOrder.js'
+import { orderedLevel, orderKey, pruneOnDelete, rekeyOnRename, SMART_PREFIX, withKeyAt } from '../categoryOrder.js'
 
 describe('orderKey', () => {
 	it('is the path for a folder category', () => {
@@ -98,5 +98,35 @@ describe('withKeyAt', () => {
 		const result = withKeyAt(['Moved', 'A', 'B'], ['A', 'Moved', 'B'], 'Moved', 1)
 		expect(result).toEqual([...new Set(result)])
 		expect(result.filter((k) => k === 'Moved')).toHaveLength(1)
+	})
+})
+
+describe('rekeyOnRename', () => {
+	it('rewrites the category and everything beneath it', () => {
+		const order = ['Clients', 'Clients/A', 'Clients/A/Deep', 'Other']
+		expect(rekeyOnRename(order, 'Clients', 'Archive/Clients'))
+			.toEqual(['Archive/Clients', 'Archive/Clients/A', 'Archive/Clients/A/Deep', 'Other'])
+	})
+
+	it('does not rewrite a category that merely starts with the same letters', () => {
+		expect(rekeyOnRename(['ClientsOld'], 'Clients', 'Archive')).toBeNull()
+	})
+
+	it('leaves smart keys alone', () => {
+		expect(rekeyOnRename(['smart:abc'], 'Clients', 'Archive')).toBeNull()
+	})
+})
+
+describe('pruneOnDelete', () => {
+	it('removes the category and everything beneath it', () => {
+		expect(pruneOnDelete(['A', 'A/B', 'A/B/C', 'Z'], 'A')).toEqual(['Z'])
+	})
+
+	it('answers null when the category had no slot', () => {
+		expect(pruneOnDelete(['Z'], 'A')).toBeNull()
+	})
+
+	it('leaves smart keys alone', () => {
+		expect(pruneOnDelete(['smart:abc'], 'smart')).toBeNull()
 	})
 })

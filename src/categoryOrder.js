@@ -104,3 +104,58 @@ export function withKeyAt(order, groupKeys, key, index) {
 	}
 	return result
 }
+
+/**
+ * Whether a key is a folder category at or below a path.
+ *
+ * A smart category's key carries the prefix and an id, so it can never match:
+ * its place in the tree is its parent field, which a rename rewrites
+ * separately.
+ *
+ * @param {string} key a key from the arrangement
+ * @param {string} path a category path
+ * @return {boolean} whether the key is that category or inside it
+ */
+function isWithin(key, path) {
+	return key === path || key.startsWith(path + '/')
+}
+
+/**
+ * The arrangement, following a renamed category.
+ *
+ * Renaming a category changes the path of everything beneath it, so every key
+ * at or below the old path is rewritten onto the new one. Positions do not
+ * change: a subtree keeps the order it was arranged in.
+ *
+ * @param {string[]} order the arrangement
+ * @param {string} oldPath the category's path before the rename
+ * @param {string} newPath its path after
+ * @return {string[]|null} the new arrangement, or null when nothing matched
+ */
+export function rekeyOnRename(order, oldPath, newPath) {
+	let moved = false
+	const updated = order.map((key) => {
+		if (!isWithin(key, oldPath)) {
+			return key
+		}
+		moved = true
+		return newPath + key.slice(oldPath.length)
+	})
+	return moved ? updated : null
+}
+
+/**
+ * The arrangement, after a category was deleted.
+ *
+ * The category's own key and those of the folder categories beneath it go.
+ * A smart category that lived inside it is not deleted - it is lifted to the
+ * grandparent - so its key survives here and is re-placed by the caller.
+ *
+ * @param {string[]} order the arrangement
+ * @param {string} path the deleted category's path
+ * @return {string[]|null} the new arrangement, or null when nothing matched
+ */
+export function pruneOnDelete(order, path) {
+	const kept = order.filter((key) => !isWithin(key, path))
+	return kept.length === order.length ? null : kept
+}
