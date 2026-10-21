@@ -97,7 +97,8 @@ import CategoryTreeItem from './CategoryTreeItem.vue'
 import NavigationSectionHeading from './NavigationSectionHeading.vue'
 import SmartCategoryDialog from './SmartCategoryDialog.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
-import { categoryAncestors, categoryDropTarget, categoryNames, categorySiblingTarget, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
+import { orderKey, rekeyOnRename, SMART_PREFIX, withKeyAt } from '../categoryOrder.js'
+import { categoryAncestors, categoryDropTarget, categoryNames, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
 import { SECTION_CATEGORIES } from '../navigationSections.js'
 import { createCategory as createCategoryRequest, deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
 import { sectionCollapse } from '../sectionCollapse.js'
@@ -202,11 +203,16 @@ export default {
 				/* The same reading the note list gives, so the number on the row
 				   always describes the list the row opens. */
 				(smart) => store.notes.countNotesWithTags(smart.tags, smart.mode),
+				this.categoryOrder,
 			)
 		},
 
 		smartCategories() {
 			return store.app.settings?.smartCategories ?? []
+		},
+
+		categoryOrder() {
+			return store.app.settings?.categoryOrder ?? []
 		},
 
 		selectedSmartId() {
@@ -398,17 +404,48 @@ export default {
 		 * @param {string} id the record being moved
 		 * @param {string} parent the category to file it under, '' for the top
 		 */
-		async moveSmart(id, parent) {
+		/* A smart category dropped on a row: which group it joins, and where in
+		   it. It is arranged alongside the folder categories, so a drop has to
+		   record its key as well as change its parent - a parent alone would
+		   leave it sorting by name among rows that no longer do. */
+		async moveSmartTo(id, category, side) {
+			const key = SMART_PREFIX + id
+			const separator = category.lastIndexOf('/')
+			const parent = side === 'into'
+				? category
+				: (separator === -1 ? '' : category.slice(0, separator))
+
+			const rest = this.groupKeys(parent === '' ? null : parent).filter((candidate) => candidate !== key)
+			const at = side === 'into' ? -1 : rest.indexOf(category)
+			// nesting has no slot to aim at, so it lands where anything unplaced does
+			const index = at < 0 ? 0 : (side === 'after' ? at + 1 : at)
+
+			await this.moveSmart(id, parent, withKeyAt(this.categoryOrder, [...rest, key], key, index))
+		},
+
+		async moveSmart(id, parent, categoryOrder = null) {
 			const smart = this.smartCategories.find((entry) => entry.id === id)
-			if (!smart || smart.parent === parent) {
+			if (!smart) {
+				return
+			}
+			/* Both halves in one write: the parent may be unchanged when only
+			   the arrangement moved, and the arrangement may be absent when the
+			   caller only wanted a reparent. */
+			const settings = {
+				...(smart.parent === parent
+					? {}
+					: {
+						smartCategories: this.smartCategories.map((entry) => (
+							entry.id === id ? { ...entry, parent } : entry
+						)),
+					}),
+				...(categoryOrder ? { categoryOrder } : {}),
+			}
+			if (Object.keys(settings).length === 0) {
 				return
 			}
 			try {
-				await setSettings({
-					smartCategories: this.smartCategories.map((entry) => (
-						entry.id === id ? { ...entry, parent } : entry
-					)),
-				})
+				await setSettings(settings)
 			} catch {
 				// NotesService already shows a toast on failure.
 			}
@@ -630,15 +667,83 @@ export default {
 			this.dropBesideCategory = null
 		},
 
-		async moveCategoryBeside(dragged, row) {
-			if (dragged === null) {
+		/* Where a category dropped on a row's edge would land: the group it
+		   joins, and the path it would take there - null when it is already in
+		   that group and only its place in the arrangement changes. */
+		slotTarget(dragged, row) {
+			if (dragged === null || row === '') {
+				return null
+			}
+			const parentOf = (path) => {
+				const separator = path.lastIndexOf('/')
+				return separator === -1 ? null : path.slice(0, separator)
+			}
+			const parent = parentOf(row)
+			if (parent === parentOf(dragged)) {
+				return { parent, moved: null }
+			}
+			const moved = categoryDropTarget(dragged, parent)
+			return moved === null ? null : { parent, moved }
+		},
+
+		/* The keys of one group, as the tree is showing it. The unfiled
+		   category is never arranged, so it never contributes one. */
+		groupKeys(parent) {
+			const find = (level) => {
+				for (const node of level) {
+					if (!node.smart && node.name === parent) {
+						return node.children
+					}
+					const deeper = find(node.children ?? [])
+					if (deeper !== null) {
+						return deeper
+					}
+				}
+				return null
+			}
+			const level = parent === null ? this.categoryTree : (find(this.categoryTree) ?? [])
+			return level.map(orderKey).filter((key) => key !== '')
+		},
+
+		async moveCategoryBeside(dragged, row, side) {
+			const target = this.slotTarget(dragged, row)
+			if (target === null) {
 				return
 			}
-			const moved = categorySiblingTarget(dragged, row)
+			const { parent, moved } = target
+
+			const rest = this.groupKeys(parent).filter((key) => key !== dragged)
+			const at = rest.indexOf(row)
+			if (at < 0) {
+				return
+			}
+			const index = side === 'after' ? at + 1 : at
+
 			if (moved === null) {
+				/* Already in this group, so nothing moves on disk and there is
+				   nothing to ask the server to do: the arrangement is the whole
+				   change. */
+				try {
+					await setSettings({
+						categoryOrder: withKeyAt(this.categoryOrder, [...rest, dragged], dragged, index),
+					})
+				} catch {
+					// NotesService already shows a toast on failure.
+				}
 				return
 			}
-			await this.onRenameCategory(dragged, moved)
+
+			/* The folder moves first, because that is the half that can fail
+			   for reasons outside this app. The arrangement follows in the
+			   settings write the rename already makes. */
+			await this.onRenameCategory(dragged, moved, (newName) => ({
+				categoryOrder: withKeyAt(
+					rekeyOnRename(this.categoryOrder, dragged, newName) ?? this.categoryOrder,
+					[...rest, newName],
+					newName,
+					index,
+				),
+			}))
 		},
 
 		async moveCategory(dragged, target) {
@@ -652,7 +757,7 @@ export default {
 			await this.onRenameCategory(dragged, moved)
 		},
 
-		async onRenameCategory(category, newCategory) {
+		async onRenameCategory(category, newCategory, settingsFor = null) {
 			const trimmed = newCategory?.trim() ?? ''
 			if (!trimmed || trimmed === category) {
 				return
@@ -665,8 +770,14 @@ export default {
 				this.updateNotesForCategoryRename(oldName, newName)
 				store.notes.renameLocalCategory({ oldCategory: oldName, newCategory: newName })
 				const followed = reparentOnRename(this.smartCategories, oldName, newName)
-				if (followed !== null) {
-					await setSettings({ smartCategories: followed })
+				/* One write, not two: the settings blob is read, changed and
+				   written whole, so a second call would race the first. */
+				const settings = {
+					...(followed !== null ? { smartCategories: followed } : {}),
+					...(settingsFor ? settingsFor(newName) : {}),
+				}
+				if (Object.keys(settings).length > 0) {
+					await setSettings(settings)
 				}
 				this.updateSelectedCategoryForRename(oldName, newName)
 			} catch {
@@ -739,9 +850,13 @@ export default {
 			if (isCategoryDrag(event)) {
 				const dragged = this.draggedCategory ?? getDraggedCategory(event)
 				const side = this.categoryDropSide(event)
+				/* A slot at the dragged category's own level is valid even
+				   though nothing moves on disk: it is an arrangement, and
+				   refusing it is what used to make the line flicker out
+				   wherever a category was dropped among its own siblings. */
 				const valid = side === 'into'
 					? categoryDropTarget(dragged, category) !== null
-					: categorySiblingTarget(dragged, category) !== null
+					: this.slotTarget(dragged, category) !== null
 				if (dragged === null || !valid) {
 					this.clearCategoryDropMarks()
 					return
@@ -794,10 +909,7 @@ export default {
 				if (dragged && category !== '') {
 					/* A row's middle files it inside; its edges file it at that
 					   row's own level, the same as a real category. */
-					const side = this.categoryDropSide(event)
-					const separator = category.lastIndexOf('/')
-					const beside = separator === -1 ? '' : category.slice(0, separator)
-					await this.moveSmart(dragged, side === 'into' ? category : beside)
+					await this.moveSmartTo(dragged, category, this.categoryDropSide(event))
 				}
 				return
 			}
@@ -805,10 +917,11 @@ export default {
 			if (isCategoryDrag(event)) {
 				// an empty answer means the browser withheld it, not the unfiled category
 				const dragged = getDraggedCategory(event) || this.draggedCategory
-				if (this.categoryDropSide(event) === 'into') {
+				const side = this.categoryDropSide(event)
+				if (side === 'into') {
 					await this.moveCategory(dragged, category)
 				} else {
-					await this.moveCategoryBeside(dragged, category)
+					await this.moveCategoryBeside(dragged, category, side)
 				}
 				return
 			}
