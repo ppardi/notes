@@ -13,8 +13,16 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BRANCH="${NEXTCLOUD_BRANCH:-stable35}"
-C=nextcloud-e2e-test-server_NextCloud-Notes
+# The e2e server names its container after the directory it was started from,
+# so a git worktree gets a container of its own. Follow that rather than
+# assuming the main checkout, or this installs into somebody else's server.
+C="${NOTES_E2E_CONTAINER:-nextcloud-e2e-test-server_$(basename "$(dirname "$HERE")")}"
 occ() { docker exec "$C" php /var/www/html/occ "$@"; }
+
+if [ "$(docker inspect -f '{{.State.Running}}' "$C" 2>/dev/null)" != "true" ]; then
+  echo "$C is not running - start it with 'npm run start:nextcloud' first" >&2
+  exit 1
+fi
 
 if ! occ app:list 2>/dev/null | grep -q 'text:'; then
   echo "fetching Text from the $BRANCH daily server build…"
