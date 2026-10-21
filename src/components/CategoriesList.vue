@@ -189,6 +189,7 @@ export default {
 			smartDialogParent: '',
 			collapsedCategories: [],
 			collapsedLoaded: false,
+			settled: false,
 		}
 	},
 
@@ -254,6 +255,17 @@ export default {
 				this.revealCategory(category)
 			},
 		},
+
+		/* The app has finished bringing itself up, so a selection from here on
+		   is somebody choosing rather than the app restoring. */
+		loading: {
+			immediate: true,
+			handler(loading) {
+				if (!loading) {
+					this.settled = true
+				}
+			},
+		},
 	},
 
 	mounted() {
@@ -285,6 +297,13 @@ export default {
 
 		/* A selection is useless if it is hidden inside a collapsed ancestor. */
 		revealCategory(category) {
+			/* Not while the app is still bringing itself up. Starting on a note
+			   filed deep in the tree would otherwise open every category above
+			   it and write that back, quietly undoing a collapse somebody made
+			   on purpose. Opening one later, by choosing it, still reveals it. */
+			if (!this.settled) {
+				return
+			}
 			const ancestors = categoryAncestors(category)
 			if (ancestors.length === 0) {
 				return
