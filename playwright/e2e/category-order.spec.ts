@@ -33,6 +33,11 @@ async function getSettings(request: APIRequestContext): Promise<Record<string, u
 	return await response.json() as Record<string, unknown>
 }
 
+/** The arrangement as the server has it. */
+async function storedOrder(request: APIRequestContext): Promise<string[]> {
+	return (await getSettings(request)).categoryOrder as string[]
+}
+
 /** The top-level category rows, in the order they are rendered. */
 async function topLevelOrder(page: Page): Promise<string[]> {
 	return page.evaluate(() => {
@@ -92,6 +97,55 @@ async function noteCategory(request: APIRequestContext, noteId: number): Promise
 	return (await response.json()).category as string
 }
 
+/** The children of a category, in the order they are rendered. */
+async function childrenOrder(page: Page, parent: string): Promise<string[]> {
+	return page.evaluate((name) => {
+		const row = document.querySelector(`[title="${name}"]`)?.closest('li')
+		const children = row?.querySelector('.app-navigation-entry__children')
+		if (!children) {
+			return []
+		}
+		return Array.from(children.querySelectorAll(':scope > li > .app-navigation-entry [title]'))
+			.map((el) => (el as HTMLElement).title)
+	}, parent)
+}
+
+/** Make a category from the Categories heading. */
+async function createCategory(page: Page, name: string): Promise<void> {
+	await page.getByRole('button', { name: 'Add category', exact: true }).click()
+	await page.getByRole('menuitem', { name: 'New category', exact: true }).click()
+	const input = page.getByPlaceholder('New category', { exact: true })
+	await expect(input).toBeVisible()
+	await input.fill(name)
+	await input.press('Enter')
+	await expect(page.getByTitle(name, { exact: true }).first()).toBeVisible()
+}
+
+async function openCategoryActions(page: Page, category: string): Promise<void> {
+	const row = page.getByTitle(category, { exact: true }).first().locator('xpath=ancestor::li[1]')
+	await row.hover()
+	await row.getByRole('button', { name: 'Actions', exact: true }).first().click()
+}
+
+async function renameCategory(page: Page, from: string, to: string): Promise<void> {
+	await openCategoryActions(page, from)
+	await page.getByRole('menuitem', { name: 'Rename category', exact: true }).click()
+	const input = page.getByPlaceholder(from, { exact: true })
+	await expect(input).toBeVisible()
+	await input.fill(to)
+	await input.press('Enter')
+}
+
+async function deleteCategory(page: Page, category: string): Promise<void> {
+	await openCategoryActions(page, category)
+	await page.getByRole('menuitem', { name: 'Delete category', exact: true }).click()
+	const confirm = page.getByRole('button', { name: 'Delete', exact: true })
+	if (await confirm.isVisible().catch(() => false)) {
+		await confirm.click()
+	}
+	await expect(page.getByTitle(category, { exact: true })).toHaveCount(0)
+}
+
 test.describe('Category order', () => {
 	test.afterEach(async ({ request }) => {
 		await putSettings(request, { categoryOrder: [] })
@@ -131,11 +185,12 @@ test.describe('Category order', () => {
 			await expect(newNoteButton(page).first()).toBeVisible()
 		})
 
-		test('drops a category into the slot it was aimed at', async ({ page }) => {
+		test('drops a category into the slot it was aimed at', async ({ page, request }) => {
 			await expect.poll(() => topLevelOrder(page)).toEqual(['Alpha', 'Mike', 'Zulu'])
 
 			await dragCategoryBeside(page, 'Zulu', 'Alpha', 'before')
 			await expect.poll(() => topLevelOrder(page)).toEqual(['Zulu', 'Alpha', 'Mike'])
+			await expect.poll(() => storedOrder(request)).toEqual(['Zulu', 'Alpha', 'Mike'])
 
 			await page.reload()
 			await expect(newNoteButton(page).first()).toBeVisible()
@@ -152,7 +207,7 @@ test.describe('Category order', () => {
 			expect(await noteCategory(request, childNote)).toBe(before)
 		})
 
-		test('keeps a smart category where it was dropped', async ({ page }) => {
+		test('keeps a smart category where it was dropped', async ({ page, request }) => {
 			await createNoteViaRequest('', 'Tagged', 'On #reading')
 			/* The row's title attribute is its tag description, which is what
 			   topLevelOrder reads and what the drag helper looks it up by. */
@@ -165,10 +220,60 @@ test.describe('Category order', () => {
 
 			await dragCategoryBeside(page, '#reading', 'Alpha', 'before')
 			await expect.poll(() => topLevelOrder(page)).toEqual(['#reading', 'Alpha', 'Mike', 'Zulu'])
+			await expect.poll(() => storedOrder(request)).toContain('smart:reading')
 
 			await page.reload()
 			await expect(newNoteButton(page).first()).toBeVisible()
 			await expect.poll(() => topLevelOrder(page)).toEqual(['#reading', 'Alpha', 'Mike', 'Zulu'])
+		})
+
+		test('puts a new category at the top of its group', async ({ page, request }) => {
+			await createCategory(page, 'Newest')
+			await expect.poll(() => topLevelOrder(page)).toEqual(['Newest', 'Alpha', 'Mike', 'Zulu'])
+			await expect.poll(() => storedOrder(request)).toContain('Newest')
+
+			await page.reload()
+			await expect(newNoteButton(page).first()).toBeVisible()
+			await expect.poll(() => topLevelOrder(page)).toEqual(['Newest', 'Alpha', 'Mike', 'Zulu'])
+		})
+
+		/* Renaming the LAST of the group on purpose: a key that stopped being
+		   recognised would make the category unarranged, and an unarranged one
+		   sorts to the top - so a rename that lost the key would look like a
+		   category jumping to the front. */
+		test('keeps the arrangement when a category is renamed', async ({ page, request }) => {
+			await dragCategoryBeside(page, 'Zulu', 'Alpha', 'before')
+			await expect.poll(() => topLevelOrder(page)).toEqual(['Zulu', 'Alpha', 'Mike'])
+
+			await renameCategory(page, 'Mike', 'Renamed')
+			/* The rename and its settings write are two requests; reloading
+			   before the second lands would abort it. */
+			await expect.poll(() => storedOrder(request)).toContain('Renamed')
+			await page.reload()
+			await expect(newNoteButton(page).first()).toBeVisible()
+			await expect.poll(() => topLevelOrder(page)).toEqual(['Zulu', 'Alpha', 'Renamed'])
+		})
+
+		/* Into a group that already holds something, so the slot it takes is
+		   visible: carrying its old index across would put it after Child,
+		   where that index means nothing. */
+		test('re-slots a category renamed into another group', async ({ page, request }) => {
+			await dragCategoryBeside(page, 'Zulu', 'Alpha', 'before')
+			await renameCategory(page, 'Zulu', 'Alpha/Zulu')
+			await expect.poll(() => storedOrder(request)).toContain('Alpha/Zulu')
+
+			await page.reload()
+			await expect(newNoteButton(page).first()).toBeVisible()
+			await expect.poll(() => topLevelOrder(page)).toEqual(['Alpha', 'Mike'])
+			await expect.poll(() => childrenOrder(page, 'Alpha')).toEqual(['Zulu', 'Child'])
+		})
+
+		test('drops the slot of a category that is deleted', async ({ page, request }) => {
+			await dragCategoryBeside(page, 'Zulu', 'Alpha', 'before')
+			expect((await getSettings(request)).categoryOrder).toContain('Zulu')
+
+			await deleteCategory(page, 'Zulu')
+			await expect.poll(async () => (await getSettings(request)).categoryOrder).not.toContain('Zulu')
 		})
 
 		test('refuses a drop inside the dragged category and writes nothing', async ({ page, request }) => {

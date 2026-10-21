@@ -97,7 +97,7 @@ import CategoryTreeItem from './CategoryTreeItem.vue'
 import NavigationSectionHeading from './NavigationSectionHeading.vue'
 import SmartCategoryDialog from './SmartCategoryDialog.vue'
 import SmartCategoryTreeItem from './SmartCategoryTreeItem.vue'
-import { orderKey, rekeyOnRename, SMART_PREFIX, withKeyAt } from '../categoryOrder.js'
+import { orderKey, pruneOnDelete, rekeyOnRename, SMART_PREFIX, withKeyAt } from '../categoryOrder.js'
 import { categoryAncestors, categoryDropTarget, categoryNames, joinCategory, landingCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
 import { SECTION_CATEGORIES } from '../navigationSections.js'
 import { createCategory as createCategoryRequest, deleteCategory as deleteCategoryRequest, renameCategory as renameCategoryRequest, setCategory, setSettings } from '../NotesService.js'
@@ -589,6 +589,7 @@ export default {
 					return
 				}
 				store.notes.addLocalCategory(stored)
+				await this.recordNewCategory(stored)
 			}
 			this.selectCategory(stored)
 			if (droppedNoteId !== null) {
@@ -705,6 +706,38 @@ export default {
 			return level.map(orderKey).filter((key) => key !== '')
 		},
 
+		/* A category somebody has just made goes to the top of its group: it is
+		   the one they are looking for, and the top is where anything the
+		   arrangement does not yet place already appears. */
+		async recordNewCategory(category) {
+			const separator = category.lastIndexOf('/')
+			const parent = separator === -1 ? null : category.slice(0, separator)
+			const rest = this.groupKeys(parent).filter((key) => key !== category)
+			try {
+				await setSettings({
+					categoryOrder: withKeyAt(this.categoryOrder, [...rest, category], category, 0),
+				})
+			} catch {
+				// NotesService already shows a toast on failure.
+			}
+		},
+
+		/* A rename that changes the parent carries the key into a group where
+		   its old index means nothing, so it is placed at the top instead. A
+		   rename within one group keeps the place it had. */
+		reslotIfMoved(order, oldName, newName) {
+			const parentOf = (path) => {
+				const separator = path.lastIndexOf('/')
+				return separator === -1 ? null : path.slice(0, separator)
+			}
+			if (parentOf(oldName) === parentOf(newName)) {
+				return order
+			}
+			const parent = parentOf(newName)
+			const rest = this.groupKeys(parent).filter((key) => key !== oldName && key !== newName)
+			return withKeyAt(order, [...rest, newName], newName, 0)
+		},
+
 		async moveCategoryBeside(dragged, row, side) {
 			const target = this.slotTarget(dragged, row)
 			if (target === null) {
@@ -769,11 +802,15 @@ export default {
 				const newName = response?.newCategory || trimmed
 				this.updateNotesForCategoryRename(oldName, newName)
 				store.notes.renameLocalCategory({ oldCategory: oldName, newCategory: newName })
+				const rekeyed = rekeyOnRename(this.categoryOrder, oldName, newName)
 				const followed = reparentOnRename(this.smartCategories, oldName, newName)
 				/* One write, not two: the settings blob is read, changed and
 				   written whole, so a second call would race the first. */
 				const settings = {
+					...(rekeyed !== null ? { categoryOrder: this.reslotIfMoved(rekeyed, oldName, newName) } : {}),
 					...(followed !== null ? { smartCategories: followed } : {}),
+					/* Last, because a drop has already worked out the slot it
+					   aimed at and that beats anything inferred here. */
 					...(settingsFor ? settingsFor(newName) : {}),
 				}
 				if (Object.keys(settings).length > 0) {
@@ -820,9 +857,28 @@ export default {
 				store.notes.removeLocalCategory(deletedCategory)
 				/* It holds no notes of its own, so deleting the folder it was
 				   filed in is no reason to destroy it. */
+				const pruned = pruneOnDelete(this.categoryOrder, deletedCategory)
 				const moved = reparentOnDelete(this.smartCategories, deletedCategory)
-				if (moved !== null) {
-					await setSettings({ smartCategories: moved })
+				/* A smart category inside the deleted folder is lifted to the
+				   grandparent rather than deleted, so its key survives the
+				   prune and lands in a group where its old place means
+				   nothing. It goes to the top, where anything unplaced goes. */
+				const lifted = (moved ?? []).filter((entry, at) => entry.parent !== this.smartCategories[at]?.parent)
+				const order = lifted.reduce(
+					(carried, entry) => withKeyAt(
+						carried,
+						[...this.groupKeys(entry.parent === '' ? null : entry.parent), SMART_PREFIX + entry.id],
+						SMART_PREFIX + entry.id,
+						0,
+					),
+					pruned ?? this.categoryOrder,
+				)
+				const settings = {
+					...(pruned !== null || lifted.length > 0 ? { categoryOrder: order } : {}),
+					...(moved !== null ? { smartCategories: moved } : {}),
+				}
+				if (Object.keys(settings).length > 0) {
+					await setSettings(settings)
 				}
 				this.clearSelectedCategoryForDelete(deletedCategory)
 			} catch {
