@@ -6,6 +6,7 @@
 import axios from '@nextcloud/axios'
 import { showError } from '@nextcloud/dialogs'
 import { generateUrl } from '@nextcloud/router'
+import { orderWasTruncated } from './categoryOrder.js'
 import { lockErrorMessage } from './lockError.js'
 import logger from './Logger.js'
 import store from './store.js'
@@ -41,9 +42,15 @@ export function setSettings(settings) {
 	return axios
 		.put(url('/settings'), settings)
 		.then((response) => {
-			const settings = response.data
-			store.app.setSettings(settings)
-			return settings
+			const stored = response.data
+			/* The arrangement is capped, and a cap reached in silence makes a
+			   drag look like it did nothing at all: the row returns to where
+			   it was and nothing says why. */
+			if (orderWasTruncated(settings.categoryOrder, stored.categoryOrder)) {
+				showError(t('notes', 'There are too many categories to remember the order of them all.'))
+			}
+			store.app.setSettings(stored)
+			return stored
 		})
 		.catch((err) => {
 			logger.error('Updating settings has failed', { error: err })

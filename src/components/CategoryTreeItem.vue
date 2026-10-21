@@ -16,6 +16,7 @@
 		:open="isOpen"
 		:class="{
 			'drop-over': node.name === dragOverCategory,
+			'drop-over-group': node.name === dragOverGroup,
 			'drop-before': node.name === dropBesideCategory && dropBesideSide === 'before',
 			'drop-after': node.name === dropBesideCategory && dropBesideSide === 'after',
 			'category-no-actions': node.name === '',
@@ -106,6 +107,7 @@
 				:selectedCategory="selectedCategory"
 				:selectedSmartId="selectedSmartId"
 				:dragOverCategory="dragOverCategory"
+				:dragOverGroup="dragOverGroup"
 				:dropBesideCategory="dropBesideCategory"
 				:dropBesideSide="dropBesideSide"
 				:dropBesideSmart="dropBesideSmart"
@@ -176,6 +178,11 @@ export default {
 		},
 
 		dropBesideSmart: {
+			type: String,
+			default: null,
+		},
+
+		dragOverGroup: {
 			type: String,
 			default: null,
 		},

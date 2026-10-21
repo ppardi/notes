@@ -8,7 +8,10 @@
  *
  * A folder category is keyed by its path, so the two share one list and have
  * to be told apart. `NoteUtil::sanitisePath` strips `:` from every segment of
- * a path, so no real category can be named into a key that starts this way.
+ * every path this app makes, so no category created here can be named into a
+ * key that starts this way. A folder made outside the app could in principle
+ * carry one, which would need somebody to guess a 32-character id to collide
+ * with - and Nextcloud's own filename rules usually forbid the colon anyway.
  */
 export const SMART_PREFIX = 'smart:'
 
@@ -158,4 +161,21 @@ export function rekeyOnRename(order, oldPath, newPath) {
 export function pruneOnDelete(order, path) {
 	const kept = order.filter((key) => !isWithin(key, path))
 	return kept.length === order.length ? null : kept
+}
+
+/**
+ * Whether the server kept fewer keys than it was given.
+ *
+ * The arrangement is capped, and a cap reached in silence makes a drag look
+ * like it did nothing: the row goes back where it was and nothing says why.
+ *
+ * @param {*} sent what was written, if anything
+ * @param {*} stored what came back
+ * @return {boolean} whether keys were dropped on the way in
+ */
+export function orderWasTruncated(sent, stored) {
+	if (!Array.isArray(sent)) {
+		return false
+	}
+	return (Array.isArray(stored) ? stored.length : 0) < sent.length
 }

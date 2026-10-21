@@ -70,6 +70,7 @@
 				:selectedCategory="selectedCategory"
 				:selectedSmartId="selectedSmartId"
 				:dragOverCategory="dragOverCategory"
+				:dragOverGroup="dragOverGroup"
 				:dropBesideCategory="dropBesideCategory"
 				:dropBesideSide="dropBesideSide"
 				:dropBesideSmart="dropBesideSmart"
@@ -175,6 +176,7 @@ export default {
 			draggedSmart: null,
 			dropBesideCategory: null,
 			dropBesideSmart: null,
+			dragOverGroup: null,
 			dropBesideSide: 'before',
 			dragOverNewCategory: false,
 			newCategoryDraft: false,
@@ -349,11 +351,11 @@ export default {
 			const parent = smart.parent === '' ? null : smart.parent
 			const order = isNew
 				? withKeyAt(
-					this.categoryOrder,
-					[...this.groupKeys(parent).filter((candidate) => candidate !== key), key],
-					key,
-					0,
-				)
+						this.categoryOrder,
+						[...this.groupKeys(parent).filter((candidate) => candidate !== key), key],
+						key,
+						0,
+					)
 				: null
 
 			let saved
@@ -424,8 +426,7 @@ export default {
 			/* Deleting what the list is showing would otherwise leave the app on
 			   a selection that no longer exists. */
 			if (this.selectedSmartId === id) {
-				const category = null
-				this.$router.replace(categoryRoute(this.$route, category)).catch(() => {})
+				this.$router.replace(categoryRoute(this.$route, null)).catch(() => {})
 			}
 		},
 
@@ -715,6 +716,7 @@ export default {
 
 		clearCategoryDropMarks() {
 			this.dragOverCategory = null
+			this.dragOverGroup = null
 			this.dropBesideCategory = null
 			this.dropBesideSmart = null
 		},
@@ -818,9 +820,12 @@ export default {
 
 		onSmartDragOver(id, event) {
 			event.stopPropagation()
-			/* Notes are still refused. The category this row sits in would
-			   otherwise keep its own highlight, because its dragleave never
-			   fires while the pointer is inside this row. */
+			/* Notes are refused rather than ignored: without stopping here the
+			   drop bubbles to the category this row sits in, and the note is
+			   filed somewhere the pointer never was. Not calling
+			   preventDefault is what tells the browser it is not allowed. The
+			   marks are cleared too, because that category's own dragleave
+			   never fires while the pointer is inside this row. */
 			if (!isCategoryDrag(event) && !isSmartDrag(event)) {
 				if (event.dataTransfer) {
 					event.dataTransfer.dropEffect = 'none'
@@ -1079,6 +1084,7 @@ export default {
 				const smartSide = this.categoryDropSide(event)
 				this.dropBesideSmart = null
 				this.dragOverCategory = smartSide === 'into' ? category : null
+				this.dragOverGroup = smartSide === 'into' ? category : null
 				this.dropBesideCategory = smartSide === 'into' ? null : category
 				this.dropBesideSide = smartSide === 'into' ? 'before' : smartSide
 				return
@@ -1100,6 +1106,7 @@ export default {
 				event.preventDefault()
 				this.dropBesideSmart = null
 				this.dragOverCategory = side === 'into' ? category : null
+				this.dragOverGroup = side === 'into' ? category : null
 				this.dropBesideCategory = side === 'into' ? null : category
 				this.dropBesideSide = side === 'into' ? 'before' : side
 				return
@@ -1114,6 +1121,8 @@ export default {
 			}
 			this.dropBesideSmart = null
 			this.dropBesideCategory = null
+			// a note lands in this row's category, not in everything below it
+			this.dragOverGroup = null
 			this.dragOverCategory = category
 		},
 

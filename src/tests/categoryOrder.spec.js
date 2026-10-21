@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { orderedLevel, orderKey, pruneOnDelete, rekeyOnRename, SMART_PREFIX, withKeyAt } from '../categoryOrder.js'
+import { orderedLevel, orderKey, orderWasTruncated, pruneOnDelete, rekeyOnRename, SMART_PREFIX, withKeyAt } from '../categoryOrder.js'
 
 describe('orderKey', () => {
 	it('is the path for a folder category', () => {
@@ -128,5 +128,24 @@ describe('pruneOnDelete', () => {
 
 	it('leaves smart keys alone', () => {
 		expect(pruneOnDelete(['smart:abc'], 'smart')).toBeNull()
+	})
+})
+
+describe('orderWasTruncated', () => {
+	it('notices keys the server did not keep', () => {
+		expect(orderWasTruncated(['A', 'B', 'C'], ['A', 'B'])).toBe(true)
+	})
+
+	it('is quiet when everything was kept', () => {
+		expect(orderWasTruncated(['A', 'B'], ['A', 'B'])).toBe(false)
+	})
+
+	// a write that carried no arrangement has none to lose
+	it('is quiet when no arrangement was sent', () => {
+		expect(orderWasTruncated(undefined, ['A'])).toBe(false)
+	})
+
+	it('counts an arrangement that came back as nothing', () => {
+		expect(orderWasTruncated(['A'], undefined)).toBe(true)
 	})
 })

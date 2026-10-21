@@ -117,13 +117,6 @@ export default {
 				: tags
 		},
 	},
-
-	methods: {
-		/* Refused rather than ignored: without stopping it here the drop
-		   bubbles to the category this row happens to sit in, and the note is
-		   filed somewhere the pointer never was. Not calling preventDefault is
-		   what tells the browser the drop is not allowed. */
-	},
 }
 </script>
 

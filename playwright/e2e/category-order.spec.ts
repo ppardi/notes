@@ -430,6 +430,29 @@ test.describe('Category order', () => {
 			await expect.poll(() => topLevelOrder(page)).toEqual(['#reading', 'Alpha', 'Mike', 'Zulu'])
 		})
 
+		/* A note goes into the category of the row it is dropped on, not into
+		   everything below it, so the children are not part of the target. */
+		test('shades only the row a note is dragged over, not its children', async ({ page }) => {
+			await page.evaluate(() => {
+				const target = document.querySelector('[title="Alpha"]')
+					?.closest('.app-navigation-entry') as HTMLElement
+				const box = target.getBoundingClientRect()
+				const transfer = new DataTransfer()
+				// what marks a drag as carrying a note rather than a category
+				transfer.setData('application/x-nextcloud-notes-note-id', '1')
+				target.dispatchEvent(new DragEvent('dragover', {
+					bubbles: true,
+					cancelable: true,
+					dataTransfer: transfer,
+					clientX: box.left + box.width / 2,
+					clientY: box.top + box.height / 2,
+				}))
+			})
+
+			expect(await dropMarks(page)).toEqual({ line: null, group: 'Alpha' })
+			expect(await groupShaded(page, 'Alpha')).toBe(false)
+		})
+
 		test('refuses a drop inside the dragged category and writes nothing', async ({ page, request }) => {
 			const before = await getSettings(request)
 

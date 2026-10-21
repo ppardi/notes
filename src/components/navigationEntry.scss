@@ -14,10 +14,11 @@
 	border-radius: var(--border-radius-element, var(--border-radius-large));
 }
 
-/* A nest lands in a group, not on a row, so the children are shaded with it:
-   the row says which group and the block says how far it reaches. Lighter than
-   the row, which is the thing being aimed at. */
-.app-navigation-entry-wrapper.drop-over:deep(> .app-navigation-entry__children) {
+/* A category nests into a group, not onto a row, so the children are shaded
+   with it: the row says which group and the block says how far it reaches.
+   Lighter than the row, which is the thing being aimed at. A note goes into
+   the row's own category and nothing below it, so it gets the row alone. */
+.app-navigation-entry-wrapper.drop-over-group:deep(> .app-navigation-entry__children) {
 	background-color: var(--color-primary-element-light);
 	border-radius: var(--border-radius-element, var(--border-radius-large));
 }
