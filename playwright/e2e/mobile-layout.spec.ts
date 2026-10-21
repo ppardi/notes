@@ -167,7 +167,10 @@ test.describe('The note pane on a touch screen', () => {
 				await page.waitForTimeout(1200)
 
 				await page.getByRole('button', { name: 'Ink', exact: true }).click()
-				await expect(page.locator('.ink__canvas')).toBeVisible()
+				/* Two canvases are stacked: the page holding the ink already drawn,
+				   and the live one being drawn on. The live one is what the pen
+				   meets, and the only one of the two that is not aria-hidden. */
+				await expect(page.locator('.ink__canvas--live')).toBeVisible()
 
 				const found = await layoutProblems(page)
 				expect(found, found.join('\n')).toEqual([])
