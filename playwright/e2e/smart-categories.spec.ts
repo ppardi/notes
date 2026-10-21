@@ -564,20 +564,21 @@ test.describe('Smart categories', () => {
 	})
 
 	test('leaves the welcome screen when a selection has something to show', async ({ page }) => {
-		/* The note list lives on the note route, so a selection made while the
-		   welcome screen is up changed the URL and nothing else - no list, no
-		   note, sidebar looking dead. */
+		/* Choosing a category while the welcome screen was up changed the URL
+		   and nothing else: the list lived on the note route, so there was no
+		   list, no note, and a sidebar that looked dead. Landing on the welcome
+		   screen with notes to show must end somewhere showing them. */
 		await createNoteViaRequest('Work', 'Naming and Necessity', 'On #philosophy')
 
 		await page.goto('/index.php/apps/notes/welcome')
 		await expect(page.locator('#app-navigation-vue')).toBeVisible()
-		await expect(page).toHaveURL(/welcome/)
-		await expect(page.locator('.notes-list')).toHaveCount(0)
 
-		await page.getByTitle('Work', { exact: true }).first().click()
-
+		/* Not asserted to stay: leaving is the whole point of the fix. There is
+		   something to show, so the app goes and shows it rather than sitting
+		   on a screen that explains how to begin. */
 		await expect(page).not.toHaveURL(/welcome/)
 		await expect(page.getByRole('link', { name: 'Naming and Necessity' })).toBeVisible()
+		await expect(page.locator('.notes-list')).toBeVisible()
 	})
 
 	test('lets go of a smart category deleted somewhere else', async ({ page }) => {
