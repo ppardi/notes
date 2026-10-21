@@ -85,7 +85,8 @@ These came out of the conversation and are settled.
 - **A subtree travels with its parent**, children keeping their relative
   order.
 - **A category created in the sidebar is recorded at the top of its group**, at
-  the moment it is created.
+  the moment it is created. This holds for a smart category too: they are
+  arranged together, so they are made the same way.
 - **A category with no slot on record shows at the top of its group**, ordered
   by name among the other slotless ones, until its group is arranged.
   This covers folders made elsewhere and everything that predates the feature.
@@ -139,25 +140,33 @@ Only when nothing is stored, or the stored category has since gone, does it
 fall back — today to `landingCategory`, which picks the first category by
 name, preferring a top-level one and one that holds notes.
 
-**That fallback becomes the unfiled category, and `landingCategory` is
-deleted.** The unfiled category is always present, so it is always a valid
-place to land, and it needs no knowledge of the arrangement. The same applies
-to its other callers: after deleting the category being viewed, and when the
-selection is cleared, the app falls back to unfiled rather than guessing.
+**That fallback becomes the all-notes selection, and `landingCategory` is
+deleted.** Every note is shown, whatever it is filed in, and nothing has to
+know how the rest is arranged. The same applies to its other callers: after
+deleting the category being viewed, and when the selection is cleared, the app
+falls back to all notes rather than guessing.
+
+The unfiled category was the first answer here and it was wrong: somebody
+whose notes are all filed would open the app on an empty list, which is the
+first thing a new device would show them. All-notes has one cost, accepted
+knowingly — the sidebar has no row for it, so nothing is highlighted while
+it is the selection.
 
 This is what keeps the arrangement out of the landing logic entirely. A
 function that picks "the first category by name" would be wrong the moment a
 person arranges their categories, and teaching it the order would spread the
-order into a third subsystem. Falling back to a category that is always there
-is both simpler and more predictable: the app opens where it was left, or at
-unfiled.
+order into a third subsystem. Falling back to the selection that shows
+everything is both simpler and more predictable: the app opens where it was
+left, or on all of it.
 
-**One interaction this must not break.** The first-run welcome currently shows
-only when no category is selected at all, and landing on unfiled selects one
-(the empty-string category). A brand-new install would therefore get "No notes
-in this category" where the welcome belongs. The test for a first run becomes
-*no notes anywhere*, with no condition on the selection — which is what it
-means in any case.
+**One interaction to watch.** The first-run welcome shows only when no
+category is selected at all. The all-notes selection *is* nothing selected,
+so a genuine first run still reaches it and the condition needs no change —
+where landing on the unfiled category would have selected something and
+shown "No notes in this category" where the welcome belongs. It stays as it
+is: no notes anywhere **and** nothing selected. Relaxing it to notes alone
+would tell somebody who has just made a category that they have never
+written anything.
 
 ## Data model
 

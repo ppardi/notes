@@ -72,6 +72,7 @@
 				:dragOverCategory="dragOverCategory"
 				:dropBesideCategory="dropBesideCategory"
 				:dropBesideSide="dropBesideSide"
+				:dropBesideSmart="dropBesideSmart"
 				:draftParent="newCategoryParent"
 				:collapsedCategories="collapsedCategories"
 			/>
@@ -151,6 +152,7 @@ export default {
 				removeSmart: (id) => this.onRemoveSmart(id),
 				smartDragStart: (id, event) => this.onSmartDragStart(id, event),
 				smartDragOver: (id, event) => this.onSmartDragOver(id, event),
+				smartDragLeave: (id, event) => this.onSmartDragLeave(id, event),
 				smartDrop: (id, event) => this.onSmartDrop(id, event),
 				clearDropMarks: () => this.clearCategoryDropMarks(),
 				startSubSmartCategory: (name) => this.startNewSmartCategory(name),
@@ -319,9 +321,28 @@ export default {
 			const smartCategories = isNew
 				? [...this.smartCategories, smart]
 				: this.smartCategories.map((entry, at) => (at === existing ? smart : entry))
+			/* A new one is placed the way a new folder category is: at the top
+			   of its group. They are arranged together, so they are made the
+			   same way - otherwise a new smart category in a group nobody has
+			   arranged sorts by name among its unplaced siblings, which is
+			   wherever its name happens to fall. */
+			const key = SMART_PREFIX + smart.id
+			const parent = smart.parent === '' ? null : smart.parent
+			const order = isNew
+				? withKeyAt(
+					this.categoryOrder,
+					[...this.groupKeys(parent).filter((candidate) => candidate !== key), key],
+					key,
+					0,
+				)
+				: null
+
 			let saved
 			try {
-				saved = await setSettings({ smartCategories })
+				saved = await setSettings({
+					smartCategories,
+					...(order ? { categoryOrder: order } : {}),
+				})
 			} catch {
 				// NotesService already shows a toast on failure.
 				return
@@ -795,6 +816,15 @@ export default {
 			this.dropBesideSide = this.smartDropSide(event)
 		},
 
+		/* Leaving the row clears its line. Without this the mark outlives the
+		   pointer: the row the drag moves on to sets its own, and both show. */
+		onSmartDragLeave(id, event) {
+			event.stopPropagation()
+			if (this.dropBesideSmart === id) {
+				this.dropBesideSmart = null
+			}
+		},
+
 		async onSmartDrop(id, event) {
 			event.stopPropagation()
 			event.preventDefault()
@@ -1024,8 +1054,14 @@ export default {
 					return
 				}
 				event.preventDefault()
-				this.dropBesideCategory = null
-				this.dragOverCategory = category
+				/* The same three bands a category drag gets. The drop already
+				   reads the side; showing the group for all three said "lands
+				   inside this" over an edge that files it alongside. */
+				const smartSide = this.categoryDropSide(event)
+				this.dropBesideSmart = null
+				this.dragOverCategory = smartSide === 'into' ? category : null
+				this.dropBesideCategory = smartSide === 'into' ? null : category
+				this.dropBesideSide = smartSide === 'into' ? 'before' : smartSide
 				return
 			}
 			if (isCategoryDrag(event)) {
@@ -1043,6 +1079,7 @@ export default {
 					return
 				}
 				event.preventDefault()
+				this.dropBesideSmart = null
 				this.dragOverCategory = side === 'into' ? category : null
 				this.dropBesideCategory = side === 'into' ? null : category
 				this.dropBesideSide = side === 'into' ? 'before' : side
@@ -1056,6 +1093,7 @@ export default {
 			if (event.dataTransfer) {
 				event.dataTransfer.dropEffect = 'move'
 			}
+			this.dropBesideSmart = null
 			this.dropBesideCategory = null
 			this.dragOverCategory = category
 		},

@@ -97,6 +97,8 @@
 				:node="child"
 				:loading="loading"
 				:selectedSmartId="selectedSmartId"
+				:dropBesideSmart="dropBesideSmart"
+				:dropBesideSide="dropBesideSide"
 			/>
 			<CategoryTreeItem v-else
 				:node="child"
@@ -106,6 +108,7 @@
 				:dragOverCategory="dragOverCategory"
 				:dropBesideCategory="dropBesideCategory"
 				:dropBesideSide="dropBesideSide"
+				:dropBesideSmart="dropBesideSmart"
 				:draftParent="draftParent"
 				:collapsedCategories="collapsedCategories"
 			/>
@@ -168,6 +171,11 @@ export default {
 		},
 
 		dropBesideCategory: {
+			type: String,
+			default: null,
+		},
+
+		dropBesideSmart: {
 			type: String,
 			default: null,
 		},

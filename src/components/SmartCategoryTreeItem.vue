@@ -22,6 +22,7 @@
 		@dragstart="tree.smartDragStart(node.id, $event)"
 		@dragend="tree.dragEnd()"
 		@dragover="tree.smartDragOver(node.id, $event)"
+		@dragleave="tree.smartDragLeave(node.id, $event)"
 		@drop="tree.smartDrop(node.id, $event)"
 		@update:name="tree.renameSmart(node.id, $event)"
 	>

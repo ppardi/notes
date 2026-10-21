@@ -5,6 +5,7 @@
 
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { rekeyOnRename } from '../categoryOrder.js'
 import { buildCategoryTree, categoryAncestors, categoryDropTarget, categoryNames, joinCategory, pruneCollapsed, withCategoriesExpanded, withCategoryCollapsed, withSmartCategories } from '../categoryTree.js'
 import { useNotesStore } from '../stores/notes.js'
 
@@ -429,5 +430,41 @@ describe('withSmartCategories', () => {
 			countFor,
 		)
 		expect(categoryNames(tree)).toEqual(['Work'])
+	})
+})
+
+describe('buildCategoryTree with an arrangement', () => {
+	const categories = (...names) => names.map((name) => ({ name, count: 1 }))
+
+	it('orders a nested level by the arrangement, not by name', () => {
+		const tree = buildCategoryTree(
+			categories('Work/Alpha', 'Work/Mike', 'Work/Zulu'),
+			['Work/Zulu', 'Work/Alpha', 'Work/Mike'],
+		)
+		expect(tree[0].children.map((node) => node.label)).toEqual(['Zulu', 'Alpha', 'Mike'])
+	})
+
+	it('puts a level\'s unarranged members first, by name', () => {
+		const tree = buildCategoryTree(
+			categories('Work/Alpha', 'Work/Mike', 'Work/Zulu'),
+			['Work/Mike'],
+		)
+		expect(tree[0].children.map((node) => node.label)).toEqual(['Alpha', 'Zulu', 'Mike'])
+	})
+
+	/* A subtree travels with its parent: the arrangement holds whole paths, so
+	   the children keep their own order wherever the parent is. */
+	it('keeps a subtree in its own order', () => {
+		const order = ['Work/Deep', 'Work/Deep/Three', 'Work/Deep/One', 'Work/Deep/Two']
+		const names = categories('Work/Deep/One', 'Work/Deep/Two', 'Work/Deep/Three')
+		const before = buildCategoryTree(names, order)[0].children[0]
+		expect(before.children.map((node) => node.label)).toEqual(['Three', 'One', 'Two'])
+
+		// the same subtree one level up, its keys rewritten by the rename
+		const moved = buildCategoryTree(
+			categories('Deep/One', 'Deep/Two', 'Deep/Three'),
+			rekeyOnRename(order, 'Work/Deep', 'Deep'),
+		)
+		expect(moved[0].children.map((node) => node.label)).toEqual(['Three', 'One', 'Two'])
 	})
 })

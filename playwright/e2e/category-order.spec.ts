@@ -316,11 +316,26 @@ test.describe('Category order', () => {
 			await expect(page.getByRole('link', { name: /In Zulu/ })).toBeVisible()
 		})
 
-		test('still welcomes a first run that lands on unfiled', async ({ page, request }) => {
+		test('welcomes a first run', async ({ page, request }) => {
 			await deleteAllNotesVia()
 			await putSettings(request, { lastViewedCategory: null })
 			await page.goto('/index.php/apps/notes/')
 			await expect(page.getByText('Write down your thoughts without any distractions.')).toBeVisible()
+		})
+
+		/* Making a category before writing anything is an ordinary way to
+		   start, and it is not a first run any more: the welcome would be
+		   telling somebody who has just acted that they have not. */
+		test('does not welcome somebody who has made a category', async ({ page, request }) => {
+			await deleteAllNotesVia()
+			await putSettings(request, { lastViewedCategory: null })
+			await page.goto('/index.php/apps/notes/')
+			await expect(newNoteButton(page).first()).toBeVisible()
+
+			await createCategory(page, 'Started')
+
+			await expect(page.getByText('No notes in this category')).toBeVisible()
+			await expect(page.getByText('Write down your thoughts without any distractions.')).toHaveCount(0)
 		})
 
 		test('shows a line for a slot and a shaded group for a nest, never both', async ({ page }) => {
@@ -349,10 +364,88 @@ test.describe('Category order', () => {
 			await expect.poll(() => topLevelOrder(page)).toEqual(['Alpha', 'Mike', '#reading', 'Zulu'])
 		})
 
+		test('shows a line, not the group, when a smart category is dropped on a row edge', async ({ page }) => {
+			await createNoteViaRequest('', 'Tagged', 'On #reading')
+			await setSmartCategories([
+				{ id: 'reading', name: 'Reading', tags: ['reading'], mode: 'any', parent: '' },
+			])
+			await page.reload()
+			await expect(newNoteButton(page).first()).toBeVisible()
+
+			/* The edge files it beside Alpha, not inside it, so the edge has to
+			   say so. */
+			await dragCategoryBeside(page, '#reading', 'Alpha', 'before', false)
+			expect(await dropMarks(page)).toEqual({ line: 'Alpha', group: null })
+		})
+
+		test('marks a smart category nested inside a folder', async ({ page }) => {
+			await createNoteViaRequest('', 'Tagged', 'On #reading')
+			await setSmartCategories([
+				{ id: 'reading', name: 'Reading', tags: ['reading'], mode: 'any', parent: 'Alpha' },
+			])
+			await page.reload()
+			await expect(newNoteButton(page).first()).toBeVisible()
+
+			// A drop that lands has to be a drop that was signalled.
+			await dragCategoryBeside(page, 'Zulu', '#reading', 'before', false)
+			expect(await dropMarks(page)).toEqual({ line: '#reading', group: null })
+		})
+
+		test('leaves no mark behind when the pointer moves off a smart row', async ({ page }) => {
+			await createNoteViaRequest('', 'Tagged', 'On #reading')
+			await setSmartCategories([
+				{ id: 'reading', name: 'Reading', tags: ['reading'], mode: 'any', parent: '' },
+			])
+			await page.reload()
+			await expect(newNoteButton(page).first()).toBeVisible()
+
+			await dragCategoryBeside(page, 'Zulu', '#reading', 'before', false)
+			await dragCategoryOnto(page, 'Zulu', 'Alpha', false)
+
+			// One drag, one mark: never a line and a shaded group at once.
+			expect(await dropMarks(page)).toEqual({ line: null, group: 'Alpha' })
+		})
+
+		/* A smart category is arranged alongside the folder ones, so making one
+		   puts it where making a folder category does. In a group nobody has
+		   arranged it would otherwise sort by name among its unplaced
+		   siblings, which is wherever its name happens to fall. */
+		test('puts a new smart category at the top of its group', async ({ page, request }) => {
+			await createNoteViaRequest('', 'Tagged', 'On #reading')
+			await page.reload()
+			await expect(newNoteButton(page).first()).toBeVisible()
+
+			await page.getByRole('button', { name: 'Add category', exact: true }).click()
+			await page.getByRole('menuitem', { name: 'New smart category' }).click()
+
+			const dialog = page.getByRole('dialog')
+			await expect(dialog).toBeVisible()
+			await dialog.getByRole('textbox', { name: 'Name' }).fill('Reading')
+			await dialog.getByText('reading', { exact: true }).click()
+			await expect(dialog.getByRole('checkbox', { name: 'reading' })).toBeChecked()
+			await dialog.getByRole('button', { name: 'Create' }).click()
+
+			// the key is the prefix and an id, so match the shape rather than a value
+			await expect.poll(async () => (await storedOrder(request))[0]).toMatch(/^smart:/)
+			await expect.poll(() => topLevelOrder(page)).toEqual(['#reading', 'Alpha', 'Mike', 'Zulu'])
+		})
+
 		test('refuses a drop inside the dragged category and writes nothing', async ({ page, request }) => {
 			const before = await getSettings(request)
 
 			await dragCategoryOnto(page, 'Alpha', 'Child')
+
+			await expect.poll(() => topLevelOrder(page)).toEqual(['Alpha', 'Mike', 'Zulu'])
+			expect((await getSettings(request)).categoryOrder).toEqual(before.categoryOrder)
+		})
+
+		/* The slot path reaches the refusal through slotTarget rather than the
+		   nesting path's categoryDropTarget, so it is worth its own test: a
+		   category cannot be filed among its own descendants either. */
+		test('refuses a slot inside the dragged category and writes nothing', async ({ page, request }) => {
+			const before = await getSettings(request)
+
+			await dragCategoryBeside(page, 'Alpha', 'Child', 'before')
 
 			await expect.poll(() => topLevelOrder(page)).toEqual(['Alpha', 'Mike', 'Zulu'])
 			expect((await getSettings(request)).categoryOrder).toEqual(before.categoryOrder)
