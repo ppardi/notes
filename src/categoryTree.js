@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { orderedLevel } from './categoryOrder.js'
+
 /**
  * @typedef {object} CategoryNode
  * @property {string} name the full category path, which is what selects it
@@ -24,9 +26,10 @@
  * becomes a root that nothing can nest below.
  *
  * @param {Array<{name: string, count: number}>} categories the categories to arrange
- * @return {CategoryNode[]} the roots of the tree, each sorted by label
+ * @param {string[]} order the arrangement, as a flat list of keys
+ * @return {CategoryNode[]} the roots of the tree, each level in arranged order
  */
-export function buildCategoryTree(categories) {
+export function buildCategoryTree(categories, order = []) {
 	const roots = []
 	const nodes = new Map()
 
@@ -76,12 +79,15 @@ export function buildCategoryTree(categories) {
 	}
 
 	/**
-	 * Sort a level and every level below it.
+	 * Put a level and every level below it into the arranged order.
 	 *
-	 * @param {CategoryNode[]} level the nodes to sort
+	 * In place, because the roots array is the one being returned and the
+	 * deeper levels are the children arrays hanging off their nodes.
+	 *
+	 * @param {CategoryNode[]} level the nodes to order
 	 */
 	function sort(level) {
-		level.sort((a, b) => a.label.localeCompare(b.label))
+		level.splice(0, level.length, ...orderedLevel(level, order))
 		level.forEach((node) => sort(node.children))
 	}
 
@@ -287,10 +293,11 @@ export function joinCategory(parent, name) {
  * @param {Array<{name: string, count: number}>} categories the categories to arrange
  * @param {Array<object>} smartCategories the stored records
  * @param {(smart: object) => number} countFor how many notes a record holds
+ * @param {string[]} order the arrangement, as a flat list of keys
  * @return {CategoryNode[]} the roots, with the smart categories in place
  */
-export function withSmartCategories(categories, smartCategories, countFor) {
-	const tree = buildCategoryTree(categories)
+export function withSmartCategories(categories, smartCategories, countFor, order = []) {
+	const tree = buildCategoryTree(categories, order)
 	if (!smartCategories || smartCategories.length === 0) {
 		return tree
 	}
@@ -336,6 +343,6 @@ export function withSmartCategories(categories, smartCategories, countFor) {
 		}
 	}
 
-	touched.forEach((level) => level.sort((a, b) => a.label.localeCompare(b.label)))
+	touched.forEach((level) => level.splice(0, level.length, ...orderedLevel(level, order)))
 	return tree
 }
