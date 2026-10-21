@@ -4,6 +4,7 @@
  */
 
 import { defineConfig, devices } from "@playwright/test";
+import { e2eBaseUrl, e2ePort } from "./playwright/e2e-server.mjs";
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -24,7 +25,7 @@ export default defineConfig({
 	/* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
 	use: {
 		/* Base URL to use in actions like `await page.goto('./')`. */
-		baseURL: process.env.BASE_URL ?? "http://localhost:8089",
+		baseURL: process.env.BASE_URL ?? e2eBaseUrl(),
 
 		/* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
 		trace: "on-first-retry",
@@ -45,7 +46,7 @@ export default defineConfig({
 		reuseExistingServer: !process.env.CI,
 		stderr: "pipe",
 		stdout: "pipe",
-		url: "http://127.0.0.1:8089/index.php/apps/notes/",
+		url: `http://127.0.0.1:${e2ePort()}/index.php/apps/notes/`,
 		timeout: 5 * 60 * 1000, // max. 5 minutes for creating the container
 		wait: {
 			// the start script prints this line once the Notes API answers requests

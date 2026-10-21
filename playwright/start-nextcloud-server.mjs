@@ -13,6 +13,7 @@ import {
 } from '@nextcloud/e2e-test-server/docker'
 import { readFileSync } from 'fs'
 import { execSync } from 'node:child_process'
+import { e2ePort } from './e2e-server.mjs'
 
 async function start() {
 	const appinfo = readFileSync('appinfo/info.xml').toString()
@@ -33,7 +34,7 @@ async function start() {
 	}
 
 	return await startNextcloud(branch, true, {
-		exposePort: 8089,
+		exposePort: e2ePort(),
 	})
 }
 
@@ -96,6 +97,16 @@ process.on('SIGINT', stop)
 const ip = await start()
 await waitOnNextcloud(ip)
 await configureNextcloud(['notes'])
+/* The apps-writable volume is shared by every checkout, and the server
+   library removes it whenever it creates a container - so Text and Files Lock
+   can go missing from a container that was only standing by, and two thirds of
+   the suite then fails looking for an editor. Putting them back costs an
+   `occ app:list` when they are already there. CI builds a container of its own
+   from a server image that carries Text, and has no other checkout to be
+   trampled by, so it is left alone. */
+if (!process.env.CI) {
+	execSync('bash dev/install-editor-apps.sh', { stdio: 'inherit' })
+}
 await waitOnNotesApi(ip)
 
 // Idle to wait for shutdown
