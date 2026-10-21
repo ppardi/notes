@@ -91,6 +91,9 @@ async function openSidebarFromActions(page: Page, noteId: number, action: string
 }
 
 test.describe('Note sidebar', () => {
+	/* The note the editor is parked on, so that a test can stay off its own. */
+	let parkedId: number
+
 	test.beforeEach(async ({ page }) => {
 		/* Every test makes the notes it needs. Left to accumulate, they pass
 		   forty and the list stops showing all of them, so a note this spec
@@ -100,7 +103,7 @@ test.describe('Note sidebar', () => {
 		   notes the tests make: the rich editor reads a note's body through the
 		   Text app, which both fills the store behind a test that wants it
 		   empty and locks the file against anything written from outside. */
-		await createNoteViaRequest(SIDEBAR_CATEGORY, 'Parked')
+		parkedId = await createNoteViaRequest(SIDEBAR_CATEGORY, 'Parked')
 		await login(page)
 		await page.goto('/index.php/apps/notes/')
 		await expect(newNoteButton(page).first()).toBeVisible()
@@ -493,7 +496,12 @@ test.describe('Note sidebar', () => {
 			`**/apps/notes/notes/${noteId}`,
 			(route) => route.request().method() === 'GET' ? route.abort() : route.continue(),
 		)
-		await page.goto('/index.php/apps/notes/')
+		/* Straight to the parked note rather than the app's own landing, which
+		   opens the newest note — this one. The rich editor reads a body over
+		   DAV, which this abort does not touch, so a note the editor opens has
+		   a body however the notes API answers. */
+		await page.goto(`/index.php/apps/notes/note/${parkedId}`)
+		await expect(new NoteEditor(page).surface).toContainText('Parked')
 
 		await openSidebarFromActions(page, noteId, 'Details')
 
