@@ -1,0 +1,92 @@
+name: Release
+
+# Run by hand from the Actions tab after merging changes into main.
+# Bumps info.xml, tags v<version>, builds, and publishes the GitHub release
+# custom-app-watch consumes (one .tar.gz + SHA256SUMS).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (blank = bump last number, e.g. 6.99.44 -> 6.99.45)"
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  FORK_BRANCH: ${{ github.ref_name }}   # the branch the run starts from: the default branch for scheduled runs
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FORK_BRANCH }}
+          fetch-depth: 0
+
+      - name: Bump version and tag
+        id: v
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          T=.github/scripts/fork_tools.py
+          CUR=$(python3 $T get appinfo/info.xml version)
+          NEW=${REQUESTED:-$(python3 $T bump "$CUR")}
+          NEW=${NEW#v}
+
+          grep -qE '^[0-9]+(\.[0-9]+)*$' <<<"$NEW" \
+            || { echo "::error::'$NEW' must be plain numbers, or the watcher will skip it"; exit 1; }
+          python3 $T newer "$NEW" "$CUR" \
+            || { echo "::error::$NEW is not greater than current $CUR"; exit 1; }
+          if git rev-parse -q --verify "refs/tags/v$NEW" >/dev/null; then
+            echo "::error::tag v$NEW already exists"; exit 1
+          fi
+
+          python3 $T set appinfo/info.xml version "$NEW"
+          git commit -am "Release v$NEW"
+          git tag "v$NEW"
+          git push origin "HEAD:${FORK_BRANCH}" "v$NEW"
+
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: tag
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.tag.outputs.tag }}
+      expect_version: ${{ needs.tag.outputs.version }}
+
+  publish:
+    needs: [tag, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-release
+          path: dist
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          cd dist
+          sha256sum -c SHA256SUMS
+          HOUR=$(TZ=America/Phoenix date +%H)
+          if [ "$HOUR" -ge 21 ] || [ "$HOUR" -lt 6 ]; then
+            echo "::warning::Publishing during quiet hours (21:00-06:00 MST); the server will hold this for approval."
+          fi
+          gh release create "$TAG" --repo "$REPO" --title "$TAG" --generate-notes ./*.tar.gz SHA256SUMS

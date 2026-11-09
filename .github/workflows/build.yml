@@ -1,0 +1,94 @@
+name: Build app tarball
+
+# Builds <app>-<version>.tar.gz + SHA256SUMS in the exact shape custom-app-watch
+# accepts, and runs the same structural checks it does so a bad tarball fails here.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+      expect_version:
+        type: string
+        required: false
+        default: ""
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA to build"
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"   # TODO: confirm against composer.json "require.php"
+          tools: composer
+          coverage: none
+
+      - name: Install PHP production dependencies
+        run: |
+          if [ -f composer.json ]; then
+            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json   # reads "engines.node"
+          cache: npm
+
+      - name: Build frontend
+        run: |
+          npm ci
+          if node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)"; then
+            npm run build
+          fi
+
+      - name: Package
+        env:
+          EXPECT: ${{ inputs.expect_version }}
+        run: |
+          T=.github/scripts/fork_tools.py
+          APP=$(python3 $T get appinfo/info.xml id)
+          VER=$(python3 $T get appinfo/info.xml version)
+          if [ -n "$EXPECT" ] && [ "$VER" != "$EXPECT" ]; then
+            echo "::error::info.xml version $VER does not match release $EXPECT"; exit 1
+          fi
+
+          mkdir -p "build/$APP" dist
+          EXCLUDES=(--exclude=/.git --exclude=/.github --exclude=/.fork
+                    --exclude=/node_modules --exclude=/src --exclude=/tests
+                    --exclude=/build --exclude=/dist)
+          if [ -f .nextcloudignore ]; then EXCLUDES+=(--exclude-from=.nextcloudignore); fi
+          rsync -a "${EXCLUDES[@]}" ./ "build/$APP/"
+
+          TARBALL="$APP-$VER.tar.gz"
+          tar -C build -czf "dist/$TARBALL" "$APP"
+          (cd dist && sha256sum "$TARBALL" > SHA256SUMS)   # filename only, as the watcher requires
+
+          # Mirror the watcher's checks.
+          TOPS=$(tar -tzf "dist/$TARBALL" | cut -d/ -f1 | sort -u)
+          [ "$TOPS" = "$APP" ] || { echo "::error::tarball must contain only $APP/ at top level"; exit 1; }
+          tar -tzf "dist/$TARBALL" | grep -qx "$APP/appinfo/info.xml" \
+            || { echo "::error::$APP/appinfo/info.xml missing"; exit 1; }
+          if tar -tzf "dist/$TARBALL" | grep -qE '(^/|(^|/)\.\.(/|$))'; then
+            echo "::error::absolute or .. paths in tarball"; exit 1
+          fi
+          echo "Built $TARBALL (min $(python3 $T get appinfo/info.xml min), max $(python3 $T get appinfo/info.xml max))"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: dist/
+          if-no-files-found: error
