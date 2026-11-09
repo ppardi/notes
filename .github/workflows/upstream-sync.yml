@@ -20,7 +20,6 @@ permissions:
   issues: write
 
 env:
-  UPSTREAM_REPO: nextcloud/notes   # nextcloud/tasks in the Tasks fork
   FORK_BRANCH: ${{ github.ref_name }}   # the branch the run starts from: the default branch for scheduled runs
 
 concurrency:
@@ -48,6 +47,9 @@ jobs:
         env:
           REQUESTED: ${{ inputs.upstream_tag }}
         run: |
+          UPSTREAM_REPO=$(tr -d '[:space:]' < .fork/upstream-repo 2>/dev/null || true)
+          [ -n "$UPSTREAM_REPO" ] || { echo "::error::.fork/upstream-repo is missing (e.g. nextcloud/notes)"; exit 1; }
+          echo "UPSTREAM_REPO=$UPSTREAM_REPO" >> "$GITHUB_ENV"
           git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
           # Namespace upstream tags so they never collide with the fork's own v* tags.
           git fetch --no-tags upstream '+refs/tags/*:refs/tags/upstream/*'

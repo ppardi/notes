@@ -41,7 +41,7 @@ jobs:
         run: |
           # Only when the app declares runtime PHP packages; otherwise vendor/ is just
           # autoloader boilerplate the release doesn't need.
-          if [ -f composer.json ] && grep -q '"require"' composer.json; then
+          if [ -f composer.json ] && python3 .github/scripts/fork_tools.py has-php-deps composer.json; then
             composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
           fi
 

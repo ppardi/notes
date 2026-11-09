@@ -6,7 +6,9 @@
   fork_tools.py set FILE FIELD VALUE    (empty VALUE removes min/max)
   fork_tools.py bump VERSION            6.99.44 -> 6.99.45
   fork_tools.py newer A B               exit 0 if A > B numerically
+  fork_tools.py has-php-deps FILE       exit 0 if composer.json requires real packages
 """
+import json
 import re
 import sys
 
@@ -72,6 +74,11 @@ def main(argv):
         p = list(parts(argv[1]))
         p[-1] += 1
         print(".".join(map(str, p)))
+    elif len(argv) == 2 and argv[0] == "has-php-deps":
+        with open(argv[1], encoding="utf-8") as f:
+            req = json.load(f).get("require") or {}
+        real = [k for k in req if k != "php" and not k.startswith("ext-")]
+        sys.exit(0 if real else 1)
     elif len(argv) == 3 and argv[0] == "newer":
         sys.exit(0 if parts(argv[1]) > parts(argv[2]) else 1)
     else:
