@@ -39,7 +39,9 @@ jobs:
 
       - name: Install PHP production dependencies
         run: |
-          if [ -f composer.json ]; then
+          # Only when the app declares runtime PHP packages; otherwise vendor/ is just
+          # autoloader boilerplate the release doesn't need.
+          if [ -f composer.json ] && grep -q '"require"' composer.json; then
             composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
           fi
 
