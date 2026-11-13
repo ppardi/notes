@@ -150,7 +150,10 @@ jobs:
           CONFLICTS: ${{ steps.merge.outputs.conflicts }}
         run: |
           TITLE="Upstream ${TAG} needs a manual merge"
-          EXISTING=$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number --jq '.[0].number')
+          # jq prints the string "null" for an empty result, which is not an empty
+          # string, so a bare '.[0].number' made this test always false and the
+          # issue was never created. '// empty' prints nothing instead.
+          EXISTING=$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number --jq '.[0].number // empty')
           if [ -z "$EXISTING" ]; then
             gh issue create --title "$TITLE" --body "$(printf 'Merging %s %s into %s conflicted in:\n\n%s\n\nResolve locally on a sync/upstream-<tag> branch, write the tag to .fork/upstream-base, and open a PR.' "$UPSTREAM_REPO" "$TAG" "$FORK_BRANCH" "$CONFLICTS")"
           fi
