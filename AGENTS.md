@@ -58,14 +58,16 @@ Setup: `make dev-setup` (runs `composer install` + `npm install`). Requires PHP 
 - `npm run stylelint` / `npm run stylelint:fix`
 
 ### PHP
+- `composer run test:unit` — PHPUnit unit tests (`make test-unit`)
 - `composer run cs:check` / `composer run cs:fix` — php-cs-fixer (Nextcloud coding standard)
 - `composer run psalm` — static analysis
 - `composer run phan` — static analysis (CI uses `make lint-php-phan`)
 - `make lint` runs everything (PHP + JS + CSS + info.xml); `make lint-fix` auto-fixes
 
 ### Tests
-There are no PHP unit tests. Three suites exist:
+Four suites exist:
 
+- **PHP unit tests** (`tests/unit/`): PHPUnit against mocked OCP interfaces, no server, no database. `make test-unit` (or `composer run test:unit`). Only for logic reachable without a running Nextcloud — tree walking, path and title handling, cursor encoding. Run a single test: `./vendor/bin/phpunit -c tests/unit/phpunit.xml --filter testMethodName`
 - **JS unit tests** (`src/tests/`): vitest in jsdom, no server needed. `npm run test` (or `test:coverage`). For plain modules only — testing a component would need `@vitejs/plugin-vue` adding to `vitest.config.js`.
 - **API tests** (`tests/api/`): PHPUnit tests that make HTTP requests via Guzzle against a **running Nextcloud server at `http://localhost:8080`** with the app enabled and a user `test`/`test`. Run with `make test-api`. Run a single test: `phpunit --bootstrap vendor/autoload.php --filter testMethodName tests/api/APIv1Test.php`
 - **Playwright e2e** (`playwright/e2e/`): `npm run test:e2e` (or `test:e2e:ui`). Automatically starts a Nextcloud Docker container on port 8089 (requires Docker; up to 5 min for first start). Tests run with a single worker on purpose — the bundled server uses SQLite and flakes under parallel logins.
@@ -75,16 +77,16 @@ There are no PHP unit tests. Three suites exist:
 ### Backend (`lib/`)
 - Two parallel controller stacks share logic via `lib/Controller/Helper.php`:
   - `NotesController` — internal endpoints for the Vue frontend (`/notes/...`)
-  - `NotesApiController` — the **public versioned REST API** (`/api/v0.2|v1/...`, attachments on v1.4) used by the Android/iOS and third-party clients. It is a stability contract documented in `docs/api/` — changes must stay backward compatible and be reflected there (and in `lib/AppInfo/Capabilities.php` for new API versions).
+  - `NotesApiController` — the **public versioned REST API** (`/api/v0.2|v1/...`; attachment routes and `GET settings` also accept `v1.4`) used by the Android/iOS and third-party clients. It is a stability contract documented in `docs/api/` — changes must stay backward compatible and be reflected there (new API versions go into `Application::$API_VERSIONS` in `lib/AppInfo/Application.php`, exposed via `Capabilities.php` and the `X-Notes-API-Versions` header).
 - Routes are declared in `appinfo/routes.php`.
 - `lib/Service/NotesService.php` is the core: resolves the notes folder, wraps files in `Note` objects (`Note`/`MetaNote` are file wrappers, not entities). `MetaService` maintains the DB metadata cache; `NoteUtil`/`TagService` handle file/tag plumbing. Errors are communicated via typed exceptions in `lib/Service/` which `Helper` maps to HTTP status codes.
 - `ChunkCursor` + ETags implement chunked/pruned note listing for large collections (see `docs/api/README.md`).
 - App wiring (event listeners, dashboard widget, search provider, reference provider) lives in `lib/AppInfo/Application.php`.
 
 ### Frontend (`src/`)
-- Entry points: `main.js` (main app), `dashboard.js` (dashboard widget), `config.js` (admin settings) — one webpack bundle each.
+- Entry points: `main.js` (main app) and `dashboard.js` (dashboard widget) — one webpack bundle each. `config.js` only holds polling/autosave intervals.
 - State lives in three Pinia stores (`src/stores/app.js`, `notes.js`, `sync.js`), aggregated by `src/store.js`. `src/NotesService.js` contains the server-communication layer including the sync queue and conflict handling (`ConflictSolution.vue`); components dispatch through it rather than calling axios directly.
-- Note editing has three modes: `EditorEasyMDE.vue` (rich md editing), `EditorMarkdownIt.vue` (preview), `EditorPlain.vue`.
+- Note editing has three modes (`noteMode` setting): `rich` (`NoteRich.vue`, embeds the Text app's editor), `edit` (`NotePlain.vue` with `EditorEasyMDE.vue`) and `preview` (`NotePlain.vue` with `EditorMarkdownIt.vue`).
 
 ## Conventions
 
