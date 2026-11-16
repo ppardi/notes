@@ -7,19 +7,25 @@ declare(strict_types=1);
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-/**
- * Unit tests cover only classes that stand alone, so there is no Nextcloud
- * server to bootstrap and no container to build. A PSR-4 autoloader over lib/
- * is the whole of it.
- */
-spl_autoload_register(static function (string $class) : void {
-	$prefix = 'OCA\\Notes\\';
-	if (!str_starts_with($class, $prefix)) {
-		return;
+namespace {
+	require_once __DIR__ . '/../../vendor/autoload.php';
+}
+
+namespace OC\Hooks {
+	if (!interface_exists(Emitter::class)) {
+		/**
+		 * Extended by OCP\Files\IRootFolder, which nextcloud/ocp ships without
+		 * this interface. Declared here so PHPUnit can mock IRootFolder, the
+		 * way tests/stubs/ocp.php fills the same gaps for Psalm.
+		 */
+		interface Emitter {
+			public function listen(string $scope, string $method, callable $callback): void;
+
+			public function removeListener(
+				?string $scope = null,
+				?string $method = null,
+				?callable $callback = null,
+			): void;
+		}
 	}
-	$relative = str_replace('\\', '/', substr($class, strlen($prefix)));
-	$file = __DIR__ . '/../../lib/' . $relative . '.php';
-	if (is_file($file)) {
-		require_once $file;
-	}
-});
+}

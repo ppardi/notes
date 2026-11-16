@@ -469,5 +469,4 @@ class SettingsService {
 			throw new \OCP\PreConditionNotMetException('Setting ' . $name . ' not found for user ' . $uid . '.');
 		}
 	}
-
 }

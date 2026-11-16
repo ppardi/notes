@@ -1,20 +1,20 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!--
-  - SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
-  - SPDX-License-Identifier: AGPL-3.0-or-later
+ - SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.5/phpunit.xsd"
-	bootstrap="bootstrap.php"
-	colors="true"
-	cacheDirectory=".phpunit.cache"
-	failOnWarning="true"
-	failOnNotice="true"
-	beStrictAboutOutputDuringTests="true"
+		 xsi:noNamespaceSchemaLocation="../../vendor/phpunit/phpunit/phpunit.xsd"
+		 bootstrap="bootstrap.php"
+		 colors="true"
+		 failOnWarning="true"
+		 failOnRisky="true"
+		 beStrictAboutOutputDuringTests="true"
+		 cacheDirectory=".phpunit.cache"
 >
 	<testsuites>
-		<testsuite name="unit">
-			<directory>.</directory>
+		<testsuite name="notes unit tests">
+			<directory suffix="Test.php">.</directory>
 		</testsuite>
 	</testsuites>
 	<source>

@@ -2,8 +2,9 @@
 name: Bug report
 about: Something wrong with this fork of Notes
 title: ''
-labels: bug, need to reproduce
+labels: 0. Needs triage, bug, feature request, need to reproduce, needs discussion
 assignees: ''
+type: Bug
 
 ---
 
