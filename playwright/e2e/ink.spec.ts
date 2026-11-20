@@ -1110,11 +1110,15 @@ test.describe('Ink', () => {
 		// that size, which makes it a little larger than 16. This establishes
 		// that the swatch is shown with a box; a swatch cut off by an ancestor's
 		// overflow keeps its full box, so clipping is not something it detects.
+		// The menu scales in from 0.96, and the element is visible from the first
+		// frame of that, so a box measured right away comes out a fraction short
+		// of the size it was given. Polling waits for the settled box. A swatch
+		// with no box never reaches 16, so a collapsed one still fails.
 		const expectSwatchBox = async (locator: typeof trigger, name: string) => {
-			const box = await locator.boundingBox()
-			expect(box, name).not.toBeNull()
-			expect(box!.width, name).toBeGreaterThanOrEqual(16)
-			expect(box!.height, name).toBeGreaterThanOrEqual(16)
+			await expect.poll(async () => {
+				const box = await locator.boundingBox()
+				return box === null ? -1 : Math.min(box.width, box.height)
+			}, { message: name }).toBeGreaterThanOrEqual(16)
 		}
 
 		// The trigger is the only thing in the bar that shows the color in use.
