@@ -7,7 +7,7 @@ import type { Locator, Page, TestInfo } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { login } from '../support/login.ts'
-import { currentNoteId, newNoteButton, uniqueTitle, waitForNoteRoute } from '../support/note.ts'
+import { createNoteViaRequest, currentNoteId, newNoteButton, uniqueTitle, waitForNoteRoute } from '../support/note.ts'
 import { NoteEditor } from '../support/sections/NoteEditor.ts'
 import { removeTemplates, stubNoTemplates, stubTemplate } from '../support/templates.ts'
 
@@ -129,6 +129,33 @@ test.describe('Note templates', () => {
 
 		// the URL has to be built from the file id, as the endpoint reports none
 		await expect(thumbnail).toHaveAttribute('src', /\/core\/preview\?fileId=\d+&x=256&y=256&a=1$/)
+	})
+
+	/* The button that opens the picker is in the note list, which on a phone is
+	   the whole screen: the picker has to reach the screen the button is on. */
+	test.describe('on a phone', () => {
+		test.use({ viewport: { width: 390, height: 844 } })
+
+		/* The app opens the note it was last on, and a phone shows either that
+		   note or the list, so reaching the button means going back first. */
+		async function showTheList(page: Page): Promise<void> {
+			await page.goto('/index.php/apps/notes/')
+			await page.waitForTimeout(500)
+			if (!await newNoteButton(page).isVisible().catch(() => false)) {
+				await page.locator('.app-content-wrapper button.button-vue').first().click()
+			}
+			await expect(newNoteButton(page)).toBeVisible()
+		}
+
+		test('offers the picker on the screen the button is on', async ({ page, request }, testInfo: TestInfo) => {
+			await createNoteViaRequest('', uniqueTitle('phone-picker', testInfo), 'something to land on')
+			await stubTemplate(page, request, templateContent(testInfo))
+			await showTheList(page)
+
+			await newNoteButton(page).click()
+
+			await expect(templatePicker(page)).toBeVisible()
+		})
 	})
 
 	test('keeps the note untouched when the picker is cancelled', async ({ page, request }, testInfo: TestInfo) => {

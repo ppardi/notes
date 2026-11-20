@@ -58,14 +58,19 @@
 				</template>
 			</NcEmptyContent>
 		</NcAppContentDetails>
-
-		<TemplatePicker v-if="templatePickerOpen"
-			:templates="templates"
-			:creating="creatingNote"
-			@close="templatePickerOpen = false"
-			@select="onTemplateSelected"
-		/>
 	</NcAppContent>
+
+	<!--
+		Outside the panes: on a narrow screen only one of them is rendered at a
+		time, and the button that opens this sits in the list, so a picker
+		belonging to the note pane never reaches the screen it was asked for.
+	-->
+	<TemplatePicker v-if="templatePickerOpen"
+		:templates="templates"
+		:creating="creatingNote"
+		@close="templatePickerOpen = false"
+		@select="onTemplateSelected"
+	/>
 </template>
 
 <script>
