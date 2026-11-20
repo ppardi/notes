@@ -61,6 +61,53 @@ jobs:
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
           echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
 
+      # The notes are what the custom-app-watch reviewer reads to decide whether
+      # a release is worth holding, so they carry the commit subjects rather
+      # than a bare changelog link. Written to a file and passed as an artifact:
+      # a merge of upstream brings in commit subjects written by other people,
+      # which must never reach a shell as interpolated text.
+      - name: Write release notes
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          # Match the fork's own version line: after a merge of upstream, the
+          # nearest tag by distance is an upstream one, which would describe
+          # the fork's whole divergence instead of this release.
+          PREV=$(git describe --tags --abbrev=0 --match "${TAG%.*}.*" "${TAG}^" 2>/dev/null || true)
+          RANGE=${PREV:+${PREV}..}${TAG}
+
+          # First parent only: a release that merges upstream is one line here
+          # ("Merge upstream vX"), not several hundred of upstream's commits.
+          git log --first-parent --reverse --format='- %s' "$RANGE" \
+            | grep -v '^- Release v' > subjects.txt || true
+          TOTAL=$(wc -l < subjects.txt)
+
+          {
+            echo "## What changed"
+            echo
+            if [ "$TOTAL" -eq 0 ]; then
+              echo "- Version bump only, no code changes${PREV:+ since $PREV}"
+            else
+              head -40 subjects.txt
+              if [ "$TOTAL" -gt 40 ]; then
+                echo "- ...and $((TOTAL - 40)) more commits"
+              fi
+            fi
+            if [ -n "$PREV" ]; then
+              echo
+              git diff --shortstat "${PREV}..${TAG}"
+              echo
+              echo "**Full changelog**: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${PREV}...${TAG}"
+            fi
+          } > notes.md
+
+          cat notes.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: notes.md
+
   build:
     needs: tag
     uses: ./.github/workflows/build.yml
@@ -77,6 +124,11 @@ jobs:
           name: app-release
           path: dist
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: notes
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,4 +141,4 @@ jobs:
           if [ "$HOUR" -ge 21 ] || [ "$HOUR" -lt 6 ]; then
             echo "::warning::Publishing during quiet hours (21:00-06:00 MST); the server will hold this for approval."
           fi
-          gh release create "$TAG" --repo "$REPO" --title "$TAG" --generate-notes ./*.tar.gz SHA256SUMS
+          gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes-file ../notes/notes.md ./*.tar.gz SHA256SUMS
